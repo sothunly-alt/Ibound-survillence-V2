@@ -511,102 +511,6 @@ main,
     linear-gradient(180deg, transparent 72%, var(--bg) 100%);
 }
 
-.lens {
-  position: relative;
-  width: min(100%, 460px);
-  aspect-ratio: 1;
-  transform-style: preserve-3d;
-}
-
-.lens--sm {
-  width: 260px;
-  margin-top: 24px;
-}
-
-.lens__galaxy {
-  position: absolute;
-  inset: -28%;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse 70% 48% at 50% 52%, rgba(74, 222, 128, 0.22), transparent 62%),
-    radial-gradient(ellipse 40% 30% at 32% 44%, rgba(34, 197, 94, 0.16), transparent 70%),
-    radial-gradient(ellipse 36% 28% at 68% 58%, rgba(163, 230, 53, 0.08), transparent 72%),
-    radial-gradient(circle at 50% 50%, rgba(22, 101, 52, 0.28), transparent 58%);
-  filter: blur(18px);
-  transform: rotateX(58deg) scale(1.15);
-  animation: galaxy-drift 22s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.lens__stars {
-  position: absolute;
-  inset: 4%;
-  border-radius: 50%;
-  background-image:
-    radial-gradient(1px 1px at 18% 22%, rgba(255,255,255,0.55), transparent),
-    radial-gradient(1.2px 1.2px at 72% 18%, rgba(190, 242, 197, 0.45), transparent),
-    radial-gradient(1px 1px at 84% 64%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1.4px 1.4px at 28% 78%, rgba(74, 222, 128, 0.45), transparent),
-    radial-gradient(1px 1px at 48% 12%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 60% 86%, rgba(163, 230, 53, 0.35), transparent),
-    radial-gradient(1.1px 1.1px at 12% 54%, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1px 1px at 90% 40%, rgba(74, 222, 128, 0.4), transparent);
-  opacity: 0.75;
-  animation: stars-twinkle 5s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.lens__particles {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.lens__core {
-  position: absolute;
-  inset: 31%;
-  border-radius: 50%;
-  transform-style: preserve-3d;
-  background:
-    radial-gradient(circle at 32% 26%, #f7fee7 0 8%, #86efac 22%, #22c55e 42%, #15803d 68%, #022c16 100%);
-  box-shadow:
-    inset -28px -32px 54px rgba(0, 0, 0, 0.7),
-    inset 14px 12px 26px rgba(255, 255, 255, 0.18),
-    0 18px 40px rgba(0, 0, 0, 0.45),
-    0 0 70px rgba(74, 222, 128, 0.28),
-    0 0 140px rgba(22, 163, 74, 0.16);
-  animation: orb-tilt 14s ease-in-out infinite;
-}
-
-.lens__spec {
-  position: absolute;
-  top: 16%;
-  left: 22%;
-  width: 34%;
-  height: 20%;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.55);
-  filter: blur(6px);
-  transform: rotate(-28deg);
-  pointer-events: none;
-}
-
-@keyframes galaxy-drift {
-  0%, 100% { transform: rotateX(58deg) rotateZ(0deg) scale(1.15); opacity: 0.85; }
-  50% { transform: rotateX(58deg) rotateZ(18deg) scale(1.28); opacity: 1; }
-}
-
-@keyframes orb-tilt {
-  0%, 100% { transform: rotateX(10deg) rotateY(-18deg) translateZ(0); }
-  50% { transform: rotateX(-8deg) rotateY(16deg) translateZ(18px); }
-}
-
-@keyframes stars-twinkle {
-  50% { opacity: 0.4; }
-}
-
 /* Strip */
 .strip {
   padding: 28px 0 64px;
@@ -972,10 +876,6 @@ main,
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .lens__glow,
-  .lens__galaxy,
-  .lens__core,
-  .lens__stars { animation: none; }
   .badge__dot,
   .badge__dot::after { animation: none; }
   .badge__dot {
