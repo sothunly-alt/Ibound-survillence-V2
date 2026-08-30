@@ -393,14 +393,28 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     cv2.destroyAllWindows()
 
 
+from launcher import start_unified_server
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Ghost Counter + shift report on an existing camera (webcam or RTSP)."
+        description="Inbound Surveillance — Live AI Store Monitor & Vision Platform (webcam or RTSP)."
     )
     parser.add_argument(
         "--config",
         default="",
         help="YAML config path (default: edge/config.yaml then config.example.yaml)",
+    )
+    parser.add_argument(
+        "--direct",
+        "--desktop",
+        action="store_true",
+        help="Run standalone OpenCV desktop window instead of the web dashboard.",
+    )
+    parser.add_argument(
+        "--source",
+        default="",
+        help="Directly specify or override the camera source (e.g. 0 or rtsp://...).",
     )
     parser.add_argument(
         "--report",
@@ -412,15 +426,30 @@ def main() -> None:
     cfg_path = Path(args.config) if args.config else ROOT / "config.yaml"
     if not cfg_path.exists():
         cfg_path = ROOT / "config.example.yaml"
-    cfg = load_config(cfg_path)
-    conn = connect(ROOT / "events.db")
-    bot = TelegramOut(cfg["telegram_bot_token"], cfg["telegram_chat_id"])
 
     if args.report:
+        cfg = load_config(cfg_path)
+        conn = connect(ROOT / "events.db")
+        bot = TelegramOut(cfg["telegram_bot_token"], cfg["telegram_chat_id"])
         send_shift_report(conn, cfg, bot)
         return
+
+    # Default mode: Unified Live Web Surveillance Dashboard (Camera streams on the right)
+    if not args.direct and not args.source:
+        start_unified_server()
+        return
+
+    # Standalone OpenCV Desktop Mode
+    cfg = load_config(cfg_path)
+    if args.source:
+        cfg["source"] = args.source
+
+    conn = connect(ROOT / "events.db")
+    bot = TelegramOut(cfg.get("telegram_bot_token", ""), cfg.get("telegram_chat_id", ""))
     run_camera(cfg, conn, bot, cfg_path)
 
 
 if __name__ == "__main__":
     main()
+
+
