@@ -1,0 +1,23 @@
+# Copy to config.yaml (gitignored) and fill Telegram fields,
+# or set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the environment.
+#
+# source: 0 = default webcam. Or an RTSP URL from the NVR, e.g.
+#   rtsp://USER:PASS@192.168.1.64:554/Streaming/Channels/101
+#   rtsp://USER:PASS@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0
+
+venue: Demo store
+source: 0
+
+# Cashier till as fractions of the frame: [x, y, width, height]
+roi: [0.30, 0.20, 0.40, 0.60]
+
+# Product default is 180. Use ~10 so mentors do not wait.
+absent_seconds: 10
+cooldown_seconds: 30
+sample_fps: 2
+
+# Used to flag "opened late" in the shift report (local time).
+open_time: "08:00"
+
+telegram_bot_token: ""
+telegram_chat_id: ""

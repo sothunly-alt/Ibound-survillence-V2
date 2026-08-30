@@ -13,4 +13,12 @@ export default defineConfig({
       "@": path.resolve(root, "src"),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(root, "index.html"),
+        dashboard: path.resolve(root, "dashboard.html"),
+      },
+    },
+  },
 });
