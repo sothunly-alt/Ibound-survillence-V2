@@ -6,11 +6,19 @@ from dataclasses import dataclass, field
 
 import cv2
 
+from occupancy import box_center_in_roi
+
 # COCO-pose indices used by Ultralytics YOLO-pose.
 NOSE = 0
+L_EYE = 1
+R_EYE = 2
+L_EAR = 3
+R_EAR = 4
 L_SHOULDER = 5
 R_SHOULDER = 6
 TORSO = (NOSE, L_SHOULDER, R_SHOULDER)
+FACE = (NOSE, L_EYE, R_EYE, L_EAR, R_EAR)
+FACE_CORE = (NOSE, L_EYE, R_EYE)
 
 SKELETON = (
     (0, 1),
@@ -47,6 +55,16 @@ class Detection:
     def box(self) -> tuple[float, float, float, float]:
         return self.x1, self.y1, self.x2, self.y2
 
+    def in_roi(self, roi_px: tuple[int, int, int, int], kpt_conf: float = 0.4) -> bool:
+        if box_center_in_roi(self.box(), roi_px):
+            return True
+        rx1, ry1, rx2, ry2 = roi_px
+        hits = 0
+        for x, y, c in self.keypoints:
+            if c >= kpt_conf and rx1 <= x <= rx2 and ry1 <= y <= ry2:
+                hits += 1
+        return hits >= 2
+
 
 def _as_xyconf(pt) -> Keypoint:
     vals = pt.tolist() if hasattr(pt, "tolist") else list(pt)
@@ -69,6 +87,21 @@ def extract_keypoints(result, index: int) -> list[Keypoint]:
     return [_as_xyconf(pt) for pt in data[index]]
 
 
+def _count_visible(keypoints: list[Keypoint], indices: tuple[int, ...], kpt_conf: float) -> int:
+    n = 0
+    for idx in indices:
+        if idx < len(keypoints) and keypoints[idx][2] >= kpt_conf:
+            n += 1
+    return n
+
+
+def is_face_closeup(keypoints: list[Keypoint], kpt_conf: float) -> bool:
+    """Laptop webcam: head fills the frame, shoulders are often cropped out."""
+    return _count_visible(keypoints, FACE, kpt_conf) >= 3 and _count_visible(
+        keypoints, FACE_CORE, kpt_conf
+    ) >= 2
+
+
 def is_human_pose(
     x1: float,
     y1: float,
@@ -85,16 +118,17 @@ def is_human_pose(
     width = max(x2 - x1, 1e-6)
     if height < min_height_frac * max(frame_h, 1):
         return False
+
+    if is_face_closeup(keypoints, kpt_conf):
+        # Face boxes from a desk webcam are often square or slightly wide.
+        return height / width >= 0.55
+
     if height / width < min_aspect:
         return False
     visible = [pt for pt in keypoints if pt[2] >= kpt_conf]
     if len(visible) < min_keypoints:
         return False
-    torso = 0
-    for idx in TORSO:
-        if idx < len(keypoints) and keypoints[idx][2] >= kpt_conf:
-            torso += 1
-    return torso >= 2
+    return _count_visible(keypoints, TORSO, kpt_conf) >= 2
 
 
 def person_detections(
@@ -193,4 +227,14 @@ def standing_person_keypoints() -> list[Keypoint]:
     pts[8] = (130.0, 120.0, 0.8)
     pts[11] = (85.0, 150.0, 0.8)
     pts[12] = (115.0, 150.0, 0.8)
+    return pts
+
+
+def closeup_face_keypoints() -> list[Keypoint]:
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (100.0, 80.0, 0.9)
+    pts[1] = (90.0, 70.0, 0.85)
+    pts[2] = (110.0, 70.0, 0.85)
+    pts[3] = (80.0, 80.0, 0.7)
+    pts[4] = (120.0, 80.0, 0.7)
     return pts

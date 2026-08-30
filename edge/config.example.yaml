@@ -18,11 +18,11 @@ flip: none
 # Drag the box, its handles, or empty space in the preview to change it.
 roi: [0.30, 0.20, 0.40, 0.60]
 
-# Person detector — YOLO11n-pose. A box is staff only if it has a skeleton
-# (head/shoulders), not just a person-shaped blob (blanket, chair, coat).
+# Person detector — YOLO11n-pose. Staff = skeleton OR a close-up face
+# (laptop webcam). Blankets still fail: no eyes/shoulders.
 # detect_fps caps inference; the preview still follows the camera.
 weights: yolo11n-pose.pt
-person_conf: 0.5
+person_conf: 0.35
 imgsz: 640
 min_person_height: 0.12
 min_aspect: 1.1

@@ -46,7 +46,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import connect, has_opened_today, insert_event, upsert_minute
-from occupancy import GhostCounter, GhostState, OccupancyGate, box_center_in_roi
+from occupancy import GhostCounter, GhostState, OccupancyGate
 from person import Detection, draw_detection, person_detections
 from proof import save_proof
 from report import build_report
@@ -244,7 +244,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     proofs = ROOT / "proofs"
     rotate_deg = resolve_rotate(cfg.get("rotate"), source)
     flip = parse_flip(cfg.get("flip"))
-    person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.5)
+    person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
     min_person_height = float(
         cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
     )
@@ -326,7 +326,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 min_keypoints=min_keypoints,
                 kpt_conf=kpt_conf,
             )
-            detected = any(box_center_in_roi(det.box(), roi_px) for det in last_accepted)
+            detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
             occupied = gate.update(detected, now)
             last_state = ghost.update(occupied, now)
             stamp = datetime.now()
@@ -355,14 +355,14 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
             draw_detection(
                 preview,
                 det,
-                in_roi=box_center_in_roi(det.box(), roi_px),
+                in_roi=det.in_roi(roi_px, kpt_conf),
                 kpt_conf=kpt_conf,
             )
         for det in last_accepted:
             draw_detection(
                 preview,
                 det,
-                in_roi=box_center_in_roi(det.box(), roi_px),
+                in_roi=det.in_roi(roi_px, kpt_conf),
                 kpt_conf=kpt_conf,
             )
         draw_overlay(preview, roi_px, last_state.occupied, last_state.empty_elapsed, absent)
