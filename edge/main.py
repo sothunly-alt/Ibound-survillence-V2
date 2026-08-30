@@ -3,7 +3,7 @@
     cd edge
     python3 -m venv .venv && source .venv/bin/activate
     pip install -r requirements.txt
-    python main.py                  # preview; q quit, r shift report
+    python main.py                  # preview; drag ROI, q quit, r report, o rotate, f fullscreen
     python main.py --report         # send today's report without a camera
 
 Telegram: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, or copy
@@ -17,7 +17,28 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+
+def _prepare_qt_for_opencv() -> None:
+    """OpenCV 5 highgui ships Qt without fonts; GNOME Wayland often never
+    creates the window, so setMouseCallback dies with NULL window handler.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    if "QT_QPA_FONTDIR" in os.environ:
+        return
+    for candidate in (
+        "/usr/share/fonts/truetype/dejavu",
+        "/usr/share/fonts/truetype/liberation",
+        "/usr/share/fonts",
+    ):
+        if Path(candidate).is_dir():
+            os.environ["QT_QPA_FONTDIR"] = candidate
+            return
+
+
+_prepare_qt_for_opencv()
+
 import cv2
+import numpy as np
 import yaml
 
 ROOT = Path(__file__).resolve().parent
@@ -25,10 +46,90 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import connect, has_opened_today, insert_event, upsert_minute
-from occupancy import GhostCounter, box_overlaps_roi, roi_to_pixels
+from occupancy import GhostCounter, GhostState, OccupancyGate, box_center_in_roi
+from person import Detection, draw_detection, person_detections
 from proof import save_proof
 from report import build_report
+from roi_edit import RoiEditor, draw_roi_handles
 from telegram_out import TelegramOut
+
+WIN = "Inbound Automated Store Manager"
+ROTATES = (0, 90, 180, 270)
+ROTATE_CODE = {
+    90: cv2.ROTATE_90_CLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+FIT_MAX_H = 900
+
+
+def open_preview_window(win: str, on_mouse) -> None:
+    """Qt highgui does not create a handle until imshow; namedWindow alone is not enough."""
+    flags = cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_NORMAL
+    cv2.namedWindow(win, flags)
+    cv2.imshow(win, np.zeros((2, 2, 3), dtype=np.uint8))
+    cv2.waitKey(1)
+    try:
+        cv2.setMouseCallback(win, on_mouse)
+    except cv2.error as exc:
+        raise SystemExit(
+            "Could not open the preview window (OpenCV Qt). "
+            "From the edge folder run: QT_QPA_PLATFORM=xcb python main.py"
+        ) from exc
+
+
+def default_rotate(source: int | str) -> int:
+    """PC webcam and RTSP are landscape. Phone IP Webcam HTTP is portrait."""
+    if isinstance(source, int):
+        return 0
+    text = str(source).strip().lower()
+    if text.startswith("http://") or text.startswith("https://"):
+        return 90
+    return 0
+
+
+def parse_rotate(value) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in ("", "auto"):
+        return None
+    try:
+        deg = int(value)
+    except (TypeError, ValueError):
+        return None
+    deg = ((deg % 360) + 360) % 360
+    return deg if deg in ROTATES else None
+
+
+def resolve_rotate(value, source: int | str) -> int:
+    parsed = parse_rotate(value)
+    return default_rotate(source) if parsed is None else parsed
+
+
+def parse_flip(value) -> str:
+    text = str(value or "none").strip().lower()
+    if text in ("h", "horizontal", "x"):
+        return "h"
+    if text in ("v", "vertical", "y"):
+        return "v"
+    return "none"
+
+
+def orient_frame(frame, rotate_deg: int, flip: str):
+    code = ROTATE_CODE.get(rotate_deg)
+    if code is not None:
+        frame = cv2.rotate(frame, code)
+    if flip == "h":
+        frame = cv2.flip(frame, 1)
+    elif flip == "v":
+        frame = cv2.flip(frame, 0)
+    return frame
+
+
+def fit_window_size(width: int, height: int, max_h: int = FIT_MAX_H) -> tuple[int, int]:
+    scale = min(1.0, max_h / max(height, 1))
+    return max(1, int(width * scale)), max(1, int(height * scale))
 
 
 def load_config(path: Path) -> dict:
@@ -50,16 +151,16 @@ def parse_source(value) -> int | str:
     return text
 
 
-def person_boxes(result) -> tuple[list[tuple[float, float, float, float]], int]:
-    boxes: list[tuple[float, float, float, float]] = []
-    if result.boxes is None:
-        return boxes, 0
-    for box in result.boxes:
-        if int(box.cls[0]) != 0:
-            continue
-        x1, y1, x2, y2 = (float(v) for v in box.xyxy[0].tolist())
-        boxes.append((x1, y1, x2, y2))
-    return boxes, len(boxes)
+def resolve_weights(cfg: dict) -> str:
+    name = str(cfg.get("weights") or "yolo11n-pose.pt").strip() or "yolo11n-pose.pt"
+    local = ROOT / Path(name).name
+    return str(local) if local.exists() else name
+
+
+def resolve_detect_fps(cfg: dict, sample_fps: float) -> float:
+    if cfg.get("detect_fps") is not None:
+        return max(0.5, float(cfg["detect_fps"]))
+    return max(0.5, min(sample_fps, 8.0))
 
 
 def draw_overlay(
@@ -72,6 +173,7 @@ def draw_overlay(
     x1, y1, x2, y2 = roi_px
     color = (80, 200, 80) if occupied else (40, 180, 255)
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+    draw_roi_handles(frame, roi_px, color)
     status = "STAFF IN ROI" if occupied else f"EMPTY {empty_elapsed:.0f}/{absent_seconds:.0f}s"
     cv2.putText(
         frame,
@@ -85,7 +187,17 @@ def draw_overlay(
     )
     cv2.putText(
         frame,
-        "q quit   r send shift report",
+        "drag box / handles / empty=new ROI",
+        (12, frame.shape[0] - 32),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (200, 200, 200),
+        1,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        frame,
+        "q quit  r report  o rotate  f fullscreen",
         (12, frame.shape[0] - 12),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
@@ -111,7 +223,15 @@ def send_shift_report(conn, cfg: dict, bot: TelegramOut) -> None:
         print("[report] no proof stills for today")
 
 
-def run_camera(cfg: dict, conn, bot: TelegramOut) -> None:
+def roi_persist_path(cfg_path: Path) -> Path:
+    example = (ROOT / "config.example.yaml").resolve()
+    real = ROOT / "config.yaml"
+    if cfg_path.resolve() == example and real.exists():
+        return real
+    return cfg_path
+
+
+def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     from ultralytics import YOLO
 
     source = parse_source(cfg.get("source", 0))
@@ -119,8 +239,27 @@ def run_camera(cfg: dict, conn, bot: TelegramOut) -> None:
     absent = float(cfg.get("absent_seconds") or 10)
     cooldown = float(cfg.get("cooldown_seconds") or 30)
     sample_fps = float(cfg.get("sample_fps") or 2)
-    interval = 1.0 / max(sample_fps, 0.5)
+    detect_fps = resolve_detect_fps(cfg, sample_fps)
+    interval = 1.0 / detect_fps
     proofs = ROOT / "proofs"
+    rotate_deg = resolve_rotate(cfg.get("rotate"), source)
+    flip = parse_flip(cfg.get("flip"))
+    person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.5)
+    min_person_height = float(
+        cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
+    )
+    min_aspect = float(cfg.get("min_aspect") if cfg.get("min_aspect") is not None else 1.1)
+    min_keypoints = int(cfg.get("min_keypoints") if cfg.get("min_keypoints") is not None else 4)
+    kpt_conf = float(cfg.get("kpt_conf") if cfg.get("kpt_conf") is not None else 0.4)
+    imgsz = max(32, int(cfg.get("imgsz") or 640) // 32 * 32)
+    confirm = float(
+        cfg.get("occupy_confirm_seconds")
+        if cfg.get("occupy_confirm_seconds") is not None
+        else 1.0
+    )
+    clear = float(
+        cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
+    )
 
     cap = cv2.VideoCapture(source)
     if isinstance(source, str) and source.startswith("rtsp"):
@@ -128,14 +267,29 @@ def run_camera(cfg: dict, conn, bot: TelegramOut) -> None:
     if not cap.isOpened():
         raise SystemExit(f"Cannot open video source: {source}")
 
-    weights = ROOT / "yolov8n.pt"
-    model = YOLO(str(weights) if weights.exists() else "yolov8n.pt")
+    editor = RoiEditor(roi, WIN, roi_persist_path(cfg_path))
+    open_preview_window(WIN, editor.on_mouse)
+
+    weights = resolve_weights(cfg)
+    model = YOLO(weights)
     ghost = GhostCounter(absent, cooldown)
-    last_preview = None
+    gate = OccupancyGate(confirm, clear)
+    last_accepted: list[Detection] = []
+    last_rejected: list[Detection] = []
+    last_state = GhostState(False, 0.0, False)
     last_infer = 0.0
+    last_wh: tuple[int, int] | None = None
+    fullscreen = False
 
     print(f"Ingest {source}  ROI {roi}  absent>={absent}s  Telegram={'on' if bot.enabled else 'off'}")
-    print("Stand in the green box, then step out to trip the Ghost Counter. Press r for the shift report.")
+    print(f"Orient rotate={rotate_deg} flip={flip}")
+    print(
+        f"Pose {weights} conf>={person_conf} kpt>={kpt_conf} n>={min_keypoints} "
+        f"aspect>={min_aspect} detect={detect_fps:.1f}fps imgsz={imgsz} "
+        f"gate {confirm}s/{clear}s"
+    )
+    print("Drag the box or its handles; drag on empty space to draw a new ROI.")
+    print("q quit  r report  o rotate  m flip  f fullscreen")
 
     while True:
         ok, frame = cap.read()
@@ -144,27 +298,49 @@ def run_camera(cfg: dict, conn, bot: TelegramOut) -> None:
             time.sleep(0.25)
             continue
 
+        frame = orient_frame(frame, rotate_deg, flip)
+        h, w = frame.shape[:2]
+        editor.set_frame_size(w, h)
+        if not fullscreen and (w, h) != last_wh:
+            last_wh = (w, h)
+            nw, nh = fit_window_size(w, h)
+            cv2.resizeWindow(WIN, nw, nh)
+
         now = time.time()
+        roi_px = editor.pixels()
         if now - last_infer >= interval:
             last_infer = now
-            h, w = frame.shape[:2]
-            roi_px = roi_to_pixels(w, h, roi)
-            result = model.predict(frame, imgsz=320, verbose=False)[0]
-            boxes, person_count = person_boxes(result)
-            occupied = any(box_overlaps_roi(box, roi_px) for box in boxes)
-            state = ghost.update(occupied, now)
+            result = model.predict(
+                frame,
+                imgsz=imgsz,
+                conf=person_conf,
+                device=None,
+                verbose=False,
+            )[0]
+            last_accepted, last_rejected = person_detections(
+                result,
+                h,
+                conf_min=person_conf,
+                min_height_frac=min_person_height,
+                min_aspect=min_aspect,
+                min_keypoints=min_keypoints,
+                kpt_conf=kpt_conf,
+            )
+            detected = any(box_center_in_roi(det.box(), roi_px) for det in last_accepted)
+            occupied = gate.update(detected, now)
+            last_state = ghost.update(occupied, now)
             stamp = datetime.now()
 
             upsert_minute(
                 conn,
                 stamp.strftime("%Y-%m-%d %H:%M"),
-                person_count,
-                state.occupied,
+                len(last_accepted),
+                last_state.occupied,
             )
-            if state.occupied and not has_opened_today(conn, stamp.date()):
+            if last_state.occupied and not has_opened_today(conn, stamp.date()):
                 insert_event(conn, "opened", stamp)
 
-            if state.should_alert:
+            if last_state.should_alert:
                 path = save_proof(frame, roi_px, stamp, proofs, kind="abandoned")
                 insert_event(conn, "abandoned", stamp, str(path))
                 caption = (
@@ -174,25 +350,44 @@ def run_camera(cfg: dict, conn, bot: TelegramOut) -> None:
                 print(f"[alert] {path}")
                 bot.send_photo(path, caption)
 
-            preview = frame.copy()
-            for box in boxes:
-                cv2.rectangle(
-                    preview,
-                    (int(box[0]), int(box[1])),
-                    (int(box[2]), int(box[3])),
-                    (200, 200, 200),
-                    1,
-                )
-            draw_overlay(preview, roi_px, state.occupied, state.empty_elapsed, absent)
-            last_preview = preview
-
-        display = last_preview if last_preview is not None else frame
-        cv2.imshow("Inbound — Automated Store Manager", display)
+        preview = frame.copy()
+        for det in last_rejected:
+            draw_detection(
+                preview,
+                det,
+                in_roi=box_center_in_roi(det.box(), roi_px),
+                kpt_conf=kpt_conf,
+            )
+        for det in last_accepted:
+            draw_detection(
+                preview,
+                det,
+                in_roi=box_center_in_roi(det.box(), roi_px),
+                kpt_conf=kpt_conf,
+            )
+        draw_overlay(preview, roi_px, last_state.occupied, last_state.empty_elapsed, absent)
+        cv2.imshow(WIN, preview)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
         if key == ord("r"):
             send_shift_report(conn, cfg, bot)
+        elif key == ord("o"):
+            rotate_deg = ROTATES[(ROTATES.index(rotate_deg) + 1) % len(ROTATES)]
+            last_wh = None
+            print(f"[orient] rotate={rotate_deg} flip={flip}")
+        elif key == ord("m"):
+            flip = "none" if flip == "h" else "h"
+            print(f"[orient] rotate={rotate_deg} flip={flip}")
+        elif key == ord("f"):
+            fullscreen = not fullscreen
+            cv2.setWindowProperty(
+                WIN,
+                cv2.WND_PROP_FULLSCREEN,
+                cv2.WINDOW_FULLSCREEN if fullscreen else cv2.WINDOW_NORMAL,
+            )
+            if not fullscreen:
+                last_wh = None
 
     cap.release()
     cv2.destroyAllWindows()
@@ -224,7 +419,7 @@ def main() -> None:
     if args.report:
         send_shift_report(conn, cfg, bot)
         return
-    run_camera(cfg, conn, bot)
+    run_camera(cfg, conn, bot, cfg_path)
 
 
 if __name__ == "__main__":

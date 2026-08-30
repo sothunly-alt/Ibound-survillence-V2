@@ -8,8 +8,29 @@
 venue: Demo store
 source: 0
 
+# Degrees clockwise. auto = 90 for phone HTTP (IP Webcam), 0 for PC webcam / RTSP.
+# Or set 0 / 90 / 180 / 270. Live: press o to cycle this session.
+rotate: auto
+# none | h | v  (selfie / front-camera mirror if needed). Live: press m.
+flip: none
+
 # Cashier till as fractions of the frame: [x, y, width, height]
+# Drag the box, its handles, or empty space in the preview to change it.
 roi: [0.30, 0.20, 0.40, 0.60]
+
+# Person detector — YOLO11n-pose. A box is staff only if it has a skeleton
+# (head/shoulders), not just a person-shaped blob (blanket, chair, coat).
+# detect_fps caps inference; the preview still follows the camera.
+weights: yolo11n-pose.pt
+person_conf: 0.5
+imgsz: 640
+min_person_height: 0.12
+min_aspect: 1.1
+min_keypoints: 4
+kpt_conf: 0.4
+detect_fps: 8
+occupy_confirm_seconds: 1.0
+occupy_clear_seconds: 1.0
 
 # Product default is 180. Use ~10 so mentors do not wait.
 absent_seconds: 10
