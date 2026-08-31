@@ -169,7 +169,7 @@ def resolve_weights(cfg: dict) -> str:
 def resolve_detect_fps(cfg: dict, sample_fps: float) -> float:
     if cfg.get("detect_fps") is not None:
         return max(0.5, float(cfg["detect_fps"]))
-    return max(0.5, min(sample_fps, 8.0))
+    return max(0.5, min(sample_fps, 15.0))
 
 
 def draw_overlay(

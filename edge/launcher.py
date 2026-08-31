@@ -995,7 +995,7 @@ class LiveStreamEngine:
             source = parse_source(cfg.get("source", 0))
             absent = float(cfg.get("absent_seconds") or 10)
             cooldown = float(cfg.get("cooldown_seconds") or 30)
-            detect_fps = max(0.5, float(cfg.get("detect_fps") or 8.0))
+            detect_fps = max(0.5, float(cfg.get("detect_fps") or 15.0))
             interval = 1.0 / detect_fps
             person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
             min_person_height = float(
@@ -1013,8 +1013,12 @@ class LiveStreamEngine:
             )
             rotate_deg, flip = resolve_orient(cfg.get("rotate"), source, None, cfg.get("flip"))
 
-            print(f"[LiveStreamEngine] Ingesting camera stream: {redact_source(source)}")
+            print(f"[LiveStreamEngine] Ingesting camera stream: {redact_source(source)} (target detect_fps: {detect_fps:.1f})")
             cap, actual, first_frame, err = open_video_source(source)
+            if cap is not None:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                if isinstance(source, int) or str(source).isdigit():
+                    cap.set(cv2.CAP_PROP_FPS, 30)
 
             with self.lock:
                 stale = generation != self._connect_generation
@@ -1200,7 +1204,7 @@ class LiveStreamEngine:
                         self.current_frame_jpeg = buffer.tobytes()
                     self.new_frame_event.set()
 
-                time.sleep(0.015)
+                time.sleep(0.001)
 
             if cap is not None:
                 cap.release()

@@ -36,14 +36,14 @@ min_person_height: 0.12
 min_aspect: 1.1
 min_keypoints: 4
 kpt_conf: 0.4
-detect_fps: 8
+detect_fps: 15
 occupy_confirm_seconds: 1.0
 occupy_clear_seconds: 1.0
 
 # Product default is 180. Use ~10 so mentors do not wait.
 absent_seconds: 10
 cooldown_seconds: 30
-sample_fps: 2
+sample_fps: 30
 
 # Used to flag "opened late" in the shift report (local time).
 open_time: "08:00"
