@@ -28,9 +28,11 @@ from paths import data_dir, get_resource_path, resource_dir
 
 # TCP first (firewall-friendly). Phone RTSP often needs UDP — open_video_source
 # retries with UDP if TCP produces no frames. stimeout is microseconds.
+_CAPTURE_TIMEOUT_MS = 2500
+_RTSP_STIMEOUT_US = 2_500_000
 os.environ.setdefault(
     "OPENCV_FFMPEG_CAPTURE_OPTIONS",
-    "rtsp_transport;tcp|stimeout;8000000|max_delay;500000",
+    f"rtsp_transport;tcp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000",
 )
 if sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
@@ -48,6 +50,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import connect, has_opened_today, insert_event, upsert_minute
+from face_id import (
+    create_identity,
+    delete_identity,
+    delete_identity_photo,
+    get_identity,
+    identity_photo_path,
+    list_identities,
+    save_identity_photo,
+    till_status_label,
+    try_create_face_recognizer,
+)
 from occupancy import GhostCounter, GhostState, OccupancyGate, roi_to_pixels
 from person import Detection, draw_detection, person_detections
 from proof import save_proof
@@ -88,6 +101,15 @@ def read_config() -> dict[str, Any]:
     data["cameras"] = _normalize_cameras(data.get("cameras"))
     data["active_camera_id"] = str(data.get("active_camera_id") or "")
     return data
+
+
+_SETTINGS_KEYS = (
+    "telegram_bot_token",
+    "telegram_chat_id",
+    "venue",
+    "open_time",
+    "absent_seconds",
+)
 
 
 def save_config(updates: dict[str, Any]) -> dict[str, Any]:
@@ -293,28 +315,51 @@ def parse_roi(value: Any) -> list[float] | None:
     return [x, y, w, h]
 
 
-def _open_webcam_index(idx: int) -> cv2.VideoCapture | None:
+def _set_capture_timeouts(cap: cv2.VideoCapture) -> None:
+    open_to = getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", None)
+    read_to = getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", None)
+    if open_to is not None:
+        cap.set(open_to, _CAPTURE_TIMEOUT_MS)
+    if read_to is not None:
+        cap.set(read_to, _CAPTURE_TIMEOUT_MS)
+
+
+def _open_capture(source: Any, backend: int | None = None) -> cv2.VideoCapture:
+    cap = cv2.VideoCapture()
+    _set_capture_timeouts(cap)
+    if backend is None:
+        cap.open(source)
+    else:
+        cap.open(source, backend)
+    return cap
+
+
+def _webcam_backends() -> list[int]:
+    """Native backend only for the requested index — no MSMF/index probing."""
     backends: list[int] = []
     if sys.platform.startswith("linux"):
         if hasattr(cv2, "CAP_V4L2"):
             backends.append(cv2.CAP_V4L2)
     elif sys.platform == "win32":
-        for name in ("CAP_DSHOW", "CAP_MSMF"):
-            backend = getattr(cv2, name, None)
-            if backend is not None:
-                backends.append(backend)
+        dshow = getattr(cv2, "CAP_DSHOW", None)
+        if dshow is not None:
+            backends.append(dshow)
+            return backends
     elif sys.platform == "darwin":
         avf = getattr(cv2, "CAP_AVFOUNDATION", None)
         if avf is not None:
             backends.append(avf)
     backends.append(cv2.CAP_ANY)
+    return backends
 
+
+def _open_webcam_index(idx: int) -> cv2.VideoCapture | None:
     seen: set[int] = set()
-    for backend in backends:
+    for backend in _webcam_backends():
         if backend in seen:
             continue
         seen.add(backend)
-        cap = cv2.VideoCapture(idx, backend)
+        cap = _open_capture(idx, backend)
         if cap.isOpened():
             return cap
         cap.release()
@@ -436,7 +481,7 @@ class HttpMjpegCapture:
     def _connect(self) -> str | None:
         self._close_body()
         last = f"Could not connect to camera '{redact_source(self.url)}'."
-        timeout = (5, 20)
+        timeout = (2.0, 3.0)
         for auth in self._auth_attempts():
             try:
                 resp = self._session.get(
@@ -490,7 +535,7 @@ class HttpMjpegCapture:
             frame = _decode_jpeg(data)
             if frame is not None:
                 return frame
-        timeout = (5, 10)
+        timeout = (2.0, 3.0)
         last_exc: Exception | None = None
         for auth in self._auth_attempts():
             try:
@@ -566,8 +611,8 @@ def _read_first_frame(cap: cv2.VideoCapture, tries: int = 8, pause: float = 0.25
 
 
 _RTSP_FFMPEG_OPTS = (
-    "rtsp_transport;tcp|stimeout;8000000|max_delay;500000|fflags;nobuffer",
-    "rtsp_transport;udp|stimeout;8000000|max_delay;500000|fflags;nobuffer",
+    f"rtsp_transport;tcp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000|fflags;nobuffer",
+    f"rtsp_transport;udp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000|fflags;nobuffer",
 )
 
 
@@ -600,18 +645,14 @@ def _open_network_source(url: str) -> tuple[cv2.VideoCapture | None, Any, str | 
             seen.add(key)
             if opts:
                 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = opts
-            cap = (
-                cv2.VideoCapture(url, backend)
-                if backend is not None
-                else cv2.VideoCapture(url)
-            )
+            cap = _open_capture(url, backend)
             if is_rtsp:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             if not cap.isOpened():
                 cap.release()
                 last_err = f"Could not connect to camera '{redact_source(url)}'."
                 continue
-            frame = _read_first_frame(cap, tries=10 if is_rtsp else 4)
+            frame = _read_first_frame(cap, tries=4 if is_rtsp else 3, pause=0.15)
             if frame is not None:
                 return cap, frame, None
             cap.release()
@@ -641,28 +682,24 @@ def open_video_source(
 ) -> tuple[cv2.VideoCapture | None, int | str, Any, str | None]:
     """Open capture on the calling thread and read one frame.
 
-    Webcam indices try the native backend first (V4L2, DirectShow/MSMF,
-    or AVFoundation), then CAP_ANY. If the preferred node is metadata-only
-    (VIDIOC_G_INPUT / index out of range), nearby indices are tried.
+    Webcam opens only the requested index (V4L2, DirectShow, or AVFoundation).
+    Network RTSP/HTTP uses a 2–3s timeout per transport so a dead URL cannot
+    stall the worker for tens of seconds.
     """
     parsed = parse_source(source)
     if isinstance(parsed, int):
-        order = [parsed] + [i for i in range(4) if i != parsed]
-        last_err = f"Could not open camera index {parsed}."
-        for idx in order:
-            cap = _open_webcam_index(idx)
-            if cap is None:
-                continue
-            ok, frame = cap.read()
-            if ok and frame is not None:
-                return cap, idx, frame, None
-            cap.release()
-            time.sleep(_V4L_RELEASE_PAUSE)
-            last_err = (
-                f"Camera index {idx} opened but produced no frames "
-                "(metadata node, busy device, or index out of range)."
-            )
-        return None, parsed, None, last_err
+        cap = _open_webcam_index(parsed)
+        if cap is None:
+            return None, parsed, None, f"Could not open camera index {parsed}."
+        frame = _read_first_frame(cap, tries=4, pause=0.1)
+        if frame is not None:
+            return cap, parsed, frame, None
+        cap.release()
+        time.sleep(_V4L_RELEASE_PAUSE)
+        return None, parsed, None, (
+            f"Camera index {parsed} opened but produced no frames "
+            "(busy device or index out of range)."
+        )
 
     cap, frame, err = _open_network_source(str(parsed))
     if cap is None or frame is None:
@@ -685,6 +722,9 @@ class LiveStreamEngine:
         self.new_frame_event = threading.Event()
         self.cap: cv2.VideoCapture | None = None
         self.model = None
+        self.face_rec = None
+        self.staff_names: list[str] = []
+        self.identities: list[str] = []
 
         # Telemetry stats
         self.fps = 0.0
@@ -692,6 +732,7 @@ class LiveStreamEngine:
         self.empty_elapsed = 0.0
         self.person_count = 0
         self.status_text = "STANDBY"
+        self.connection_state = "STANDBY"
         self.stream_resolution = "--"
         self.error_message: str | None = None
 
@@ -725,12 +766,22 @@ class LiveStreamEngine:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
 
+    def reload_face_id(self) -> None:
+        if self.face_rec is None:
+            return
+        try:
+            self.face_rec.reload_enrolled_faces()
+        except Exception as exc:
+            print(f"[FaceID] Reload failed: {exc}")
+
     def connect_camera(self, new_cfg: dict[str, Any]) -> dict[str, Any]:
         """Ask the worker thread to open the camera. Never open VideoCapture
         from the HTTP thread — V4L2 devices are exclusive and SQLite/OpenCV
         objects are thread-affine.
+
+        Returns immediately. The worker reports CONNECTING → CONNECTED or FAILED
+        via telemetry; the HTTP thread must not wait on capture open.
         """
-        t0 = time.time()
         payload = dict(new_cfg)
         cid = str(payload.pop("camera_id", "") or "")
         cam_name = str(payload.pop("camera_name", "") or "")
@@ -770,43 +821,57 @@ class LiveStreamEngine:
             self._connect_generation += 1
             self._reopen_requested = True
             self.is_streaming = True
+            self.current_frame_jpeg = None
+            self.fps = 0.0
             self.status_text = "CONNECTING"
+            self.connection_state = "CONNECTING"
             self._connect_event.clear()
-
-        ok = self._connect_event.wait(timeout=30.0)
-        with self.lock:
+            self.new_frame_event.set()
             cameras = list(self.cfg.get("cameras") or [])
             active_id = str(self.cfg.get("active_camera_id") or "")
-            if self._connect_ok:
-                w, h = self._connect_wh
-                source = self.cfg.get("source", 0)
-                roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
-                return {
-                    "success": True,
-                    "width": w,
-                    "height": h,
-                    "latency_ms": int((time.time() - t0) * 1000),
-                    "message": f"Successfully connected to '{redact_source(source)}' ({w}x{h})",
-                    "roi": roi,
-                    "rotate": self.cfg.get("rotate", 0),
-                    "flip": self.cfg.get("flip", "none"),
-                    "layout": "portrait" if h > w else "landscape",
-                    "cameras": cameras,
-                    "active_camera_id": active_id,
-                }
-            err = self._connect_error or (
-                "Timed out opening the camera. The device may be busy, "
-                "or index 0 may be a metadata node — try 1."
-            )
-            self.status_text = "CONNECTION FAILED"
-            self.error_message = err
-            self.is_streaming = False
+            source = self.cfg.get("source", 0)
+            roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
             return {
-                "success": False,
-                "error": err,
+                "success": True,
+                "pending": True,
+                "connection": "CONNECTING",
+                "status": "CONNECTING",
+                "message": f"Connecting to '{redact_source(source)}'…",
+                "roi": roi,
+                "rotate": self.cfg.get("rotate", 0),
+                "flip": self.cfg.get("flip", "none"),
                 "cameras": cameras,
                 "active_camera_id": active_id,
             }
+
+    def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
+        updates: dict[str, Any] = {}
+        if "telegram_bot_token" in payload:
+            updates["telegram_bot_token"] = str(payload.get("telegram_bot_token") or "")
+        if "telegram_chat_id" in payload:
+            updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
+        if "venue" in payload:
+            updates["venue"] = str(payload.get("venue") or "").strip() or "Demo store"
+        if "open_time" in payload:
+            updates["open_time"] = str(payload.get("open_time") or "08:00")
+        if "absent_seconds" in payload:
+            try:
+                updates["absent_seconds"] = max(5.0, min(600.0, float(payload.get("absent_seconds"))))
+            except (TypeError, ValueError):
+                return {"success": False, "error": "absent_seconds must be a number."}
+        if not updates:
+            return {"success": False, "error": "No settings provided."}
+        with self.lock:
+            self.cfg.update(updates)
+            save_config(updates)
+            if "telegram_bot_token" in updates or "telegram_chat_id" in updates:
+                self.bot = TelegramOut(
+                    self.cfg.get("telegram_bot_token", ""),
+                    self.cfg.get("telegram_chat_id", ""),
+                )
+            snapshot = {key: self.cfg.get(key) for key in _SETTINGS_KEYS}
+        snapshot["success"] = True
+        return snapshot
 
     def save_camera(self, fields: dict[str, Any]) -> dict[str, Any]:
         name = str(fields.get("name") or fields.get("camera_name") or "").strip()
@@ -903,11 +968,14 @@ class LiveStreamEngine:
         try:
             self.model = YOLO(str(weights_path) if weights_path.exists() else "yolo11n-pose.pt")
             print("[LiveStreamEngine] Model ready")
+            self.face_rec = try_create_face_recognizer(self.cfg)
         except Exception as e:
             self.error_message = f"Failed to load YOLO model: {e}"
             with self.lock:
                 self._connect_ok = False
                 self._connect_error = self.error_message
+                self.connection_state = "FAILED"
+                self.status_text = "FAILED"
                 self._connect_event.set()
             return
 
@@ -965,7 +1033,9 @@ class LiveStreamEngine:
                     self._connect_error = err
                     self.error_message = err
                     self.status_text = "FAILED"
+                    self.connection_state = "FAILED"
                     self._connect_event.set()
+                    self.new_frame_event.set()
                 time.sleep(0.5)
                 continue
 
@@ -986,6 +1056,7 @@ class LiveStreamEngine:
                 self._connect_error = None
                 self.error_message = None
                 self.status_text = "CONNECTED"
+                self.connection_state = "CONNECTED"
                 self.stream_resolution = f"{w0}x{h0}"
                 self._connect_event.set()
 
@@ -1051,6 +1122,8 @@ class LiveStreamEngine:
                             min_keypoints=min_keypoints,
                             kpt_conf=kpt_conf,
                         )
+                        if self.face_rec is not None:
+                            self.face_rec.annotate_detections(frame, last_accepted)
                         detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
                         occupied = gate.update(detected, now)
                         last_state = ghost.update(occupied, now)
@@ -1059,10 +1132,17 @@ class LiveStreamEngine:
                         self.is_occupied = last_state.occupied
                         self.empty_elapsed = last_state.empty_elapsed
                         self.person_count = len(last_accepted)
-                        self.status_text = (
-                            "STAFF IN ROI"
-                            if self.is_occupied
-                            else f"EMPTY {self.empty_elapsed:.0f}/{absent:.0f}s"
+                        self.staff_names = [
+                            det.identity for det in last_accepted if det.is_staff and det.identity
+                        ]
+                        self.identities = [det.identity or "person" for det in last_accepted]
+                        in_roi_dets = [det for det in last_accepted if det.in_roi(roi_px, kpt_conf)]
+                        self.status_text = till_status_label(
+                            self.is_occupied,
+                            in_roi_dets,
+                            self.empty_elapsed,
+                            absent,
+                            face_id_enabled=self.face_rec is not None,
                         )
 
                         if self.conn is not None:
@@ -1102,9 +1182,7 @@ class LiveStreamEngine:
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
                 draw_roi_handles(annotated, roi_px, color)
 
-                status_label = (
-                    "STAFF IN ROI" if self.is_occupied else f"EMPTY {self.empty_elapsed:.0f}/{absent:.0f}s"
-                )
+                status_label = self.status_text
                 cv2.putText(
                     annotated,
                     status_label,
@@ -1151,7 +1229,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     def _cors(self) -> None:
         origin = self.headers.get("Origin") or "*"
         self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Vary", "Origin")
 
@@ -1162,6 +1240,152 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
         self.end_headers()
+
+    def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode("utf-8"))
+
+    def _identity_cfg(self) -> dict[str, Any]:
+        return GLOBAL_ENGINE.cfg or read_config()
+
+    def _identity_photo_url(self, name: str, filename: str) -> str:
+        return (
+            "/api/identities/"
+            + urllib.parse.quote(name)
+            + "/photo/"
+            + urllib.parse.quote(filename)
+        )
+
+    def _enrich_identity(self, row: dict[str, Any]) -> dict[str, Any]:
+        out = dict(row)
+        thumb = out.get("thumbnail")
+        if thumb:
+            out["thumbnail"] = self._identity_photo_url(out["name"], str(thumb))
+        photos = []
+        for photo in out.get("photos") or []:
+            fname = photo.get("filename") if isinstance(photo, dict) else None
+            if not fname:
+                continue
+            photos.append({"filename": fname, "url": self._identity_photo_url(out["name"], fname)})
+        if "photos" in out:
+            out["photos"] = photos
+        return out
+
+    def _handle_identities_get(self, parts: list[str]) -> bool:
+        cfg = self._identity_cfg()
+        try:
+            if parts == ["api", "identities"]:
+                rows = [self._enrich_identity(row) for row in list_identities(cfg)]
+                self._send_json({"identities": rows})
+                return True
+            if len(parts) == 3 and parts[0] == "api" and parts[1] == "identities":
+                row = self._enrich_identity(get_identity(parts[2], cfg))
+                self._send_json(row)
+                return True
+            if (
+                len(parts) == 5
+                and parts[0] == "api"
+                and parts[1] == "identities"
+                and parts[3] == "photo"
+            ):
+                path = identity_photo_path(parts[2], parts[4], cfg)
+                data = path.read_bytes()
+                mime = "image/jpeg"
+                suffix = path.suffix.lower()
+                if suffix == ".png":
+                    mime = "image/png"
+                elif suffix == ".webp":
+                    mime = "image/webp"
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data)
+                return True
+        except FileNotFoundError as exc:
+            self._send_json({"error": str(exc)}, 404)
+            return True
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, 400)
+            return True
+        return False
+
+    def _parse_multipart_files(self, content_type: str, body: bytes) -> list[tuple[str, bytes]]:
+        from email import policy
+        from email.parser import BytesParser
+
+        header = f"MIME-Version: 1.0\r\nContent-Type: {content_type}\r\n\r\n".encode("utf-8")
+        msg = BytesParser(policy=policy.default).parsebytes(header + body)
+        files: list[tuple[str, bytes]] = []
+        if not msg.is_multipart():
+            return files
+        for part in msg.iter_parts():
+            filename = part.get_filename()
+            payload = part.get_payload(decode=True)
+            if filename and payload:
+                files.append((filename, payload))
+        return files
+
+    def _handle_identities_write(self, parts: list[str], method: str, payload: dict, files: list[tuple[str, bytes]]) -> bool:
+        cfg = self._identity_cfg()
+        try:
+            if method == "POST" and parts == ["api", "identities"]:
+                row = self._enrich_identity(create_identity(str(payload.get("name") or ""), cfg))
+                GLOBAL_ENGINE.reload_face_id()
+                self._send_json(row, 201)
+                return True
+            if (
+                method == "POST"
+                and len(parts) == 4
+                and parts[0] == "api"
+                and parts[1] == "identities"
+                and parts[3] == "photos"
+            ):
+                saved = []
+                errors = []
+                for filename, data in files:
+                    try:
+                        stored = save_identity_photo(parts[2], data, filename, cfg)
+                        saved.append(
+                            {
+                                "filename": stored,
+                                "url": self._identity_photo_url(parts[2], stored),
+                            }
+                        )
+                    except Exception as exc:
+                        errors.append({"filename": filename, "error": str(exc)})
+                GLOBAL_ENGINE.reload_face_id()
+                status = 200 if saved else 400
+                self._send_json({"saved": saved, "errors": errors}, status)
+                return True
+            if method == "DELETE" and len(parts) == 3 and parts[0] == "api" and parts[1] == "identities":
+                delete_identity(parts[2], cfg)
+                GLOBAL_ENGINE.reload_face_id()
+                self._send_json({"ok": True})
+                return True
+            if (
+                method == "DELETE"
+                and len(parts) == 5
+                and parts[0] == "api"
+                and parts[1] == "identities"
+                and parts[3] == "photo"
+            ):
+                delete_identity_photo(parts[2], parts[4], cfg)
+                GLOBAL_ENGINE.reload_face_id()
+                self._send_json({"ok": True})
+                return True
+        except FileExistsError as exc:
+            self._send_json({"error": str(exc)}, 409)
+            return True
+        except FileNotFoundError as exc:
+            self._send_json({"error": str(exc)}, 404)
+            return True
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, 400)
+            return True
+        return False
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1183,8 +1407,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 "occupied": GLOBAL_ENGINE.is_occupied,
                 "empty_elapsed": GLOBAL_ENGINE.empty_elapsed,
                 "person_count": GLOBAL_ENGINE.person_count,
+                "staff_names": GLOBAL_ENGINE.staff_names,
+                "identities": GLOBAL_ENGINE.identities,
                 "fps": GLOBAL_ENGINE.fps,
                 "status": GLOBAL_ENGINE.status_text,
+                "connection": GLOBAL_ENGINE.connection_state,
                 "resolution": GLOBAL_ENGINE.stream_resolution,
                 "error": GLOBAL_ENGINE.error_message,
                 "roi": list(GLOBAL_ENGINE.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60]),
@@ -1217,21 +1444,46 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             except (ConnectionResetError, BrokenPipeError):
                 pass
 
+        elif self._handle_identities_get(
+            [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
+        ):
+            return
+
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length > 0 else b"{}"
-        try:
-            payload = json.loads(body.decode("utf-8"))
-        except Exception:
-            payload = {}
+        parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > 40 * 1024 * 1024:
+            self._send_json({"error": "Upload is too large."}, 413)
+            return
+        body = self.rfile.read(length) if length > 0 else b""
+        content_type = self.headers.get("Content-Type") or ""
+        files: list[tuple[str, bytes]] = []
+        payload: dict[str, Any] = {}
+        if "multipart/form-data" in content_type:
+            files = self._parse_multipart_files(content_type, body)
+        else:
+            try:
+                payload = json.loads(body.decode("utf-8") or "{}")
+            except Exception:
+                payload = {}
+
+        if self._handle_identities_write(parts, "POST", payload, files):
+            return
 
         if parsed.path in ("/api/connect-stream", "/api/save"):
             result = GLOBAL_ENGINE.connect_camera(payload)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode("utf-8"))
+
+        elif parsed.path in ("/api/settings", "/api/config"):
+            result = GLOBAL_ENGINE.apply_hub_settings(payload)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -1266,58 +1518,49 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result).encode("utf-8"))
 
         elif parsed.path == "/api/test-telegram":
-            token = str(payload.get("token") or "").strip()
-            chat = str(payload.get("chat_id") or "").strip()
+            token = str(payload.get("token") or payload.get("telegram_bot_token") or "").strip()
+            chat = str(payload.get("chat_id") or payload.get("telegram_chat_id") or "").strip()
             venue = str(payload.get("venue") or "Demo store").strip()
-            source = payload.get("source", 0)
-            
+
             if not token or not chat:
                 res = {"success": False, "error": "Bot Token and Chat ID are required."}
             else:
+                GLOBAL_ENGINE.apply_hub_settings({
+                    "telegram_bot_token": token,
+                    "telegram_chat_id": chat,
+                })
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 proofs_dir = DATA_DIR / "proofs"
                 proofs_dir.mkdir(parents=True, exist_ok=True)
                 proof_path = proofs_dir / f"snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
 
-                # Grab latest frame from live engine or capture one from source
                 frame_bytes = None
                 with GLOBAL_ENGINE.lock:
                     if GLOBAL_ENGINE.current_frame_jpeg is not None:
                         frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
-                
-                if frame_bytes is None:
-                    if GLOBAL_ENGINE.is_streaming:
-                        GLOBAL_ENGINE.new_frame_event.wait(timeout=2.0)
-                        with GLOBAL_ENGINE.lock:
-                            frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
-                    else:
-                        cap, _actual, f, _err = open_video_source(source)
-                        ret = f is not None
-                        if cap is not None:
-                            if not ret:
-                                ret, f = cap.read()
-                            cap.release()
-                            if ret and f is not None:
-                                cv2.putText(f, f"{venue} | {now_str}", (16, f.shape[0] - 16),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2, cv2.LINE_AA)
-                                ok, buf = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                                if ok:
-                                    frame_bytes = buf.tobytes()
+
+                if frame_bytes is None and GLOBAL_ENGINE.is_streaming:
+                    GLOBAL_ENGINE.new_frame_event.wait(timeout=2.0)
+                    with GLOBAL_ENGINE.lock:
+                        frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
 
                 if frame_bytes is None:
                     res = {"success": False, "error": "Could not capture camera frame. Please connect to a camera stream first."}
                 else:
-                    # Save local proof file
                     with proof_path.open("wb") as pf:
                         pf.write(frame_bytes)
 
-                    status_str = "STAFF IN ROI" if GLOBAL_ENGINE.is_occupied else "EMPTY"
+                    status_str = GLOBAL_ENGINE.status_text or (
+                        "STAFF IN ROI" if GLOBAL_ENGINE.is_occupied else "EMPTY"
+                    )
+                    identified = ", ".join(GLOBAL_ENGINE.identities) or "none"
                     caption = (
                         f"🛡️ *Inbound Surveillance Snapshot Report*\n\n"
                         f"🏢 *Venue:* {venue}\n"
                         f"⏰ *Timestamp:* {now_str}\n"
                         f"👤 *Till Status:* {status_str}\n"
                         f"👥 *Detections:* {GLOBAL_ENGINE.person_count} Person(s)\n"
+                        f"🪪 *Identified:* {identified}\n"
                     )
 
                     url = f"https://api.telegram.org/bot{token}/sendPhoto"
@@ -1349,6 +1592,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
+        if self._handle_identities_write(parts, "DELETE", {}, []):
+            return
+        self.send_response(404)
+        self.end_headers()
 
 
 def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:

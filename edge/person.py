@@ -51,6 +51,9 @@ class Detection:
     conf: float
     keypoints: list[Keypoint] = field(default_factory=list)
     accepted: bool = False
+    identity: str | None = None
+    identity_conf: float = 0.0
+    is_staff: bool = False
 
     def box(self) -> tuple[float, float, float, float]:
         return self.x1, self.y1, self.x2, self.y2
@@ -199,7 +202,14 @@ def draw_detection(
     x1, y1, x2, y2 = (int(det.x1), int(det.y1), int(det.x2), int(det.y2))
     if det.accepted:
         color = (80, 220, 80) if in_roi else (170, 170, 170)
-        label = f"person {det.conf:.2f}"
+        if det.identity and det.is_staff:
+            label = f"[Staff: {det.identity}] {det.conf:.2f}"
+            color = (50, 240, 50) if in_roi else (100, 200, 100)
+        elif det.identity:
+            label = f"[{det.identity}] {det.conf:.2f}"
+            color = (0, 165, 255) if in_roi else (170, 170, 170)
+        else:
+            label = f"person {det.conf:.2f}"
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         draw_skeleton(frame, det.keypoints, kpt_conf, color)
     else:

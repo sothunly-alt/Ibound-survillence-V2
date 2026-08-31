@@ -91,6 +91,8 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
+    #workspace.hidden,
+    #identity-workspace.hidden { display: none !important; }
     #feed-column { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-height: 0; min-width: 0; }
     #config-panel { max-height: 42vh; }
     /* Live feed keeps the stream aspect ratio but never grows past the
@@ -143,6 +145,22 @@
     .tab-off { color: #c1c7d3; border-bottom: 2px solid transparent; }
     .nav-on { color: #a4c9ff; background: rgba(63, 70, 92, 0.45); border-left: 2px solid #a4c9ff; }
     .nav-off { color: #c1c7d3; border-left: 2px solid transparent; }
+    #identity-workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .identity-card { transition: border-color 0.15s ease, background 0.15s ease; }
+    .identity-card:hover { border-color: #a4c9ff; background: #232a3a; }
+    .identity-thumb, .identity-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .identity-photo { position: relative; aspect-ratio: 1; overflow: hidden; }
+    .identity-photo button {
+      position: absolute; top: 6px; right: 6px;
+      width: 28px; height: 28px; border-radius: 9999px;
+      background: rgba(12, 19, 34, 0.82); color: #ffb4ab;
+      display: none; align-items: center; justify-content: center;
+    }
+    .identity-photo:hover button { display: flex; }
     @media (prefers-reduced-motion: reduce) {
       .animate-pulse { animation: none; }
     }
@@ -155,25 +173,25 @@
     </div>
     <ul class="flex-1 overflow-y-auto px-4 space-y-1">
       <li>
-        <button type="button" class="nav-on w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left" data-nav="live">
+        <button type="button" class="nav-on w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left" data-nav="live" onclick="setNav('live')">
           <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">videocam</span>
           <span>Live View</span>
         </button>
       </li>
       <li>
-        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="recordings" title="Recordings stay on this hub — single live stream">
-          <span class="material-symbols-outlined">history</span>
-          <span>Recordings</span>
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="identity" onclick="setNav('identity')">
+          <span class="material-symbols-outlined">badge</span>
+          <span>Identity</span>
         </button>
       </li>
       <li>
-        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="cameras" onclick="document.getElementById('camera-list-label').scrollIntoView({behavior:'smooth'})">
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="cameras" onclick="setNav('cameras')">
           <span class="material-symbols-outlined">photo_camera</span>
           <span>Cameras</span>
         </button>
       </li>
       <li>
-        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="settings" onclick="showConfigTab('alerts')">
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="settings" onclick="setNav('settings')">
           <span class="material-symbols-outlined">settings</span>
           <span>Settings</span>
         </button>
@@ -372,18 +390,18 @@
         <div id="panel-alerts" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
           <div class="flex flex-col gap-1.5">
             <label class="font-label-upper text-label-upper text-on-surface-variant" for="venue-input">Venue Name</label>
-            <input id="venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="Demo store"/>
+            <input id="venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="Demo store" oninput="updateCrumbs()" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="font-label-upper text-label-upper text-on-surface-variant" for="open-time-input">Operating Hours</label>
-            <input id="open-time-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="time" value="08:00"/>
+            <input id="open-time-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="time" value="08:00" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="md:col-span-2 flex flex-col gap-2">
             <div class="flex justify-between items-center">
               <label class="font-label-upper text-label-upper text-on-surface-variant" for="absent-slider">Absent-till threshold</label>
               <span class="font-mono-data text-mono-data text-primary" id="absent-val-label">10s</span>
             </div>
-            <input id="absent-slider" class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="600" min="5" step="5" type="range" value="10" oninput="updateAbsentLabel(this.value)"/>
+            <input id="absent-slider" class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="600" min="5" step="5" type="range" value="10" oninput="updateAbsentLabel(this.value)" onchange="saveHubSettings()"/>
             <div class="flex justify-between font-mono-data text-mono-data text-on-surface-variant">
               <span>0s</span>
               <span>600s</span>
@@ -394,11 +412,11 @@
         <div id="panel-integrations" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
           <div class="flex flex-col gap-1.5">
             <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Telegram Bot Token</label>
-            <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="Optional"/>
+            <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="Optional" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Chat ID</label>
-            <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="e.g. -1001234567890"/>
+            <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="e.g. -1001234567890" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="md:col-span-2">
             <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
@@ -410,9 +428,22 @@
       </div>
     </div>
 
+    <div class="flex-1 min-h-0 p-edge-margin hidden" id="identity-workspace">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface" id="identity-heading">Identity</h2>
+          <p class="text-body-sm text-on-surface-variant mt-1" id="identity-sub">Create a person, then add photos from several angles so the live feed can name them.</p>
+        </div>
+        <div class="flex items-center gap-2" id="identity-actions"></div>
+      </div>
+      <p id="identity-feedback" class="hidden text-sm"></p>
+      <div id="identity-content" class="flex-1 min-h-0"></div>
+      <input id="identity-file-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple/>
+    </div>
+
     <footer class="flex justify-between items-center px-container-padding h-8 bg-surface-container-lowest border-t border-outline-variant shrink-0 z-10 w-full gap-4">
       <div class="font-mono-data text-mono-data text-primary truncate">
-        FPS: <span id="telem-fps">—</span> | Detections: <span id="telem-people">—</span> | Stream Health: <span id="telem-health">Standby</span>
+        FPS: <span id="telem-fps">—</span> | Detections: <span id="telem-people">—</span> | Identified: <span id="telem-identities">—</span> | Stream Health: <span id="telem-health">Standby</span>
         <span class="text-on-surface-variant"> | Till <span id="telem-status">STANDBY</span> · Empty <span id="telem-elapsed">—</span></span>
       </div>
       <div class="flex gap-4 font-mono-data text-mono-data text-on-surface-variant shrink-0">
@@ -439,6 +470,11 @@
     let liveStatusText = 'Standby';
     let streamW = 0;
     let streamH = 0;
+    let connectSeq = 0;
+    let currentNav = 'live';
+    let identityView = 'list';
+    let identityName = '';
+    let identityCreating = false;
 
     const VENDOR_TEMPLATES = {
       dahua: { port: 554, path: '/cam/realmonitor?channel=1&subtype=0', forcePort: true, defaultHost: '192.168.1.108' },
@@ -462,6 +498,229 @@
       });
       if (name !== 'source') {
         document.getElementById('config-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function setNav(name) {
+      const highlight = name === 'identity' ? 'identity' : 'live';
+      document.querySelectorAll('[data-nav]').forEach((el) => {
+        const key = el.getAttribute('data-nav');
+        const isOn = key === highlight;
+        el.className = (isOn ? 'nav-on' : 'nav-off') + ' w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left' + (isOn ? '' : ' hover:bg-surface-container-high hover:text-on-surface');
+        const icon = el.querySelector('.material-symbols-outlined');
+        if (icon && key === 'live') {
+          icon.style.fontVariationSettings = isOn ? "'FILL' 1" : "'FILL' 0";
+        }
+      });
+      document.getElementById('workspace').classList.toggle('hidden', name === 'identity');
+      document.getElementById('identity-workspace').classList.toggle('hidden', name !== 'identity');
+      if (name === 'identity') {
+        if (identityView === 'detail' && identityName) openIdentity(identityName);
+        else showIdentityList();
+      }
+      if (name === 'cameras') {
+        document.getElementById('camera-list-label').scrollIntoView({ behavior: 'smooth' });
+      }
+      if (name === 'settings') showConfigTab('alerts');
+      if (name !== 'identity') requestAnimationFrame(layoutVideoStage);
+    }
+
+    function identityFeedback(ok, message) {
+      const el = document.getElementById('identity-feedback');
+      if (!el) return;
+      if (!message) {
+        el.className = 'hidden text-sm';
+        el.textContent = '';
+        return;
+      }
+      el.className = 'text-sm ' + (ok ? 'text-green-400' : 'text-error');
+      el.textContent = message;
+    }
+
+    function identityEsc(value) {
+      return String(value || '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
+    function identityAttr(value) {
+      return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function setIdentityChrome(title, subtitle, actionsHtml) {
+      document.getElementById('identity-heading').textContent = title;
+      document.getElementById('identity-sub').textContent = subtitle;
+      document.getElementById('identity-actions').innerHTML = actionsHtml || '';
+    }
+
+    async function showIdentityList() {
+      identityView = 'list';
+      identityName = '';
+      identityFeedback(true, '');
+      setIdentityChrome(
+        'Identity',
+        'Create a person, then add photos from several angles so the live feed can name them.',
+        '<button type="button" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-4 rounded-lg font-medium text-sm flex items-center gap-1" onclick="startCreateIdentity()"><span class="material-symbols-outlined text-sm">add</span> New identity</button>'
+      );
+      const root = document.getElementById('identity-content');
+      root.innerHTML = '<p class="text-on-surface-variant text-sm">Loading identities…</p>';
+      try {
+        const res = await fetch('/api/identities', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load identities');
+        const people = data.identities || [];
+        let html = '';
+        if (identityCreating) {
+          html += '<form class="bg-surface-container-low border border-outline-variant rounded-xl p-4 flex flex-wrap gap-3 items-end mb-4" onsubmit="submitNewIdentity(event)">'
+            + '<div class="flex-1 min-w-[180px] flex flex-col gap-1.5">'
+            + '<label class="font-label-upper text-label-upper text-on-surface-variant" for="new-identity-name">Person name</label>'
+            + '<input id="new-identity-name" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5" type="text" placeholder="e.g. Alex" autocomplete="off" required/>'
+            + '</div>'
+            + '<button type="submit" class="bg-primary-container text-on-primary py-2.5 px-4 rounded-lg text-sm font-medium">Create</button>'
+            + '<button type="button" class="border border-outline-variant text-on-surface-variant py-2.5 px-4 rounded-lg text-sm" onclick="identityCreating=false;showIdentityList()">Cancel</button>'
+            + '</form>';
+        }
+        if (!people.length && !identityCreating) {
+          html += '<div class="rounded-xl border border-dashed border-outline-variant p-10 text-center">'
+            + '<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-3">badge</span>'
+            + '<p class="text-on-surface font-medium">No identities yet</p>'
+            + '<p class="text-on-surface-variant text-sm mt-1">Create Alex, then upload front / left / right photos for that person only.</p>'
+            + '</div>';
+        } else {
+          html += '<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">';
+          people.forEach((person) => {
+            const count = person.photo_count || 0;
+            const thumb = person.thumbnail
+              ? '<img class="identity-thumb" alt="" src="' + identityEsc(person.thumbnail) + '"/>'
+              : '<div class="w-full h-full flex items-center justify-center bg-surface-container-highest"><span class="material-symbols-outlined text-3xl text-on-surface-variant">person</span></div>';
+            html += '<button type="button" class="identity-card text-left rounded-xl border border-outline-variant bg-surface-container overflow-hidden" onclick="openIdentity(\'' + identityAttr(person.name) + '\')">'
+              + '<div class="aspect-[4/3] bg-black">' + thumb + '</div>'
+              + '<div class="p-3">'
+              + '<p class="text-on-surface font-medium">' + identityEsc(person.name) + '</p>'
+              + '<p class="font-mono-data text-mono-data text-on-surface-variant mt-0.5">' + count + ' photo' + (count === 1 ? '' : 's') + '</p>'
+              + '</div></button>';
+          });
+          html += '</div>';
+        }
+        root.innerHTML = html;
+        const nameInput = document.getElementById('new-identity-name');
+        if (nameInput) nameInput.focus();
+      } catch (err) {
+        root.innerHTML = '<p class="text-error text-sm">' + identityEsc(err.message) + '</p>';
+      }
+    }
+
+    function startCreateIdentity() {
+      identityCreating = true;
+      showIdentityList();
+    }
+
+    async function submitNewIdentity(event) {
+      event.preventDefault();
+      const input = document.getElementById('new-identity-name');
+      const name = (input && input.value || '').trim();
+      if (!name) return;
+      try {
+        const res = await fetch('/api/identities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create identity');
+        identityCreating = false;
+        identityFeedback(true, 'Created ' + data.name + '. Add photos from several angles.');
+        openIdentity(data.name);
+      } catch (err) {
+        identityFeedback(false, err.message);
+      }
+    }
+
+    async function openIdentity(name) {
+      identityView = 'detail';
+      identityName = name;
+      setIdentityChrome(
+        name,
+        'Photos of ' + name + ' from every angle. Anyone not enrolled here is labeled Customer.',
+        '<button type="button" class="border border-outline-variant text-on-surface py-2 px-4 rounded-lg text-sm" onclick="showIdentityList()">All identities</button>'
+          + '<button type="button" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-4 rounded-lg font-medium text-sm flex items-center gap-1" onclick="document.getElementById(\'identity-file-input\').click()"><span class="material-symbols-outlined text-sm">upload</span> Upload photos</button>'
+      );
+      const root = document.getElementById('identity-content');
+      root.innerHTML = '<p class="text-on-surface-variant text-sm">Loading photos…</p>';
+      try {
+        const res = await fetch('/api/identities/' + encodeURIComponent(name), { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not open identity');
+        const photos = data.photos || [];
+        let html = '<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">';
+        photos.forEach((photo) => {
+          html += '<div class="identity-photo rounded-xl border border-outline-variant bg-black">'
+            + '<img alt="' + identityEsc(name) + '" src="' + identityEsc(photo.url) + '"/>'
+            + '<button type="button" title="Remove photo" onclick="deleteIdentityPhoto(\'' + identityAttr(name) + '\',\'' + identityAttr(photo.filename) + '\')"><span class="material-symbols-outlined text-[18px]">close</span></button>'
+            + '</div>';
+        });
+        html += '<button type="button" class="aspect-square rounded-xl border border-dashed border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary flex flex-col items-center justify-center gap-2" onclick="document.getElementById(\'identity-file-input\').click()">'
+          + '<span class="material-symbols-outlined">add_a_photo</span>'
+          + '<span class="text-xs">Add photos</span></button></div>';
+        if (!photos.length) {
+          html += '<p class="text-on-surface-variant text-sm mt-4">No photos yet. Upload a few angles of ' + identityEsc(name) + '.</p>';
+        }
+        html += '<div class="mt-6"><button type="button" class="text-error text-sm hover:underline" onclick="deleteCurrentIdentity()">Delete identity</button></div>';
+        root.innerHTML = html;
+      } catch (err) {
+        root.innerHTML = '<p class="text-error text-sm">' + identityEsc(err.message) + '</p>';
+      }
+    }
+
+    async function uploadIdentityPhotos(files) {
+      if (!identityName || !files || !files.length) return;
+      const body = new FormData();
+      Array.from(files).forEach((file) => body.append('photos', file, file.name));
+      identityFeedback(true, 'Uploading ' + files.length + ' photo' + (files.length === 1 ? '' : 's') + '…');
+      try {
+        const res = await fetch('/api/identities/' + encodeURIComponent(identityName) + '/photos', {
+          method: 'POST',
+          body
+        });
+        const data = await res.json();
+        if (!res.ok && !(data.saved && data.saved.length)) {
+          throw new Error(data.error || (data.errors && data.errors[0] && data.errors[0].error) || 'Upload failed');
+        }
+        const saved = (data.saved || []).length;
+        const failed = (data.errors || []).length;
+        let msg = saved ? ('Added ' + saved + ' photo' + (saved === 1 ? '' : 's') + ' to ' + identityName + '.') : '';
+        if (failed) msg += (msg ? ' ' : '') + failed + ' file' + (failed === 1 ? '' : 's') + ' could not be used.';
+        identityFeedback(saved > 0, msg || 'Upload failed');
+        openIdentity(identityName);
+      } catch (err) {
+        identityFeedback(false, err.message);
+      }
+    }
+
+    async function deleteIdentityPhoto(name, filename) {
+      if (!confirm('Remove this photo from ' + name + '?')) return;
+      try {
+        const res = await fetch('/api/identities/' + encodeURIComponent(name) + '/photo/' + encodeURIComponent(filename), { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not remove photo');
+        identityFeedback(true, 'Photo removed.');
+        openIdentity(name);
+      } catch (err) {
+        identityFeedback(false, err.message);
+      }
+    }
+
+    async function deleteCurrentIdentity() {
+      if (!identityName) return;
+      if (!confirm('Delete identity “' + identityName + '” and all of their photos?')) return;
+      try {
+        const res = await fetch('/api/identities/' + encodeURIComponent(identityName), { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not delete identity');
+        identityFeedback(true, identityName + ' was removed.');
+        showIdentityList();
+      } catch (err) {
+        identityFeedback(false, err.message);
       }
     }
 
@@ -522,6 +781,68 @@
 
     function updateAbsentLabel(val) {
       document.getElementById('absent-val-label').innerText = val + 's';
+    }
+
+    function hubSettingsPayload() {
+      return {
+        telegram_bot_token: document.getElementById('tg-token-input').value,
+        telegram_chat_id: document.getElementById('tg-chat-input').value,
+        venue: document.getElementById('venue-input').value,
+        open_time: document.getElementById('open-time-input').value,
+        absent_seconds: Number(document.getElementById('absent-slider').value)
+      };
+    }
+
+    async function saveHubSettings() {
+      const payload = hubSettingsPayload();
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentConfig = Object.assign({}, currentConfig, payload);
+        }
+      } catch (err) {
+        console.error('Failed to save settings', err);
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function detachLiveFeed() {
+      const img = document.getElementById('live-camera-feed');
+      if (!img) return;
+      img.removeAttribute('src');
+      img.src = '';
+    }
+
+    function resetConnectButton() {
+      const btn = document.getElementById('btn-connect');
+      if (!btn) return;
+      btn.disabled = false;
+      btn.textContent = 'Connect Stream';
+    }
+
+    function markStreamOffline() {
+      isStreamActive = false;
+      lastFailedId = activeCameraId;
+      liveStatusText = 'Connection Lost';
+      detachLiveFeed();
+      const stage = document.getElementById('video-stage');
+      const placeholder = document.getElementById('stream-placeholder');
+      if (stage) stage.style.display = 'none';
+      if (placeholder) placeholder.style.display = 'flex';
+      clearNativeFeedLayout();
+      setLiveChrome(false, 'Offline');
+      document.getElementById('telem-status').textContent = 'ERROR';
+      document.getElementById('telem-health').textContent = 'Failed';
+      resetConnectButton();
+      renderCameraList();
     }
 
     function showBanner(el, ok, message) {
@@ -699,7 +1020,7 @@
       const loc = cameraLocationName() || 'No camera';
       document.getElementById('crumb-venue').textContent = venue;
       document.getElementById('crumb-cam').textContent = loc;
-      document.getElementById('overlay-cam').textContent = loc === 'No camera' ? '—' : loc;
+      document.getElementById('overlay-cam').textContent = loc === 'No camera' ? venue : loc;
     }
 
     function applyCameraList(data) {
@@ -821,6 +1142,8 @@
     async function selectCamera(id) {
       const cam = cameras.find((c) => c.id === id);
       if (!cam) return;
+      isStreamActive = false;
+      detachLiveFeed();
       activeCameraId = id;
       fillCameraForm(cam);
       renderCameraList();
@@ -947,6 +1270,41 @@
       }
     }
 
+    function connectionState(data) {
+      return data.connection || data.status || '';
+    }
+
+    function isFailedConnection(data) {
+      if (data.connection) {
+        return data.connection === 'FAILED' || data.connection === 'CONNECTION FAILED';
+      }
+      const state = data.status || '';
+      return state === 'FAILED' || state === 'CONNECTION FAILED';
+    }
+
+    async function waitForConnection(seq) {
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline) {
+        if (seq !== connectSeq) return { superseded: true };
+        try {
+          const res = await fetch('/api/telemetry');
+          if (res.ok) {
+            const data = await res.json();
+            if (isFailedConnection(data)) {
+              return { failed: true, error: data.error || 'Connection failed.', data: data };
+            }
+            if ((data.connection || data.status) === 'CONNECTED') {
+              return { connected: true, data: data };
+            }
+          }
+        } catch (err) {
+          /* keep polling through transient errors */
+        }
+        await sleep(250);
+      }
+      return { failed: true, error: 'Timed out opening the camera.' };
+    }
+
     async function connectAndStreamCamera() {
       const feedback = document.getElementById('camera-feedback');
       const btn = document.getElementById('btn-connect');
@@ -962,10 +1320,20 @@
         return;
       }
 
+      const seq = ++connectSeq;
+      isStreamActive = false;
+      detachLiveFeed();
+      lastFailedId = '';
+      liveStatusText = 'Connecting…';
       btn.disabled = true;
       btn.textContent = 'Connecting…';
       feedback.classList.add('hidden');
       showConfigTab('source');
+      setLiveChrome(false, 'Connecting');
+      document.getElementById('telem-status').textContent = 'CONNECTING';
+      document.getElementById('telem-health').textContent = 'Connecting';
+      setCamStatus('Connecting…', 'text-primary');
+      renderCameraList();
 
       try {
         const payload = cameraPayload();
@@ -989,43 +1357,54 @@
             telegram_chat_id: document.getElementById('tg-chat-input').value
           })
         });
+        if (seq !== connectSeq) return;
         const data = await res.json();
         applyCameraList(data);
-        if (data.success) {
-          isStreamActive = true;
-          lastFailedId = '';
-          liveStatusText = 'Connecting…';
-          if (Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
-          showBanner(feedback, true, data.message);
-          img.src = '/api/stream?t=' + Date.now();
-          stage.style.display = 'block';
-          placeholder.style.display = 'none';
-          setLiveChrome(true, 'LIVE');
-          document.getElementById('telem-health').textContent = 'Stable';
-          document.getElementById('overlay-quality').textContent = data.width + 'x' + data.height;
-          applyStreamSize(data.width, data.height);
-          renderCameraList();
-          updateCrumbs();
-          requestAnimationFrame(layoutVideoStage);
-        } else {
-          isStreamActive = false;
-          lastFailedId = activeCameraId;
-          liveStatusText = 'Standby';
+        if (!data.success) {
           showBanner(feedback, false, data.error || 'Connection failed.');
-          img.removeAttribute('src');
-          stage.style.display = 'none';
-          placeholder.style.display = 'flex';
-          clearNativeFeedLayout();
-          setLiveChrome(false, 'Offline');
-          document.getElementById('telem-status').textContent = 'ERROR';
-          document.getElementById('telem-health').textContent = 'Failed';
-          renderCameraList();
+          markStreamOffline();
+          return;
         }
+        if (Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
+        updateCrumbs();
+
+        const outcome = data.pending === false && data.width
+          ? { connected: true, data: data }
+          : await waitForConnection(seq);
+        if (seq !== connectSeq || outcome.superseded) return;
+        if (outcome.failed) {
+          showBanner(feedback, false, outcome.error || 'Connection failed.');
+          markStreamOffline();
+          return;
+        }
+
+        isStreamActive = true;
+        lastFailedId = '';
+        liveStatusText = 'Live';
+        showBanner(feedback, true, data.message || 'Camera connected.');
+        img.src = '/api/stream?t=' + Date.now();
+        stage.style.display = 'block';
+        placeholder.style.display = 'none';
+        setLiveChrome(true, 'LIVE');
+        document.getElementById('telem-health').textContent = 'Stable';
+        const tel = outcome.data || {};
+        const width = data.width || tel.width;
+        const height = data.height || tel.height;
+        if (width && height) {
+          document.getElementById('overlay-quality').textContent = width + 'x' + height;
+          applyStreamSize(width, height);
+        } else {
+          parseResolution(tel.resolution);
+        }
+        renderCameraList();
+        updateCrumbs();
+        requestAnimationFrame(layoutVideoStage);
       } catch (err) {
+        if (seq !== connectSeq) return;
         showBanner(feedback, false, 'Connection error: ' + err.message);
+        markStreamOffline();
       } finally {
-        btn.disabled = false;
-        btn.textContent = 'Connect Stream';
+        if (seq === connectSeq) resetConnectButton();
       }
     }
 
@@ -1051,18 +1430,28 @@
         const res = await fetch('/api/telemetry');
         if (!res.ok) return;
         const data = await res.json();
-        if (data.status === 'FAILED') {
-          document.getElementById('telem-status').textContent = 'ERROR';
-          document.getElementById('telem-health').textContent = 'Failed';
-          setCamStatus('Connection Lost', 'text-error');
+        const state = connectionState(data);
+        if (isFailedConnection(data)) {
+          markStreamOffline();
           return;
         }
-        document.getElementById('telem-status').textContent = data.occupied ? 'Active' : 'EMPTY';
+        if (state === 'CONNECTING') {
+          document.getElementById('telem-status').textContent = 'CONNECTING';
+          document.getElementById('telem-health').textContent = 'Connecting';
+          setCamStatus('Connecting…', 'text-primary');
+          setLiveChrome(false, 'Connecting');
+          return;
+        }
+        document.getElementById('telem-status').textContent = data.status || (data.occupied ? 'Active' : 'EMPTY');
         const secs = Math.max(0, Math.floor(data.empty_elapsed || 0));
         const mm = String(Math.floor(secs / 60)).padStart(2, '0');
         const ss = String(secs % 60).padStart(2, '0');
         document.getElementById('telem-elapsed').textContent = mm + ':' + ss;
         document.getElementById('telem-people').textContent = String(data.person_count);
+        const names = Array.isArray(data.identities)
+          ? data.identities.filter(Boolean)
+          : (Array.isArray(data.staff_names) ? data.staff_names : []);
+        document.getElementById('telem-identities').textContent = names.length ? names.join(', ') : '—';
         const fps = (data.fps || 0).toFixed(1);
         document.getElementById('telem-fps').textContent = fps;
         document.getElementById('telem-health').textContent = 'Stable';
@@ -1307,6 +1696,13 @@
       window.addEventListener('resize', layoutVideoStage);
       const feed = document.getElementById('live-camera-feed');
       if (feed) feed.addEventListener('load', layoutVideoStage);
+      const fileInput = document.getElementById('identity-file-input');
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          uploadIdentityPhotos(fileInput.files);
+          fileInput.value = '';
+        });
+      }
     });
   </script>
 </body>

@@ -51,6 +51,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import connect, has_opened_today, insert_event, upsert_minute
+from face_id import till_status_label, try_create_face_recognizer
 from occupancy import GhostCounter, GhostState, OccupancyGate
 from person import Detection, draw_detection, person_detections
 from proof import save_proof
@@ -177,12 +178,14 @@ def draw_overlay(
     occupied: bool,
     empty_elapsed: float,
     absent_seconds: float,
+    status: str | None = None,
 ) -> None:
     x1, y1, x2, y2 = roi_px
     color = (80, 200, 80) if occupied else (40, 180, 255)
     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
     draw_roi_handles(frame, roi_px, color)
-    status = "STAFF IN ROI" if occupied else f"EMPTY {empty_elapsed:.0f}/{absent_seconds:.0f}s"
+    if status is None:
+        status = "STAFF IN ROI" if occupied else f"EMPTY {empty_elapsed:.0f}/{absent_seconds:.0f}s"
     cv2.putText(
         frame,
         status,
@@ -289,6 +292,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     model = YOLO(weights)
     ghost = GhostCounter(absent, cooldown)
     gate = OccupancyGate(confirm, clear)
+    face_rec = try_create_face_recognizer(cfg)
     last_accepted: list[Detection] = []
     last_rejected: list[Detection] = []
     last_state = GhostState(False, 0.0, False)
@@ -305,6 +309,8 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     )
     print("Drag the box or its handles; drag on empty space to draw a new ROI.")
     print("q quit  r report  o rotate  m flip  f fullscreen")
+    if face_rec is not None:
+        print(f"Face ID on — {len(face_rec.known_embeddings)} enrolled in {face_rec.faces_dir}")
 
     while True:
         ok, frame = cap.read()
@@ -341,6 +347,8 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 min_keypoints=min_keypoints,
                 kpt_conf=kpt_conf,
             )
+            if face_rec is not None:
+                face_rec.annotate_detections(frame, last_accepted)
             detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
             occupied = gate.update(detected, now)
             last_state = ghost.update(occupied, now)
@@ -380,7 +388,20 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 in_roi=det.in_roi(roi_px, kpt_conf),
                 kpt_conf=kpt_conf,
             )
-        draw_overlay(preview, roi_px, last_state.occupied, last_state.empty_elapsed, absent)
+        draw_overlay(
+            preview,
+            roi_px,
+            last_state.occupied,
+            last_state.empty_elapsed,
+            absent,
+            status=till_status_label(
+                last_state.occupied,
+                [det for det in last_accepted if det.in_roi(roi_px, kpt_conf)],
+                last_state.empty_elapsed,
+                absent,
+                face_id_enabled=face_rec is not None,
+            ),
+        )
         cv2.imshow(WIN, preview)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):

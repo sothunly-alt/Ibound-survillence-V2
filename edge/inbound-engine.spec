@@ -32,6 +32,7 @@ hiddenimports = [
     "db",
     "occupancy",
     "person",
+    "face_id",
     "proof",
     "report",
     "roi_edit",
@@ -46,6 +47,14 @@ for name in (
     src = EDGE / name
     if src.exists():
         datas.append((str(src), "."))
+
+faces = EDGE / "faces"
+if faces.is_dir():
+    datas.append((str(faces), "faces"))
+models = EDGE / "models"
+if models.is_dir():
+    for onnx in models.glob("*.onnx"):
+        datas.append((str(onnx), "models"))
 
 for pkg in ("ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests"):
     try:

@@ -48,5 +48,12 @@ sample_fps: 2
 # Used to flag "opened late" in the shift report (local time).
 open_time: "08:00"
 
+# Local face ID (YuNet + SFace). Put staff photos in faces/<Name>/*.jpg
+# (several angles help). Unknown people overlay as Customer.
+enable_face_id: true
+faces_dir: "faces"
+models_dir: "models"
+face_match_threshold: 0.60
+
 telegram_bot_token: ""
 telegram_chat_id: ""
