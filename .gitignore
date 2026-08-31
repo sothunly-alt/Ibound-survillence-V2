@@ -12,6 +12,7 @@ edge/*.pt
 edge/models/*.onnx
 edge/__pycache__/
 __pycache__/
+.venv
 .venv/
 venv/
 
