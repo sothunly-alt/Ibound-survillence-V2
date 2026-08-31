@@ -1,5 +1,7 @@
 node_modules
 dist
+dist-sidecar/
+build/
 .DS_Store
 *.local
 
@@ -7,7 +9,16 @@ edge/proofs/
 edge/*.db
 edge/config.yaml
 edge/*.pt
+edge/models/*.onnx
 edge/__pycache__/
 __pycache__/
 .venv/
 venv/
+
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
+.cursor/
+

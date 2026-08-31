@@ -17,10 +17,13 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from paths import data_dir, get_resource_path, resource_dir
+
 
 def _prepare_qt_for_opencv() -> None:
     """OpenCV 5 highgui ships Qt without fonts; GNOME Wayland often never
     creates the window, so setMouseCallback dies with NULL window handler.
+    Linux-only — xcb / DejaVu paths break macOS and Windows.
     """
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
     if "QT_QPA_FONTDIR" in os.environ:
@@ -35,13 +38,15 @@ def _prepare_qt_for_opencv() -> None:
             return
 
 
-_prepare_qt_for_opencv()
+if sys.platform.startswith("linux"):
+    _prepare_qt_for_opencv()
 
 import cv2
 import numpy as np
 import yaml
 
-ROOT = Path(__file__).resolve().parent
+ROOT = resource_dir()
+DATA_DIR = data_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -153,7 +158,10 @@ def parse_source(value) -> int | str:
 
 def resolve_weights(cfg: dict) -> str:
     name = str(cfg.get("weights") or "yolo11n-pose.pt").strip() or "yolo11n-pose.pt"
-    local = ROOT / Path(name).name
+    bundled = get_resource_path(Path(name).name)
+    if bundled.exists():
+        return str(bundled)
+    local = DATA_DIR / Path(name).name
     return str(local) if local.exists() else name
 
 
@@ -224,8 +232,8 @@ def send_shift_report(conn, cfg: dict, bot: TelegramOut) -> None:
 
 
 def roi_persist_path(cfg_path: Path) -> Path:
-    example = (ROOT / "config.example.yaml").resolve()
-    real = ROOT / "config.yaml"
+    example = get_resource_path("config.example.yaml").resolve()
+    real = DATA_DIR / "config.yaml"
     if cfg_path.resolve() == example and real.exists():
         return real
     return cfg_path
@@ -241,7 +249,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     sample_fps = float(cfg.get("sample_fps") or 2)
     detect_fps = resolve_detect_fps(cfg, sample_fps)
     interval = 1.0 / detect_fps
-    proofs = ROOT / "proofs"
+    proofs = DATA_DIR / "proofs"
     rotate_deg = resolve_rotate(cfg.get("rotate"), source)
     flip = parse_flip(cfg.get("flip"))
     person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
@@ -261,11 +269,18 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
         cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
     )
 
-    cap = cv2.VideoCapture(source)
-    if isinstance(source, str) and source.startswith("rtsp"):
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    if not cap.isOpened():
-        raise SystemExit(f"Cannot open video source: {source}")
+    if isinstance(source, int):
+        from launcher import _open_webcam_index
+
+        cap = _open_webcam_index(source)
+        if cap is None:
+            raise SystemExit(f"Cannot open video source: {source}")
+    else:
+        cap = cv2.VideoCapture(source)
+        if isinstance(source, str) and source.startswith("rtsp"):
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        if not cap.isOpened():
+            raise SystemExit(f"Cannot open video source: {source}")
 
     editor = RoiEditor(roi, WIN, roi_persist_path(cfg_path))
     open_preview_window(WIN, editor.on_mouse)
@@ -398,7 +413,7 @@ from launcher import start_unified_server
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Inbound Surveillance — Live AI Store Monitor & Vision Platform (webcam or RTSP)."
+        description="ClearView Camera Hub — live AI store monitor (webcam or RTSP)."
     )
     parser.add_argument(
         "--config",
@@ -421,22 +436,33 @@ def main() -> None:
         action="store_true",
         help="Send today's shift report and exit (no camera).",
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Preferred HTTP port for the camera hub (falls back if busy).",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open a system browser (used by the desktop sidecar).",
+    )
     args = parser.parse_args()
 
-    cfg_path = Path(args.config) if args.config else ROOT / "config.yaml"
+    cfg_path = Path(args.config) if args.config else DATA_DIR / "config.yaml"
     if not cfg_path.exists():
-        cfg_path = ROOT / "config.example.yaml"
+        cfg_path = get_resource_path("config.example.yaml")
 
     if args.report:
         cfg = load_config(cfg_path)
-        conn = connect(ROOT / "events.db")
+        conn = connect(DATA_DIR / "events.db")
         bot = TelegramOut(cfg["telegram_bot_token"], cfg["telegram_chat_id"])
         send_shift_report(conn, cfg, bot)
         return
 
     # Default mode: Unified Live Web Surveillance Dashboard (Camera streams on the right)
     if not args.direct and not args.source:
-        start_unified_server()
+        start_unified_server(port=args.port, open_browser=not args.no_browser)
         return
 
     # Standalone OpenCV Desktop Mode
@@ -444,7 +470,7 @@ def main() -> None:
     if args.source:
         cfg["source"] = args.source
 
-    conn = connect(ROOT / "events.db")
+    conn = connect(DATA_DIR / "events.db")
     bot = TelegramOut(cfg.get("telegram_bot_token", ""), cfg.get("telegram_chat_id", ""))
     run_camera(cfg, conn, bot, cfg_path)
 

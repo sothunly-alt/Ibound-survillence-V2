@@ -4,9 +4,17 @@
 # source: 0 = default webcam. Or an RTSP URL from the NVR, e.g.
 #   rtsp://USER:PASS@192.168.1.64:554/Streaming/Channels/101
 #   rtsp://USER:PASS@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0
+# Phone (IP Webcam) — same Wi-Fi as this PC. Use the video path, not the web page:
+#   http://PHONE_IP:8080/video
+# If the app has a username/password, fill those fields. IP Webcam uses HTTP Digest
+# (browsers handle it; a raw OpenCV URL does not).
 
 venue: Demo store
 source: 0
+
+# Named cameras added in the hub. Empty until the operator saves one.
+cameras: []
+active_camera_id: ""
 
 # Degrees clockwise. auto = 90 for phone HTTP (IP Webcam), 0 for PC webcam / RTSP.
 # Or set 0 / 90 / 180 / 270. Live: press o to cycle this session.
@@ -15,7 +23,7 @@ rotate: auto
 flip: none
 
 # Cashier till as fractions of the frame: [x, y, width, height]
-# Drag the box, its handles, or empty space in the preview to change it.
+# Drag the box, its handles, or empty space on the live web feed to change it.
 roi: [0.30, 0.20, 0.40, 0.60]
 
 # Person detector — YOLO11n-pose. Staff = skeleton OR a close-up face

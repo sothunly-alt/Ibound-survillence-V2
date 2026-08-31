@@ -5,9 +5,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 
-def connect(db_path: Path) -> sqlite3.Connection:
+def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(str(db_path), check_same_thread=check_same_thread, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute(
         """

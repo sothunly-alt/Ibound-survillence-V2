@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Inbound Surveillance</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "on-surface": "#dce2f7",
+            "surface": "#0c1322",
+            "surface-dim": "#0c1322",
+            "surface-tint": "#a4c9ff",
+            "primary-fixed-dim": "#a4c9ff",
+            "surface-container-highest": "#2e3545",
+            "surface-bright": "#323949",
+            "background": "#0c1322",
+            "on-surface-variant": "#c1c7d3",
+            "primary-container": "#60a5fa",
+            "inverse-surface": "#dce2f7",
+            "tertiary": "#fabd34",
+            "on-primary": "#00315d",
+            "primary": "#a4c9ff",
+            "on-error": "#690005",
+            "surface-variant": "#2e3545",
+            "surface-container-low": "#141b2b",
+            "on-background": "#dce2f7",
+            "error-container": "#93000a",
+            "secondary-container": "#3f465c",
+            "outline": "#8b919d",
+            "on-secondary": "#283044",
+            "surface-container-lowest": "#070e1d",
+            "surface-container-high": "#232a3a",
+            "on-primary-container": "#003a6b",
+            "secondary": "#bec6e0",
+            "outline-variant": "#414751",
+            "error": "#ffb4ab",
+            "surface-container": "#191f2f",
+            "on-secondary-container": "#adb4ce"
+          },
+          borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+          spacing: {
+            "input-gap": "12px",
+            "container-padding": "16px",
+            "sidebar-width": "280px",
+            "edge-margin": "24px",
+            "video-gutter": "8px"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            "headline-md": ["Inter", "sans-serif"],
+            "mono-data": ["JetBrains Mono", "ui-monospace", "monospace"],
+            "body-sm": ["Inter", "sans-serif"],
+            "label-upper": ["Inter", "sans-serif"],
+            "body-md": ["Inter", "sans-serif"],
+            "headline-lg": ["Inter", "sans-serif"]
+          },
+          fontSize: {
+            "headline-md": ["18px", { lineHeight: "24px", fontWeight: "600" }],
+            "mono-data": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+            "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }],
+            "label-upper": ["11px", { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "700" }],
+            "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+            "headline-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "600" }]
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html, body { overflow-x: clip; }
+    body { background-color: #111827; color: #dce2f7; }
+    .sidebar { background-color: #0f172a; }
+    .cam-selected { box-shadow: 0 0 12px rgba(96, 165, 250, 0.35); }
+    .video-stage { min-height: 180px; height: 100%; }
+    #workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      flex: 1;
+      min-height: 0;
+      overflow-x: clip;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    #feed-column { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-height: 0; min-width: 0; }
+    #config-panel { max-height: 42vh; }
+    /* Live feed keeps the stream aspect ratio but never grows past the
+       visible workspace. Connection Settings stay below for scrolling. */
+    #workspace.is-native-feed #feed-column {
+      flex: 0 0 auto;
+      min-height: 0;
+    }
+    #workspace.is-native-feed #video-viewport {
+      flex: none;
+      height: auto;
+      min-height: 180px;
+      max-height: calc(100dvh - 10rem);
+    }
+    #workspace.is-native-feed #video-stage {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    #workspace.is-native-feed #config-panel {
+      width: 100%;
+      max-height: none;
+      height: auto;
+      flex: 0 0 auto;
+    }
+    #video-stage {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+      background: #000;
+    }
+    #live-camera-feed { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; background: #000; }
+    .glass-panel { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
+    .roi-overlay { position: absolute; z-index: 8; user-select: none; touch-action: none; }
+    .roi-box { position: absolute; box-sizing: border-box; }
+    .roi-handle {
+      position: absolute; width: 8px; height: 8px;
+      background: #fabd34; z-index: 9;
+    }
+    .roi-handle.nw { left: -4px; top: -4px; cursor: nwse-resize; }
+    .roi-handle.n  { left: 50%; top: -4px; transform: translateX(-50%); cursor: ns-resize; }
+    .roi-handle.ne { right: -4px; top: -4px; cursor: nesw-resize; }
+    .roi-handle.e  { right: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    .roi-handle.se { right: -4px; bottom: -4px; cursor: nwse-resize; }
+    .roi-handle.s  { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize; }
+    .roi-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
+    .roi-handle.w  { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    input[type=range] { accent-color: #60a5fa; }
+    .orient-on { background: #60a5fa; color: #00315d; border-color: #60a5fa; }
+    .tab-on { color: #a4c9ff; border-bottom: 2px solid #a4c9ff; }
+    .tab-off { color: #c1c7d3; border-bottom: 2px solid transparent; }
+    .nav-on { color: #a4c9ff; background: rgba(63, 70, 92, 0.45); border-left: 2px solid #a4c9ff; }
+    .nav-off { color: #c1c7d3; border-left: 2px solid transparent; }
+    @media (prefers-reduced-motion: reduce) {
+      .animate-pulse { animation: none; }
+    }
+  </style>
+</head>
+<body class="font-body-md text-body-md antialiased h-screen flex bg-[#111827]">
+  <nav class="sidebar fixed left-0 top-0 h-full w-[288px] flex flex-col py-edge-margin border-r border-outline-variant z-20 max-lg:static max-lg:w-full max-lg:h-auto max-lg:relative">
+    <div class="px-container-padding mb-6">
+      <p id="greeting" class="text-on-surface font-bold text-lg leading-snug">Good Afternoon, Operator</p>
+    </div>
+    <ul class="flex-1 overflow-y-auto px-4 space-y-1">
+      <li>
+        <button type="button" class="nav-on w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left" data-nav="live">
+          <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">videocam</span>
+          <span>Live View</span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="recordings" title="Recordings stay on this hub — single live stream">
+          <span class="material-symbols-outlined">history</span>
+          <span>Recordings</span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="cameras" onclick="document.getElementById('camera-list-label').scrollIntoView({behavior:'smooth'})">
+          <span class="material-symbols-outlined">photo_camera</span>
+          <span>Cameras</span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="settings" onclick="showConfigTab('alerts')">
+          <span class="material-symbols-outlined">settings</span>
+          <span>Settings</span>
+        </button>
+      </li>
+      <li class="pt-6 pb-2">
+        <span id="camera-list-label" class="font-label-upper text-label-upper text-outline px-3">CAMERA LIST</span>
+      </li>
+      <li>
+        <div id="camera-list" class="space-y-1"></div>
+        <p id="camera-list-empty" class="px-3 py-4 text-xs text-on-surface-variant">No cameras yet. Add a location to get started.</p>
+      </li>
+    </ul>
+    <div class="px-4 mt-auto pt-4 border-t border-outline-variant space-y-4">
+      <button type="button" class="w-full bg-primary-container text-on-primary py-2.5 rounded-lg font-medium hover:bg-primary transition-colors flex items-center justify-center gap-2" onclick="startAddCamera()">
+        <span class="material-symbols-outlined text-sm">add</span>
+        Add Camera
+      </button>
+      <div class="flex justify-between px-2 font-mono-data text-mono-data text-on-surface-variant">
+        <button type="button" class="flex items-center gap-1 hover:text-on-surface" onclick="showConfigTab('integrations')">
+          <span class="material-symbols-outlined text-xs">help</span> Support
+        </button>
+        <button type="button" class="flex items-center gap-1 hover:text-on-surface" onclick="loadInitialConfig()">
+          <span class="material-symbols-outlined text-xs">terminal</span> Logs
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="ml-[288px] flex-1 flex flex-col h-full bg-[#111827] relative min-w-0 max-lg:ml-0">
+    <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
+      <div class="flex items-center gap-4 min-w-0">
+        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Surveillance</h1>
+        <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
+          <span class="text-outline">/</span>
+          <span class="text-primary border-b border-primary pb-0.5" id="crumb-venue">Venue</span>
+          <span class="text-outline">&gt;</span>
+          <span id="crumb-cam">No camera</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <button type="button" class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Alerts" onclick="showConfigTab('alerts')">
+          <span class="material-symbols-outlined">notifications</span>
+        </button>
+        <button type="button" class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Settings" onclick="showConfigTab('source')">
+          <span class="material-symbols-outlined">settings</span>
+        </button>
+        <span class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center text-on-surface-variant">
+          <span class="material-symbols-outlined text-[20px]">person</span>
+        </span>
+      </div>
+    </header>
+
+    <div class="flex-1 min-h-0 p-edge-margin" id="workspace">
+      <div class="flex-1 min-h-0" id="feed-column">
+        <div class="flex items-center gap-3">
+          <h2 class="font-headline-md text-headline-md text-on-surface">Surveillance Feed</h2>
+          <div id="live-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant">
+            <span id="live-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+            <span id="live-label" class="font-label-upper text-label-upper text-on-surface-variant">STANDBY</span>
+          </div>
+        </div>
+
+        <div class="video-stage w-full flex-1 min-h-0 bg-black rounded-xl border border-outline-variant relative overflow-hidden shadow-2xl flex items-center justify-center" id="video-viewport">
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest z-20" id="stream-placeholder">
+            <span class="material-symbols-outlined text-5xl text-on-surface-variant mb-4">videocam_off</span>
+            <h3 class="text-on-surface font-medium mb-1">No camera connected</h3>
+            <p class="text-body-sm text-on-surface-variant text-center max-w-sm px-4">Select a source in Source Configuration to begin monitoring.</p>
+          </div>
+
+          <div id="video-stage" style="display: none;">
+            <img id="live-camera-feed" alt="Live camera feed" onerror="handleStreamError()"/>
+            <div id="roi-overlay" class="roi-overlay" onmousedown="onRoiDown(event)">
+              <div class="roi-box border border-dashed border-tertiary bg-tertiary/10 cursor-move" id="roi-box">
+                <div class="absolute -top-6 left-0 bg-tertiary text-black font-mono-data text-[10px] px-1 py-0.5 font-bold">Till ROI</div>
+                <span class="roi-handle nw" data-handle="nw"></span>
+                <span class="roi-handle n" data-handle="n"></span>
+                <span class="roi-handle ne" data-handle="ne"></span>
+                <span class="roi-handle e" data-handle="e"></span>
+                <span class="roi-handle se" data-handle="se"></span>
+                <span class="roi-handle s" data-handle="s"></span>
+                <span class="roi-handle sw" data-handle="sw"></span>
+                <span class="roi-handle w" data-handle="w"></span>
+              </div>
+            </div>
+            <div class="absolute bottom-3 left-1/2 -translate-x-1/2 glass-panel px-3 py-1 rounded-full z-20 pointer-events-none text-label-upper font-label-upper text-on-surface">
+              Drag the box to set till ROI
+            </div>
+          </div>
+
+          <div class="absolute top-4 left-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
+            <span class="font-mono-data text-mono-data text-on-surface" id="overlay-clock">—</span>
+          </div>
+          <div class="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
+            <span class="font-body-sm text-body-sm font-semibold text-on-surface" id="overlay-cam">—</span>
+          </div>
+          <div class="absolute bottom-4 right-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
+            <span class="font-mono-data text-mono-data text-green-400" id="overlay-quality">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-surface-container-low rounded-xl border border-outline-variant flex flex-col shrink-0 overflow-y-auto" id="config-panel">
+        <div class="flex border-b border-outline-variant px-4 overflow-x-auto">
+          <button type="button" id="tab-source" class="tab-on px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('source')">Source Configuration</button>
+          <button type="button" id="tab-alerts" class="tab-off px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('alerts')">Alert Rules</button>
+          <button type="button" id="tab-integrations" class="tab-off px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('integrations')">Integrations</button>
+        </div>
+
+        <div id="panel-source" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="space-y-4">
+            <h3 class="text-sm font-semibold text-on-surface">Connection Settings</h3>
+            <div class="flex flex-col gap-1.5">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="camera-name-input">Camera location</label>
+              <input id="camera-name-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="" placeholder="e.g. Front Entrance" autocomplete="off"/>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="protocol-input">Protocol</label>
+                <select id="protocol-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" onchange="onProtocolChange()">
+                  <option value="webcam">Webcam</option>
+                  <option value="rtsp">RTSP</option>
+                  <option value="phone">Phone HTTP</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="vendor-input">Vendor Template</label>
+                <select id="vendor-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" onchange="applyVendorTemplate()">
+                  <option value="dahua">Dahua Main Stream</option>
+                  <option value="hikvision">Hikvision Main Stream</option>
+                  <option value="generic">Generic RTSP</option>
+                  <option value="ipwebcam">Phone (IP Webcam)</option>
+                </select>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="source-input">Stream URL</label>
+              <input id="source-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="0" placeholder="0, rtsp://…, or http://PHONE_IP:8080/video"/>
+              <p id="source-hint" class="text-xs text-on-surface-variant leading-relaxed"></p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="username-input">Username</label>
+                <input id="username-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="" placeholder="optional" autocomplete="off"/>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="password-input">Password</label>
+                <input id="password-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" value="" placeholder="optional" autocomplete="off"/>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-2">
+              <button type="button" id="btn-save-camera" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-5 rounded-lg font-medium transition-colors text-sm border border-outline-variant disabled:opacity-60" onclick="saveCameraOnly()">
+                Save Camera
+              </button>
+              <button type="button" id="btn-connect" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-6 rounded-lg font-medium transition-colors text-sm disabled:opacity-60" onclick="connectAndStreamCamera()">
+                Connect Stream
+              </button>
+            </div>
+            <p id="camera-feedback" class="hidden text-sm"></p>
+          </div>
+
+          <div>
+            <div class="bg-surface-container rounded-lg p-5 border border-outline-variant">
+              <h3 class="text-sm font-semibold text-on-surface mb-4">Stream Processing</h3>
+              <div class="py-3 border-b border-outline-variant/50">
+                <p class="text-sm text-on-surface mb-1">Orientation</p>
+                <p class="text-xs text-on-surface-variant mb-3">Auto uprights a phone camera and sizes the video box to the stream. Mirror flips the image; it does not switch portrait and landscape.</p>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" id="rot-auto" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate('auto')">Auto</button>
+                  <button type="button" id="rot-270" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate(270)">CCW</button>
+                  <button type="button" id="rot-0" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate(0)">0°</button>
+                  <button type="button" id="rot-90" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate(90)">CW</button>
+                  <button type="button" id="rot-180" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate(180)">180°</button>
+                </div>
+                <p class="text-xs text-on-surface-variant mt-3 mb-2">Mirror</p>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" id="flip-h" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="toggleFlip('h')">Left-right</button>
+                  <button type="button" id="flip-v" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="toggleFlip('v')">Up-down</button>
+                </div>
+                <input type="hidden" id="rotate-input" value="auto"/>
+                <input type="hidden" id="flip-input" value="none"/>
+              </div>
+              <div class="flex items-center justify-between py-3">
+                <div>
+                  <p class="text-sm text-on-surface">Hardware Decoding</p>
+                  <p class="text-xs text-on-surface-variant">Use GPU for stream rendering</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input id="hw-decode" class="sr-only peer" type="checkbox"/>
+                  <div class="w-9 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-alerts" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="venue-input">Venue Name</label>
+            <input id="venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="Demo store"/>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="open-time-input">Operating Hours</label>
+            <input id="open-time-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="time" value="08:00"/>
+          </div>
+          <div class="md:col-span-2 flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="absent-slider">Absent-till threshold</label>
+              <span class="font-mono-data text-mono-data text-primary" id="absent-val-label">10s</span>
+            </div>
+            <input id="absent-slider" class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="600" min="5" step="5" type="range" value="10" oninput="updateAbsentLabel(this.value)"/>
+            <div class="flex justify-between font-mono-data text-mono-data text-on-surface-variant">
+              <span>0s</span>
+              <span>600s</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-integrations" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Telegram Bot Token</label>
+            <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="Optional"/>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Chat ID</label>
+            <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="e.g. -1001234567890"/>
+          </div>
+          <div class="md:col-span-2">
+            <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
+              Capture &amp; Send Test
+            </button>
+            <p id="tg-feedback" class="hidden text-sm mt-3"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="flex justify-between items-center px-container-padding h-8 bg-surface-container-lowest border-t border-outline-variant shrink-0 z-10 w-full gap-4">
+      <div class="font-mono-data text-mono-data text-primary truncate">
+        FPS: <span id="telem-fps">—</span> | Detections: <span id="telem-people">—</span> | Stream Health: <span id="telem-health">Standby</span>
+        <span class="text-on-surface-variant"> | Till <span id="telem-status">STANDBY</span> · Empty <span id="telem-elapsed">—</span></span>
+      </div>
+      <div class="flex gap-4 font-mono-data text-mono-data text-on-surface-variant shrink-0">
+        <span>Privacy Policy</span>
+        <span>Terms of Service</span>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    let currentConfig = {};
+    let isStreamActive = false;
+    let liveRoi = [0.30, 0.20, 0.40, 0.60];
+    let roiDragging = false;
+    let roiMode = null;
+    let roiHandle = null;
+    let roiOrigin = [0, 0];
+    let roiStart = [0.30, 0.20, 0.40, 0.60];
+    let rotateDeg = 'auto';
+    let flipMode = 'none';
+    let cameras = [];
+    let activeCameraId = '';
+    let lastFailedId = '';
+    let liveStatusText = 'Standby';
+    let streamW = 0;
+    let streamH = 0;
+
+    const VENDOR_TEMPLATES = {
+      dahua: { port: 554, path: '/cam/realmonitor?channel=1&subtype=0', forcePort: true, defaultHost: '192.168.1.108' },
+      hikvision: { port: 554, path: '/Streaming/Channels/101', forcePort: true, defaultHost: '192.168.1.64' },
+      generic: { port: 554, path: '/', forcePort: false, defaultHost: '192.168.1.100' },
+      ipwebcam: { port: 8080, path: '/h264_ulaw.sdp', forcePort: true, defaultHost: '192.168.1.50' }
+    };
+
+    function greetingText() {
+      const h = new Date().getHours();
+      const part = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
+      return 'Good ' + part + ', Operator';
+    }
+
+    function showConfigTab(name) {
+      const tabs = { source: 'tab-source', alerts: 'tab-alerts', integrations: 'tab-integrations' };
+      const panels = { source: 'panel-source', alerts: 'panel-alerts', integrations: 'panel-integrations' };
+      Object.keys(tabs).forEach((key) => {
+        document.getElementById(tabs[key]).className = (key === name ? 'tab-on' : 'tab-off') + ' px-4 py-3 font-medium text-sm whitespace-nowrap';
+        document.getElementById(panels[key]).classList.toggle('hidden', key !== name);
+      });
+      if (name !== 'source') {
+        document.getElementById('config-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function paintOrient() {
+      const autoEl = document.getElementById('rot-auto');
+      if (autoEl) {
+        autoEl.className = 'px-3 py-1.5 text-xs rounded border ' + (rotateDeg === 'auto'
+          ? 'orient-on'
+          : 'border-outline-variant bg-surface-container-highest text-on-surface-variant');
+      }
+      [0, 90, 180, 270].forEach((d) => {
+        const el = document.getElementById('rot-' + d);
+        el.className = 'px-3 py-1.5 text-xs rounded border ' + (rotateDeg === d
+          ? 'orient-on'
+          : 'border-outline-variant bg-surface-container-highest text-on-surface-variant');
+      });
+      ['h', 'v'].forEach((f) => {
+        const el = document.getElementById('flip-' + f);
+        el.className = 'px-3 py-1.5 text-xs rounded border ' + (flipMode === f
+          ? 'orient-on'
+          : 'border-outline-variant bg-surface-container-highest text-on-surface-variant');
+      });
+      document.getElementById('rotate-input').value = rotateDeg === 'auto' ? 'auto' : String(rotateDeg);
+      document.getElementById('flip-input').value = flipMode;
+    }
+
+    function setRotate(deg) {
+      rotateDeg = deg;
+      if (deg === 'auto') flipMode = 'none';
+      paintOrient();
+      pushOrient();
+      requestAnimationFrame(layoutVideoStage);
+    }
+
+    function toggleFlip(which) {
+      flipMode = flipMode === which ? 'none' : which;
+      paintOrient();
+      pushOrient();
+    }
+
+    async function pushOrient() {
+      if (!isStreamActive && !activeCameraId) return;
+      try {
+        const res = await fetch('/api/orient', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rotate: rotateDeg === 'auto' ? 'auto' : rotateDeg,
+            flip: flipMode
+          })
+        });
+        const data = await res.json();
+        if (data.cameras) applyCameraList(data);
+      } catch (err) {
+        console.error('Failed to save orientation', err);
+      }
+    }
+
+    function updateAbsentLabel(val) {
+      document.getElementById('absent-val-label').innerText = val + 's';
+    }
+
+    function showBanner(el, ok, message) {
+      el.classList.remove('hidden');
+      el.className = 'text-sm ' + (ok ? 'text-green-400' : 'text-error');
+      el.textContent = message;
+    }
+
+    function parseRtspHost(url, fallbackHost) {
+      const text = String(url || '').trim();
+      try {
+        const withScheme = /:\/\//.test(text) ? text : 'rtsp://' + text;
+        const u = new URL(withScheme);
+        if (u.hostname && u.hostname !== '0') return { host: u.hostname, port: u.port || '' };
+      } catch { /* fall through */ }
+      const m = text.match(/(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?/);
+      if (m) return { host: m[1], port: m[2] || '' };
+      return { host: fallbackHost, port: '' };
+    }
+
+    function updateSourceHint() {
+      const hint = document.getElementById('source-hint');
+      if (!hint) return;
+      const protocol = document.getElementById('protocol-input').value;
+      const vendor = document.getElementById('vendor-input').value;
+      if (protocol === 'webcam') {
+        hint.textContent = 'Use 0 for the default laptop camera, or 1 if 0 is a metadata device.';
+      } else if (protocol === 'phone') {
+        hint.textContent = 'IP Webcam: start the server on the phone, same Wi-Fi as this PC. Use http://PHONE_IP:8080/video (not the / web page). Fill username and password if the app asks for them — this hub now sends HTTP Digest, which a browser handles but OpenCV does not.';
+      } else if (vendor === 'ipwebcam') {
+        hint.textContent = 'Phone RTSP via IP Webcam: rtsp://PHONE_IP:8080/h264_ulaw.sdp with empty username and password. If this fails, switch Protocol to Phone HTTP.';
+      } else if (vendor === 'generic') {
+        hint.textContent = 'Paste the full rtsp:// URL. Generic RTSP does not add admin/password. Phones are usually port 8080, not 554 — pick Phone (IP Webcam) or Phone HTTP instead.';
+      } else {
+        hint.textContent = 'CCTV/NVR template. Username and password are only sent if you fill them in.';
+      }
+    }
+
+    function applyVendorTemplate() {
+      if (document.getElementById('protocol-input').value !== 'rtsp') {
+        updateSourceHint();
+        return;
+      }
+      const vendor = document.getElementById('vendor-input').value;
+      const t = VENDOR_TEMPLATES[vendor] || VENDOR_TEMPLATES.generic;
+      const userEl = document.getElementById('username-input');
+      const passEl = document.getElementById('password-input');
+      if (vendor === 'ipwebcam') {
+        userEl.value = '';
+        passEl.value = '';
+      } else if ((vendor === 'generic') && userEl.value === 'admin' && !passEl.value) {
+        userEl.value = '';
+      } else if ((vendor === 'dahua' || vendor === 'hikvision') && !userEl.value.trim()) {
+        userEl.value = 'admin';
+      }
+      const user = userEl.value.trim();
+      const pass = document.getElementById('password-input').value;
+      const { host, port: existingPort } = parseRtspHost(
+        document.getElementById('source-input').value,
+        t.defaultHost
+      );
+      const port = t.forcePort ? t.port : (existingPort || t.port);
+      const auth = user ? (encodeURIComponent(user) + ':' + encodeURIComponent(pass) + '@') : '';
+      document.getElementById('source-input').value = 'rtsp://' + auth + host + ':' + port + t.path;
+      updateSourceHint();
+    }
+
+    function onProtocolChange() {
+      const tab = document.getElementById('protocol-input').value;
+      const sourceInput = document.getElementById('source-input');
+      const user = document.getElementById('username-input');
+      const pass = document.getElementById('password-input');
+      const vendor = document.getElementById('vendor-input');
+      const authDisabled = tab === 'webcam';
+      user.disabled = authDisabled;
+      pass.disabled = authDisabled;
+      vendor.disabled = tab !== 'rtsp';
+      if (tab === 'webcam') {
+        if (!sourceInput.value || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http')) {
+          sourceInput.value = '0';
+        }
+      } else if (tab === 'rtsp') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('http://') || sourceInput.value.startsWith('https://')) {
+          applyVendorTemplate();
+        }
+      } else if (tab === 'phone') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp')) {
+          sourceInput.value = 'http://192.168.1.50:8080/video';
+        }
+        if (rotateDeg === 0) {
+          rotateDeg = 'auto';
+          flipMode = 'none';
+          paintOrient();
+        }
+      }
+      updateSourceHint();
+    }
+
+    function buildHttpSource(src) {
+      if (!src) src = 'http://192.168.1.50:8080/video';
+      if (!/^https?:\/\//i.test(src)) src = 'http://' + src.replace(/^\/+/, '');
+      const user = document.getElementById('username-input').value.trim();
+      const pass = document.getElementById('password-input').value;
+      try {
+        const u = new URL(src);
+        if (user) {
+          u.username = user;
+          u.password = pass;
+        }
+        if (!u.pathname || u.pathname === '/') u.pathname = '/video';
+        return u.toString();
+      } catch {
+        return src;
+      }
+    }
+
+    function buildSource() {
+      const protocol = document.getElementById('protocol-input').value;
+      let src = document.getElementById('source-input').value.trim();
+      if (/^https?:\/\//i.test(src) || protocol === 'phone') return buildHttpSource(src);
+      if (protocol === 'webcam') return src || '0';
+      if (!src) return src;
+      if (!/^rtsp:\/\//i.test(src)) src = 'rtsp://' + src.replace(/^\/+/, '');
+      const user = document.getElementById('username-input').value.trim();
+      const pass = document.getElementById('password-input').value;
+      if (!user) return src;
+      try {
+        const u = new URL(src);
+        u.username = user;
+        u.password = pass;
+        return u.toString();
+      } catch {
+        return src;
+      }
+    }
+
+    function applySourceToFields(srcStr) {
+      const sourceInput = document.getElementById('source-input');
+      sourceInput.value = srcStr;
+      if (/^\d+$/.test(srcStr)) {
+        document.getElementById('protocol-input').value = 'webcam';
+      } else if (srcStr.startsWith('http://') || srcStr.startsWith('https://')) {
+        document.getElementById('protocol-input').value = 'phone';
+        try {
+          const u = new URL(srcStr);
+          document.getElementById('username-input').value = u.username ? decodeURIComponent(u.username) : '';
+          document.getElementById('password-input').value = u.password ? decodeURIComponent(u.password) : '';
+        } catch { /* keep defaults */ }
+      } else {
+        document.getElementById('protocol-input').value = 'rtsp';
+        try {
+          const u = new URL(srcStr);
+          if (u.username) document.getElementById('username-input').value = decodeURIComponent(u.username);
+          else document.getElementById('username-input').value = '';
+          if (u.password) document.getElementById('password-input').value = decodeURIComponent(u.password);
+          else document.getElementById('password-input').value = '';
+          if (srcStr.indexOf('realmonitor') !== -1) document.getElementById('vendor-input').value = 'dahua';
+          else if (srcStr.indexOf('Streaming/Channels') !== -1) document.getElementById('vendor-input').value = 'hikvision';
+          else if (srcStr.indexOf('h264_ulaw') !== -1 || srcStr.indexOf(':8080/') !== -1) document.getElementById('vendor-input').value = 'ipwebcam';
+          else document.getElementById('vendor-input').value = 'generic';
+        } catch { /* keep defaults */ }
+      }
+      onProtocolChange();
+    }
+
+    function cameraLocationName() {
+      const typed = document.getElementById('camera-name-input').value.trim();
+      if (typed) return typed;
+      const cam = cameras.find((c) => c.id === activeCameraId);
+      return (cam && cam.name) || '';
+    }
+
+    function updateCrumbs() {
+      const venue = document.getElementById('venue-input').value || 'Venue';
+      const loc = cameraLocationName() || 'No camera';
+      document.getElementById('crumb-venue').textContent = venue;
+      document.getElementById('crumb-cam').textContent = loc;
+      document.getElementById('overlay-cam').textContent = loc === 'No camera' ? '—' : loc;
+    }
+
+    function applyCameraList(data) {
+      if (Array.isArray(data.cameras)) cameras = data.cameras;
+      if (data.active_camera_id !== undefined) activeCameraId = data.active_camera_id || '';
+      renderCameraList();
+      updateCrumbs();
+    }
+
+    function renderCameraList() {
+      const root = document.getElementById('camera-list');
+      const empty = document.getElementById('camera-list-empty');
+      if (!root) return;
+      root.innerHTML = '';
+      if (empty) empty.classList.toggle('hidden', cameras.length > 0);
+      cameras.forEach((cam) => {
+        const selected = cam.id === activeCameraId;
+        const row = document.createElement('div');
+        row.className = 'flex items-stretch gap-1';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = selected
+          ? 'flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg border border-primary bg-surface-container-high cam-selected text-left'
+          : 'flex-1 min-w-0 flex items-center gap-3 p-3 rounded-lg border border-transparent hover:bg-surface-container-high text-left';
+        btn.addEventListener('click', () => selectCamera(cam.id));
+
+        const thumb = document.createElement('span');
+        thumb.className = 'w-10 h-7 rounded bg-surface-container-lowest border border-outline-variant flex items-center justify-center shrink-0';
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined text-[16px] ' + (selected && isStreamActive ? 'text-primary' : 'text-on-surface-variant');
+        icon.textContent = selected && isStreamActive ? 'videocam' : 'videocam';
+        thumb.appendChild(icon);
+
+        const meta = document.createElement('div');
+        meta.className = 'min-w-0';
+        const nameEl = document.createElement('p');
+        nameEl.className = 'text-on-surface text-sm font-medium truncate';
+        nameEl.textContent = cam.name;
+        const statusEl = document.createElement('p');
+        statusEl.dataset.camStatus = cam.id;
+        if (cam.id === activeCameraId && isStreamActive) {
+          statusEl.className = 'font-mono-data text-mono-data text-green-400';
+          statusEl.textContent = liveStatusText;
+        } else if (cam.id === lastFailedId) {
+          statusEl.className = 'font-mono-data text-mono-data text-error';
+          statusEl.textContent = 'Connection Lost';
+        } else {
+          statusEl.className = 'font-mono-data text-mono-data text-on-surface-variant';
+          statusEl.textContent = 'Saved';
+        }
+        meta.appendChild(nameEl);
+        meta.appendChild(statusEl);
+        btn.appendChild(thumb);
+        btn.appendChild(meta);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.title = 'Remove camera';
+        del.className = 'shrink-0 px-2 rounded-lg text-on-surface-variant hover:text-error hover:bg-surface-container-high';
+        del.addEventListener('click', (ev) => deleteCamera(cam.id, ev));
+        const delIcon = document.createElement('span');
+        delIcon.className = 'material-symbols-outlined text-[16px]';
+        delIcon.textContent = 'close';
+        del.appendChild(delIcon);
+
+        row.appendChild(btn);
+        row.appendChild(del);
+        root.appendChild(row);
+      });
+    }
+
+    function fillCameraForm(cam) {
+      document.getElementById('camera-name-input').value = cam.name || '';
+      applySourceToFields(String(cam.source ?? ''));
+      if (cam.username) document.getElementById('username-input').value = cam.username;
+      if (cam.protocol) document.getElementById('protocol-input').value = cam.protocol;
+      if (cam.vendor) document.getElementById('vendor-input').value = cam.vendor;
+      if (Array.isArray(cam.roi) && cam.roi.length === 4) liveRoi = cam.roi.map(Number);
+      const proto = cam.protocol || document.getElementById('protocol-input').value;
+      const rot = cam.rotate;
+      if (proto === 'phone' && (rot === undefined || rot === '' || rot === 'auto' || String(rot) === '0')) {
+        rotateDeg = 'auto';
+        flipMode = 'none';
+      } else if (rot !== undefined && rot !== 'auto') {
+        const n = Number(rot);
+        if ([0, 90, 180, 270].indexOf(n) !== -1) rotateDeg = n;
+      } else {
+        rotateDeg = 'auto';
+      }
+      if (rotateDeg !== 'auto' && cam.flip) flipMode = cam.flip;
+      if (rotateDeg === 'auto') flipMode = 'none';
+      paintOrient();
+      onProtocolChange();
+    }
+
+    function startAddCamera() {
+      activeCameraId = '';
+      lastFailedId = '';
+      document.getElementById('camera-name-input').value = '';
+      document.getElementById('username-input').value = '';
+      document.getElementById('password-input').value = '';
+      document.getElementById('protocol-input').value = 'rtsp';
+      document.getElementById('vendor-input').value = 'generic';
+      document.getElementById('source-input').value = '';
+      rotateDeg = 'auto';
+      flipMode = 'none';
+      liveRoi = [0.30, 0.20, 0.40, 0.60];
+      paintOrient();
+      onProtocolChange();
+      applyVendorTemplate();
+      showConfigTab('source');
+      renderCameraList();
+      updateCrumbs();
+      document.getElementById('config-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      document.getElementById('camera-name-input').focus();
+    }
+
+    async function selectCamera(id) {
+      const cam = cameras.find((c) => c.id === id);
+      if (!cam) return;
+      activeCameraId = id;
+      fillCameraForm(cam);
+      renderCameraList();
+      updateCrumbs();
+      showConfigTab('source');
+      await connectAndStreamCamera();
+    }
+
+    function cameraPayload() {
+      return {
+        id: activeCameraId || '',
+        name: document.getElementById('camera-name-input').value.trim(),
+        source: buildSource(),
+        protocol: document.getElementById('protocol-input').value,
+        vendor: document.getElementById('vendor-input').value,
+        username: document.getElementById('username-input').value.trim(),
+        rotate: document.getElementById('rotate-input').value,
+        flip: document.getElementById('flip-input').value,
+        roi: liveRoi
+      };
+    }
+
+    async function saveCameraOnly() {
+      const feedback = document.getElementById('camera-feedback');
+      const payload = cameraPayload();
+      if (!payload.name) {
+        showConfigTab('source');
+        showBanner(feedback, false, 'Name the camera location before saving.');
+        document.getElementById('camera-name-input').focus();
+        return;
+      }
+      if (!payload.source) {
+        showBanner(feedback, false, 'Enter a stream URL or webcam index.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/cameras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) {
+          showBanner(feedback, false, data.error || 'Could not save camera.');
+          return;
+        }
+        applyCameraList(data);
+        showBanner(feedback, true, 'Saved “' + payload.name + '”. Connect when you are ready.');
+      } catch (err) {
+        showBanner(feedback, false, 'Save failed: ' + err.message);
+      }
+    }
+
+    async function deleteCamera(id, ev) {
+      if (ev) ev.stopPropagation();
+      const cam = cameras.find((c) => c.id === id);
+      if (!cam) return;
+      if (!confirm('Remove “' + cam.name + '” from the camera list?')) return;
+      try {
+        const res = await fetch('/api/cameras/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
+        const data = await res.json();
+        if (cam.id === lastFailedId) lastFailedId = '';
+        applyCameraList(data);
+        const next = cameras.find((c) => c.id === activeCameraId) || cameras[0];
+        if (next) {
+          fillCameraForm(next);
+          updateCrumbs();
+        } else {
+          startAddCamera();
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function setLiveChrome(on, label) {
+      document.getElementById('live-dot').className = 'w-2 h-2 rounded-full ' + (on ? 'bg-green-500 animate-pulse' : (label === 'Offline' ? 'bg-error' : 'bg-outline'));
+      document.getElementById('live-label').className = 'font-label-upper text-label-upper ' + (on ? 'text-green-400' : 'text-on-surface-variant');
+      document.getElementById('live-label').textContent = label;
+    }
+
+    async function loadInitialConfig() {
+      try {
+        const res = await fetch('/api/config');
+        if (!res.ok) return;
+        currentConfig = await res.json();
+        cameras = Array.isArray(currentConfig.cameras) ? currentConfig.cameras : [];
+        activeCameraId = currentConfig.active_camera_id || '';
+        if (currentConfig.venue) document.getElementById('venue-input').value = currentConfig.venue;
+        if (currentConfig.open_time) document.getElementById('open-time-input').value = currentConfig.open_time;
+        if (currentConfig.absent_seconds) {
+          document.getElementById('absent-slider').value = currentConfig.absent_seconds;
+          updateAbsentLabel(currentConfig.absent_seconds);
+        }
+        if (currentConfig.rotate !== undefined && currentConfig.rotate !== 'auto') {
+          const n = Number(currentConfig.rotate);
+          if ([0, 90, 180, 270].indexOf(n) !== -1) rotateDeg = n;
+        }
+        if (currentConfig.flip !== undefined) flipMode = currentConfig.flip || 'none';
+        paintOrient();
+        if (currentConfig.telegram_bot_token) document.getElementById('tg-token-input').value = currentConfig.telegram_bot_token;
+        if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
+        if (Array.isArray(currentConfig.roi) && currentConfig.roi.length === 4) {
+          liveRoi = currentConfig.roi.map(Number);
+        }
+        const selected = cameras.find((c) => c.id === activeCameraId) || cameras[0];
+        if (selected) {
+          activeCameraId = selected.id;
+          fillCameraForm(selected);
+        } else if (currentConfig.source !== undefined) {
+          applySourceToFields(String(currentConfig.source));
+        } else {
+          document.getElementById('protocol-input').value = 'webcam';
+          onProtocolChange();
+        }
+        renderCameraList();
+        updateCrumbs();
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      }
+    }
+
+    async function connectAndStreamCamera() {
+      const feedback = document.getElementById('camera-feedback');
+      const btn = document.getElementById('btn-connect');
+      const placeholder = document.getElementById('stream-placeholder');
+      const img = document.getElementById('live-camera-feed');
+      const stage = document.getElementById('video-stage');
+      const name = document.getElementById('camera-name-input').value.trim();
+
+      if (!name) {
+        showConfigTab('source');
+        showBanner(feedback, false, 'Name the camera location before connecting.');
+        document.getElementById('camera-name-input').focus();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      feedback.classList.add('hidden');
+      showConfigTab('source');
+
+      try {
+        const payload = cameraPayload();
+        const res = await fetch('/api/connect-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: payload.source,
+            camera_id: payload.id,
+            camera_name: payload.name,
+            protocol: payload.protocol,
+            vendor: payload.vendor,
+            username: payload.username,
+            venue: document.getElementById('venue-input').value,
+            open_time: document.getElementById('open-time-input').value,
+            absent_seconds: Number(document.getElementById('absent-slider').value),
+            rotate: payload.rotate,
+            flip: payload.flip,
+            roi: payload.roi,
+            telegram_bot_token: document.getElementById('tg-token-input').value,
+            telegram_chat_id: document.getElementById('tg-chat-input').value
+          })
+        });
+        const data = await res.json();
+        applyCameraList(data);
+        if (data.success) {
+          isStreamActive = true;
+          lastFailedId = '';
+          liveStatusText = 'Connecting…';
+          if (Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
+          showBanner(feedback, true, data.message);
+          img.src = '/api/stream?t=' + Date.now();
+          stage.style.display = 'block';
+          placeholder.style.display = 'none';
+          setLiveChrome(true, 'LIVE');
+          document.getElementById('telem-health').textContent = 'Stable';
+          document.getElementById('overlay-quality').textContent = data.width + 'x' + data.height;
+          applyStreamSize(data.width, data.height);
+          renderCameraList();
+          updateCrumbs();
+          requestAnimationFrame(layoutVideoStage);
+        } else {
+          isStreamActive = false;
+          lastFailedId = activeCameraId;
+          liveStatusText = 'Standby';
+          showBanner(feedback, false, data.error || 'Connection failed.');
+          img.removeAttribute('src');
+          stage.style.display = 'none';
+          placeholder.style.display = 'flex';
+          clearNativeFeedLayout();
+          setLiveChrome(false, 'Offline');
+          document.getElementById('telem-status').textContent = 'ERROR';
+          document.getElementById('telem-health').textContent = 'Failed';
+          renderCameraList();
+        }
+      } catch (err) {
+        showBanner(feedback, false, 'Connection error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect Stream';
+      }
+    }
+
+    function handleStreamError() {
+      if (isStreamActive) {
+        setLiveChrome(true, 'RECONNECT');
+        document.getElementById('telem-health').textContent = 'Reconnecting';
+      }
+    }
+
+    function setCamStatus(text, cls) {
+      liveStatusText = text;
+      if (!activeCameraId) return;
+      const el = document.querySelector('[data-cam-status="' + activeCameraId + '"]');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'font-mono-data text-mono-data ' + cls;
+    }
+
+    async function pollTelemetry() {
+      if (!isStreamActive) return;
+      try {
+        const res = await fetch('/api/telemetry');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'FAILED') {
+          document.getElementById('telem-status').textContent = 'ERROR';
+          document.getElementById('telem-health').textContent = 'Failed';
+          setCamStatus('Connection Lost', 'text-error');
+          return;
+        }
+        document.getElementById('telem-status').textContent = data.occupied ? 'Active' : 'EMPTY';
+        const secs = Math.max(0, Math.floor(data.empty_elapsed || 0));
+        const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+        const ss = String(secs % 60).padStart(2, '0');
+        document.getElementById('telem-elapsed').textContent = mm + ':' + ss;
+        document.getElementById('telem-people').textContent = String(data.person_count);
+        const fps = (data.fps || 0).toFixed(1);
+        document.getElementById('telem-fps').textContent = fps;
+        document.getElementById('telem-health').textContent = 'Stable';
+        setLiveChrome(true, 'LIVE');
+        const resText = data.resolution || document.getElementById('overlay-quality').textContent;
+        document.getElementById('overlay-quality').textContent = resText + '  ' + fps + 'FPS';
+        setCamStatus((data.resolution || 'live') + ' | ' + fps + 'FPS', 'text-green-400');
+        parseResolution(data.resolution);
+        if (!roiDragging && Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
+        layoutVideoStage();
+      } catch (err) {
+        /* ignore poll glitches */
+      }
+    }
+
+    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+    function applyStreamSize(w, h) {
+      if (w > 1 && h > 1) {
+        streamW = w;
+        streamH = h;
+      }
+    }
+
+    function parseResolution(text) {
+      const m = String(text || '').match(/(\d+)\s*x\s*(\d+)/i);
+      if (!m) return;
+      applyStreamSize(Number(m[1]), Number(m[2]));
+    }
+
+    function clearNativeFeedLayout() {
+      const workspace = document.getElementById('workspace');
+      const viewport = document.getElementById('video-viewport');
+      if (workspace) workspace.classList.remove('is-native-feed');
+      if (viewport) viewport.style.height = '';
+    }
+
+    function visibleFeedMaxHeight(workspace) {
+      if (!workspace) return 180;
+      const heading = workspace.querySelector('#feed-column > div');
+      const headingH = heading ? Math.ceil(heading.getBoundingClientRect().height) : 32;
+      const cs = getComputedStyle(workspace);
+      const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const gap = 8;
+      return Math.max(180, Math.floor(workspace.clientHeight - padY - headingH - gap));
+    }
+
+    function layoutVideoStage() {
+      const img = document.getElementById('live-camera-feed');
+      const viewport = document.getElementById('video-viewport');
+      const stage = document.getElementById('video-stage');
+      const workspace = document.getElementById('workspace');
+      if (!img || !viewport || !stage || !isStreamActive) return;
+      const nw = streamW || img.naturalWidth || 0;
+      const nh = streamH || img.naturalHeight || 0;
+      if (nw < 2 || nh < 2) return;
+      if (workspace && !workspace.classList.contains('is-native-feed')) {
+        workspace.classList.add('is-native-feed');
+        requestAnimationFrame(layoutVideoStage);
+        return;
+      }
+      const vw = viewport.clientWidth;
+      if (vw < 2) return;
+      const maxH = visibleFeedMaxHeight(workspace);
+      const ar = nw / nh;
+      let w = vw;
+      let h = Math.max(1, w / ar);
+      if (h > maxH) {
+        h = maxH;
+        w = Math.max(1, h * ar);
+      }
+      if (w > vw) {
+        w = vw;
+        h = Math.max(1, w / ar);
+      }
+      viewport.style.height = Math.round(h) + 'px';
+      stage.style.display = 'block';
+      stage.style.width = Math.round(w) + 'px';
+      stage.style.height = Math.round(h) + 'px';
+      layoutRoiOverlay();
+    }
+
+    function layoutRoiOverlay() {
+      const overlay = document.getElementById('roi-overlay');
+      const box = document.getElementById('roi-box');
+      if (!overlay || !box || !isStreamActive) return;
+      overlay.style.left = '0';
+      overlay.style.top = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      const [x, y, w, h] = liveRoi;
+      box.style.left = (x * 100) + '%';
+      box.style.top = (y * 100) + '%';
+      box.style.width = (w * 100) + '%';
+      box.style.height = (h * 100) + '%';
+    }
+
+    function clientToRoi(ev) {
+      const overlay = document.getElementById('roi-overlay').getBoundingClientRect();
+      const x = overlay.width > 0 ? (ev.clientX - overlay.left) / overlay.width : 0;
+      const y = overlay.height > 0 ? (ev.clientY - overlay.top) / overlay.height : 0;
+      return [clamp01(x), clamp01(y)];
+    }
+
+    function hitHandle(nx, ny, roi, pad) {
+      const [x, y, w, h] = roi;
+      const pts = {
+        nw: [x, y], n: [x + w / 2, y], ne: [x + w, y],
+        e: [x + w, y + h / 2], se: [x + w, y + h], s: [x + w / 2, y + h],
+        sw: [x, y + h], w: [x, y + h / 2]
+      };
+      let best = null;
+      let bestD = pad * pad;
+      for (const [name, point] of Object.entries(pts)) {
+        const d = (nx - point[0]) ** 2 + (ny - point[1]) ** 2;
+        if (d <= bestD) { bestD = d; best = name; }
+      }
+      return best;
+    }
+
+    function applyHandle(start, name, nx, ny) {
+      let [x, y, w, h] = start;
+      let x2 = x + w, y2 = y + h;
+      if (name.indexOf('n') !== -1) y = ny;
+      if (name.indexOf('s') !== -1) y2 = ny;
+      if (name.indexOf('w') !== -1) x = nx;
+      if (name.indexOf('e') !== -1) x2 = nx;
+      if (x2 < x) { const t = x; x = x2; x2 = t; }
+      if (y2 < y) { const t = y; y = y2; y2 = t; }
+      w = Math.max(0.02, x2 - x);
+      h = Math.max(0.02, y2 - y);
+      x = clamp01(x); y = clamp01(y);
+      w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
+      return [x, y, w, h];
+    }
+
+    function onRoiDown(ev) {
+      if (!isStreamActive) return;
+      ev.preventDefault();
+      const [nx, ny] = clientToRoi(ev);
+      const handle = ev.target.dataset.handle || hitHandle(nx, ny, liveRoi, 0.045);
+      roiDragging = true;
+      roiOrigin = [nx, ny];
+      roiStart = liveRoi.slice();
+      if (handle) {
+        roiMode = 'resize';
+        roiHandle = handle;
+      } else {
+        const [x, y, w, h] = liveRoi;
+        if (nx >= x && nx <= x + w && ny >= y && ny <= y + h) {
+          roiMode = 'move';
+        } else {
+          roiMode = 'draw';
+          liveRoi = [nx, ny, 0.02, 0.02];
+        }
+      }
+      layoutRoiOverlay();
+    }
+
+    function onRoiMove(ev) {
+      if (!roiDragging) return;
+      const [nx, ny] = clientToRoi(ev);
+      if (roiMode === 'draw') {
+        const x = Math.min(roiOrigin[0], nx);
+        const y = Math.min(roiOrigin[1], ny);
+        liveRoi = [x, y, Math.max(0.02, Math.abs(nx - roiOrigin[0])), Math.max(0.02, Math.abs(ny - roiOrigin[1]))];
+      } else if (roiMode === 'move') {
+        const dx = nx - roiOrigin[0];
+        const dy = ny - roiOrigin[1];
+        let [x, y, w, h] = roiStart;
+        x = clamp01(Math.min(1 - w, x + dx));
+        y = clamp01(Math.min(1 - h, y + dy));
+        liveRoi = [x, y, w, h];
+      } else if (roiMode === 'resize' && roiHandle) {
+        liveRoi = applyHandle(roiStart, roiHandle, nx, ny);
+      }
+      layoutRoiOverlay();
+    }
+
+    async function onRoiUp() {
+      if (!roiDragging) return;
+      roiDragging = false;
+      roiMode = null;
+      roiHandle = null;
+      layoutRoiOverlay();
+      try {
+        const res = await fetch('/api/roi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roi: liveRoi })
+        });
+        const data = await res.json();
+        if (data.cameras) applyCameraList(data);
+      } catch (err) {
+        console.error('Failed to save ROI', err);
+      }
+    }
+
+    async function testTelegram() {
+      const btn = document.getElementById('btn-test-tg');
+      const feedback = document.getElementById('tg-feedback');
+      btn.disabled = true;
+      feedback.classList.add('hidden');
+      try {
+        const res = await fetch('/api/test-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: document.getElementById('tg-token-input').value,
+            chat_id: document.getElementById('tg-chat-input').value,
+            venue: document.getElementById('venue-input').value,
+            source: buildSource()
+          })
+        });
+        const data = await res.json();
+        showBanner(feedback, !!data.success, data.success ? data.message : (data.error || 'Failed to deliver Telegram photo.'));
+      } catch (err) {
+        showBanner(feedback, false, 'Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function tickClock() {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      document.getElementById('overlay-clock').textContent =
+        d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+        pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('greeting').textContent = greetingText();
+      paintOrient();
+      onProtocolChange();
+      loadInitialConfig();
+      tickClock();
+      setInterval(tickClock, 1000);
+      setInterval(pollTelemetry, 600);
+      window.addEventListener('mousemove', onRoiMove);
+      window.addEventListener('mouseup', onRoiUp);
+      window.addEventListener('resize', layoutVideoStage);
+      const feed = document.getElementById('live-camera-feed');
+      if (feed) feed.addEventListener('load', layoutVideoStage);
+    });
+  </script>
+</body>
+</html>
