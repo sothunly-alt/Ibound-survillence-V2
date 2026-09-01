@@ -1,9 +1,9 @@
-"""Inbound Surveillance — live AI store monitor.
+"""Inbound Garage — live AI auto-shop operations hub.
 
-Serves the Stitch command-center dashboard (edge/hub.html):
-- Left sidebar: live view, camera list, add-camera.
-- Main feed with YOLO11 pose overlay and a draggable till ROI.
-- Source / alert / integration tabs, Telegram snapshot test, occupancy telemetry.
+Serves the garage command-center dashboard (edge/hub.html):
+- Live view with YOLO11 pose overlay and multi-bay service ROIs.
+- Face ID attendance, wrench-time classification, Wi-Fi presence.
+- End-of-day scorecards for Telegram and the owner dashboard.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import signal
 import socket
 import sys
@@ -26,10 +25,10 @@ from typing import Any
 
 from paths import data_dir, get_resource_path, resource_dir
 
-# TCP first (firewall-friendly). Phone RTSP often needs UDP — open_video_source
-# retries with UDP if TCP produces no frames. stimeout is microseconds.
-_CAPTURE_TIMEOUT_MS = 2500
-_RTSP_STIMEOUT_US = 2_500_000
+# Default FFmpeg RTSP options for any leftover OpenCV opens (CLI preview).
+# The grabber's RTSPAdapter overrides per-attempt with a 2s stimeout.
+# Set before importing cv2 / adapters so FFmpeg picks the timeout up.
+_RTSP_STIMEOUT_US = 2_000_000
 os.environ.setdefault(
     "OPENCV_FFMPEG_CAPTURE_OPTIONS",
     f"rtsp_transport;tcp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000",
@@ -38,18 +37,34 @@ if sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 import cv2
-import numpy as np
-
 import requests
 import yaml
-from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 ROOT = resource_dir()
 DATA_DIR = data_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import connect, has_opened_today, insert_event, upsert_minute
+from adapters import create_adapter
+from adapters.base import BaseCameraAdapter, FramePacket, parse_source, protocol_from_source, redact_source
+from adapters.onvif import onvif_xaddr
+from adapters.webcam import open_webcam_index as _open_webcam_index
+from capture import AsyncFrameGrabber, request_still
+from discovery import DiscoveryEngine
+from media.go2rtc import Go2RtcManager, sanitize_stream_id
+from db import (
+    add_wifi_minutes,
+    close_bay_sessions,
+    close_empty_bays,
+    connect,
+    get_daily_garage_summary,
+    has_opened_today,
+    insert_event,
+    record_face_clock_in,
+    record_face_clock_out,
+    update_technician_activity,
+    upsert_minute,
+)
 from face_id import (
     create_identity,
     delete_identity,
@@ -61,11 +76,21 @@ from face_id import (
     till_status_label,
     try_create_face_recognizer,
 )
-from occupancy import GhostCounter, GhostState, OccupancyGate, roi_to_pixels
+from occupancy import (
+    DEFAULT_BAYS,
+    BayZoneManager,
+    GhostCounter,
+    GhostState,
+    bay_badge,
+    bay_draw_color,
+    normalize_bays,
+    roi_to_pixels,
+)
 from person import Detection, draw_detection, person_detections
-from proof import save_proof
+from proof import save_proof, scale_roi_px
 from report import build_report
 from roi_edit import draw_roi_handles
+from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
 from telegram_out import TelegramOut
 
 
@@ -100,6 +125,24 @@ def read_config() -> dict[str, Any]:
     data["telegram_chat_id"] = chat
     data["cameras"] = _normalize_cameras(data.get("cameras"))
     data["active_camera_id"] = str(data.get("active_camera_id") or "")
+    data["garage_name"] = str(data.get("garage_name") or data.get("venue") or "Demo Garage")
+    data["venue"] = str(data.get("venue") or data["garage_name"])
+    data["close_time"] = str(data.get("close_time") or "18:00")
+    data["bays"] = normalize_bays(data.get("bays"), fallback_roi=parse_roi(data.get("roi")))
+    data["wifi_devices"] = normalize_wifi_devices(data.get("wifi_devices"))
+    hours = data.get("operating_hours")
+    if not isinstance(hours, dict):
+        data["operating_hours"] = {
+            "open": str(data.get("open_time") or "08:00"),
+            "close": str(data.get("close_time") or "18:00"),
+        }
+    else:
+        data["operating_hours"] = {
+            "open": str(hours.get("open") or data.get("open_time") or "08:00"),
+            "close": str(hours.get("close") or data.get("close_time") or "18:00"),
+        }
+        data["open_time"] = data["operating_hours"]["open"]
+        data["close_time"] = data["operating_hours"]["close"]
     return data
 
 
@@ -107,7 +150,9 @@ _SETTINGS_KEYS = (
     "telegram_bot_token",
     "telegram_chat_id",
     "venue",
+    "garage_name",
     "open_time",
+    "close_time",
     "absent_seconds",
 )
 
@@ -138,13 +183,18 @@ def save_config(updates: dict[str, Any]) -> dict[str, Any]:
     return current
 
 
-def protocol_from_source(source: Any) -> str:
-    if isinstance(source, int) or str(source or "").strip().isdigit():
-        return "webcam"
-    text = str(source or "").strip().lower()
-    if text.startswith("http://") or text.startswith("https://"):
-        return "phone"
-    return "rtsp"
+def _normalize_xaddrs(value: Any) -> list[str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if not isinstance(value, (list, tuple)):
+        return []
+    out: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+    return out
 
 
 def _normalize_cameras(raw: Any) -> list[dict[str, Any]]:
@@ -163,14 +213,19 @@ def _normalize_cameras(raw: Any) -> list[dict[str, Any]]:
         source = item.get("source", "")
         if not isinstance(source, int):
             source = str(source or "")
+        main_source = item.get("main_source", "")
+        if not isinstance(main_source, int):
+            main_source = str(main_source or "")
         out.append(
             {
                 "id": cid,
                 "name": name or "Untitled camera",
                 "source": source,
+                "main_source": main_source,
                 "protocol": str(item.get("protocol") or protocol_from_source(source)),
                 "vendor": str(item.get("vendor") or "generic"),
                 "username": str(item.get("username") or ""),
+                "xaddrs": _normalize_xaddrs(item.get("xaddrs")),
                 "rotate": item.get("rotate", "auto") if str(item.get("rotate", "")).lower() == "auto" else item.get("rotate", 0),
                 "flip": str(item.get("flip") or "none"),
                 "roi": parse_roi(item.get("roi")) or [0.30, 0.20, 0.40, 0.60],
@@ -183,14 +238,28 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
     cameras = _normalize_cameras(cfg.get("cameras"))
     cid = str(fields.get("id") or "").strip() or f"cam-{int(time.time() * 1000)}"
     name = str(fields.get("name") or "").strip() or "Untitled camera"
-    source = fields.get("source", cfg.get("source", ""))
-    if not isinstance(source, int):
-        source = str(source or "")
     existing: dict[str, Any] = {}
     for cam in cameras:
         if cam["id"] == cid:
             existing = cam
             break
+    source = fields.get("source", existing.get("source", cfg.get("source", "")))
+    if not isinstance(source, int):
+        source = str(source or "")
+    if not str(source).strip() and fields.get("xaddrs"):
+        xaddrs_fallback = _normalize_xaddrs(fields.get("xaddrs"))
+        if xaddrs_fallback:
+            source = xaddrs_fallback[0]
+    if "main_source" in fields:
+        main_source = fields.get("main_source", "")
+    else:
+        main_source = existing.get("main_source", "")
+    if not isinstance(main_source, int):
+        main_source = str(main_source or "")
+    if "xaddrs" in fields:
+        xaddrs = _normalize_xaddrs(fields.get("xaddrs"))
+    else:
+        xaddrs = _normalize_xaddrs(existing.get("xaddrs"))
     roi = parse_roi(fields.get("roi"))
     if roi is None and existing:
         roi = parse_roi(existing.get("roi"))
@@ -201,9 +270,11 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
         "id": cid,
         "name": name,
         "source": source,
+        "main_source": main_source,
         "protocol": str(fields.get("protocol") or existing.get("protocol") or protocol_from_source(source)),
         "vendor": str(fields.get("vendor") or existing.get("vendor") or "generic"),
         "username": str(fields.get("username") if "username" in fields else existing.get("username") or ""),
+        "xaddrs": xaddrs,
         "rotate": rotate,
         "flip": str(fields.get("flip") or existing.get("flip") or cfg.get("flip") or "none"),
         "roi": roi,
@@ -218,19 +289,6 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
     cfg["active_camera_id"] = cid
     cfg["roi"] = roi
     return entry
-
-
-def redact_source(value: Any) -> str:
-    return re.sub(r"(://[^:/?#]+):([^@]+)@", r"\1:****@", str(value))
-
-
-def parse_source(value: Any) -> int | str:
-    if isinstance(value, int):
-        return value
-    text = str(value).strip()
-    if text.isdigit():
-        return int(text)
-    return text
 
 
 def parse_rotate(value: Any) -> int:
@@ -249,20 +307,12 @@ def is_auto_rotate(value: Any) -> bool:
 
 
 def suggest_rotate(source: Any, frame) -> int:
-    """Upright a phone HTTP stream so Auto can size the hub to the real layout.
+    """Return default rotation for auto-orient.
 
-    IP Webcam (back camera) sends the landscape sensor buffer. Android's typical
-    SENSOR_ORIENTATION of 90 means 90° CW matches holding the phone upright —
-    the same as the hub's CW button and main.py. Skip rotation when the JPEG is
-    already portrait. Front-camera / inverted mounts still use CW / CCW / 180.
+    Default to 0 (native camera orientation) so streams are not unexpectedly
+    rotated sideways. Users can select CW (90°), CCW (270°), or 180° for
+    mounted phone orientations.
     """
-    if protocol_from_source(source) != "phone":
-        return 0
-    if frame is None:
-        return 90
-    h, w = frame.shape[:2]
-    if w >= h:
-        return 90
     return 0
 
 
@@ -298,8 +348,6 @@ def orient_frame(frame, rotate_deg: int, flip: str):
     return frame
 
 
-_V4L_RELEASE_PAUSE = 0.35
-
 
 def parse_roi(value: Any) -> list[float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
@@ -315,402 +363,78 @@ def parse_roi(value: Any) -> list[float] | None:
     return [x, y, w, h]
 
 
-def _set_capture_timeouts(cap: cv2.VideoCapture) -> None:
-    open_to = getattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC", None)
-    read_to = getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", None)
-    if open_to is not None:
-        cap.set(open_to, _CAPTURE_TIMEOUT_MS)
-    if read_to is not None:
-        cap.set(read_to, _CAPTURE_TIMEOUT_MS)
+def parse_bays(
+    value: Any,
+    fallback_roi: list[float] | None = None,
+    *,
+    seed_if_empty: bool = True,
+) -> list[dict[str, Any]]:
+    return normalize_bays(value, fallback_roi=fallback_roi, seed_if_empty=seed_if_empty)
 
 
-def _open_capture(source: Any, backend: int | None = None) -> cv2.VideoCapture:
-    cap = cv2.VideoCapture()
-    _set_capture_timeouts(cap)
-    if backend is None:
-        cap.open(source)
-    else:
-        cap.open(source, backend)
-    return cap
+def parse_clock(value: Any, default: str = "08:00") -> str:
+    text = str(value or default).strip()
+    parts = text.split(":")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1]) if len(parts) > 1 else 0
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            return default
+        return f"{hour:02d}:{minute:02d}"
+    except (TypeError, ValueError, IndexError):
+        return default
 
 
-def _webcam_backends() -> list[int]:
-    """Native backend only for the requested index — no MSMF/index probing."""
-    backends: list[int] = []
-    if sys.platform.startswith("linux"):
-        if hasattr(cv2, "CAP_V4L2"):
-            backends.append(cv2.CAP_V4L2)
-    elif sys.platform == "win32":
-        dshow = getattr(cv2, "CAP_DSHOW", None)
-        if dshow is not None:
-            backends.append(dshow)
-            return backends
-    elif sys.platform == "darwin":
-        avf = getattr(cv2, "CAP_AVFOUNDATION", None)
-        if avf is not None:
-            backends.append(avf)
-    backends.append(cv2.CAP_ANY)
-    return backends
+def shop_is_open(cfg: dict[str, Any], now: datetime | None = None) -> bool:
+    stamp = now or datetime.now()
+    hours = cfg.get("operating_hours") if isinstance(cfg.get("operating_hours"), dict) else {}
+    open_s = parse_clock(hours.get("open") or cfg.get("open_time"), "08:00")
+    close_s = parse_clock(hours.get("close") or cfg.get("close_time"), "18:00")
+    current = stamp.strftime("%H:%M")
+    if open_s <= close_s:
+        return open_s <= current < close_s
+    return current >= open_s or current < close_s
 
 
-def _open_webcam_index(idx: int) -> cv2.VideoCapture | None:
-    seen: set[int] = set()
-    for backend in _webcam_backends():
-        if backend in seen:
-            continue
-        seen.add(backend)
-        cap = _open_capture(idx, backend)
-        if cap.isOpened():
-            return cap
-        cap.release()
-    return None
+def garage_name_of(cfg: dict[str, Any]) -> str:
+    return str(cfg.get("garage_name") or cfg.get("venue") or "Demo Garage")
 
 
-def _split_http_auth(url: str) -> tuple[str, str, str]:
-    parsed = urllib.parse.urlparse(url)
-    user = urllib.parse.unquote(parsed.username or "")
-    password = urllib.parse.unquote(parsed.password or "")
-    host = parsed.hostname or ""
-    netloc = f"{host}:{parsed.port}" if parsed.port else host
-    clean = urllib.parse.urlunparse(
-        (parsed.scheme, netloc, parsed.path or "/", parsed.params, parsed.query, parsed.fragment)
-    )
-    return clean, user, password
+def _needs_onvif_onboard(protocol: Any, source: Any, xaddrs: Any) -> bool:
+    if str(protocol or "").strip().lower() != "onvif":
+        return False
+    text = str(source or "").strip().lower()
+    if text.startswith("rtsp://"):
+        return False
+    if _normalize_xaddrs(xaddrs) or "onvif" in text or text.startswith("http://") or text.startswith("https://"):
+        return True
+    return False
 
 
-def _http_stream_candidates(url: str) -> list[str]:
-    parsed = urllib.parse.urlparse(url)
-    path = parsed.path or "/"
-    if path not in ("", "/"):
-        return [url]
-    out: list[str] = []
-    for extra in ("/video", "/mjpegfeed", "/videofeed", "/shot.jpg"):
-        out.append(
-            urllib.parse.urlunparse((parsed.scheme, parsed.netloc, extra, "", parsed.query, ""))
-        )
-    return out
+class _ConnectErrorAdapter(BaseCameraAdapter):
+    """Queued after a failed onboard so telemetry becomes FAILED without crashing."""
 
+    def __init__(self, message: str):
+        self.error: str | None = message
 
-def _decode_jpeg(data: bytes):
-    if not data:
-        return None
-    arr = np.frombuffer(data, dtype=np.uint8)
-    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    return frame
-
-
-class HttpMjpegCapture:
-    """MJPEG/JPEG HTTP capture with Basic and Digest login.
-
-    IP Webcam (and similar phone apps) often require Digest auth. OpenCV/FFmpeg
-    only speaks Basic, so a browser can open the same URL while VideoCapture fails.
-    """
-
-    def __init__(self, url: str, username: str = "", password: str = ""):
-        self.url = url
-        self.username = username
-        self.password = password
-        self.error: str | None = None
-        self._session = requests.Session()
-        self._session.headers.update(
-            {
-                "User-Agent": "InboundSurveillance/1.0",
-                "Accept": "multipart/x-mixed-replace,image/jpeg,*/*",
-            }
-        )
-        self._resp: requests.Response | None = None
-        self._buf = bytearray()
-        self._mode = "mjpeg"
-        self._opened = False
-        err = self._connect()
-        if err:
-            self.error = err
-            self._opened = False
-        else:
-            self._opened = True
-
-    def isOpened(self) -> bool:
-        return self._opened
-
-    def set(self, *_args: Any, **_kwargs: Any) -> bool:
+    def connect(self) -> bool:
         return False
 
-    def release(self) -> None:
-        self._opened = False
-        self._close_body()
-        try:
-            self._session.close()
-        except Exception:
-            pass
-
-    def read(self) -> tuple[bool, Any]:
-        if not self._opened:
-            return False, None
-        try:
-            frame = self._next_frame()
-            if frame is not None:
-                return True, frame
-        except Exception:
-            self._close_body()
-            if self._connect() is None:
-                try:
-                    frame = self._next_frame()
-                    if frame is not None:
-                        return True, frame
-                except Exception:
-                    return False, None
-        return False, None
-
-    def _auth_attempts(self) -> list[Any]:
-        if not self.username:
-            return [None]
-        return [
-            HTTPDigestAuth(self.username, self.password),
-            HTTPBasicAuth(self.username, self.password),
-        ]
-
-    def _close_body(self) -> None:
-        if self._resp is not None:
-            try:
-                self._resp.close()
-            except Exception:
-                pass
-            self._resp = None
-        self._buf = bytearray()
-
-    def _connect(self) -> str | None:
-        self._close_body()
-        last = f"Could not connect to camera '{redact_source(self.url)}'."
-        timeout = (2.0, 3.0)
-        for auth in self._auth_attempts():
-            try:
-                resp = self._session.get(
-                    self.url,
-                    auth=auth,
-                    stream=True,
-                    timeout=timeout,
-                    allow_redirects=True,
-                )
-            except requests.RequestException as exc:
-                last = f"Could not reach '{redact_source(self.url)}': {exc}"
-                continue
-            if resp.status_code == 401:
-                resp.close()
-                last = (
-                    f"Login failed for '{redact_source(self.url)}'. "
-                    "This phone stream uses HTTP Digest authentication — a browser can "
-                    "open it, but a plain RTSP/OpenCV connection cannot. Recheck the "
-                    "username and password from IP Webcam."
-                )
-                continue
-            if resp.status_code >= 400:
-                last = f"HTTP {resp.status_code} from '{redact_source(self.url)}'."
-                resp.close()
-                continue
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            if "text/html" in ctype:
-                resp.close()
-                last = (
-                    f"'{redact_source(self.url)}' is the phone's web page, not a video "
-                    "stream. Use http://PHONE_IP:8080/video"
-                )
-                continue
-            self._resp = resp
-            if "image/jpeg" in ctype and "multipart" not in ctype:
-                self._mode = "snapshot"
-            else:
-                self._mode = "mjpeg"
-            return None
-        return last
-
-    def _next_frame(self):
-        if self._mode == "snapshot":
-            return self._read_snapshot()
-        return self._read_mjpeg()
-
-    def _read_snapshot(self):
-        if self._resp is not None:
-            data = self._resp.content
-            self._close_body()
-            frame = _decode_jpeg(data)
-            if frame is not None:
-                return frame
-        timeout = (2.0, 3.0)
-        last_exc: Exception | None = None
-        for auth in self._auth_attempts():
-            try:
-                resp = self._session.get(self.url, auth=auth, timeout=timeout)
-            except requests.RequestException as exc:
-                last_exc = exc
-                continue
-            if resp.status_code == 200:
-                frame = _decode_jpeg(resp.content)
-                if frame is not None:
-                    return frame
-            last_exc = RuntimeError(f"HTTP {resp.status_code}")
-        if last_exc:
-            raise last_exc
+    def read_frame(self) -> FramePacket | None:
         return None
 
-    def _read_mjpeg(self):
-        if self._resp is None:
-            err = self._connect()
-            if err:
-                raise RuntimeError(err)
-        assert self._resp is not None
-        while True:
-            start = self._buf.find(b"\xff\xd8")
-            end = self._buf.find(b"\xff\xd9", start + 2) if start >= 0 else -1
-            if start >= 0 and end >= 0:
-                jpeg = bytes(self._buf[start : end + 2])
-                del self._buf[: end + 2]
-                frame = _decode_jpeg(jpeg)
-                if frame is not None:
-                    return frame
-                continue
-            if start > 0:
-                del self._buf[:start]
-            if len(self._buf) > 4_000_000:
-                self._buf = bytearray()
-            chunk = next(self._resp.iter_content(chunk_size=16_384), b"")
-            if not chunk:
-                raise RuntimeError("HTTP MJPEG stream ended")
-            self._buf.extend(chunk)
+    def release(self) -> None:
+        return None
 
-
-def _open_http_source(url: str) -> tuple[Any | None, Any, str | None]:
-    clean, user, password = _split_http_auth(url)
-    last_err: str | None = None
-    for candidate in _http_stream_candidates(clean):
-        cap = HttpMjpegCapture(candidate, user, password)
-        if not cap.isOpened():
-            last_err = cap.error
-            cap.release()
-            continue
-        ok, frame = cap.read()
-        if ok and frame is not None:
-            return cap, frame, None
-        last_err = (
-            f"Logged in to '{redact_source(candidate)}' but received no JPEG frames."
-        )
-        cap.release()
-    hint = (
-        " For IP Webcam, Protocol must be Phone HTTP, URL "
-        "http://PHONE_IP:8080/video, and username/password filled if the app requires them."
-    )
-    return None, None, (last_err or f"Could not connect to camera '{redact_source(url)}'.") + hint
-
-
-def _read_first_frame(cap: cv2.VideoCapture, tries: int = 8, pause: float = 0.25):
-    for _ in range(tries):
-        ok, frame = cap.read()
-        if ok and frame is not None:
-            return frame
-        time.sleep(pause)
-    return None
-
-
-_RTSP_FFMPEG_OPTS = (
-    f"rtsp_transport;tcp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000|fflags;nobuffer",
-    f"rtsp_transport;udp|stimeout;{_RTSP_STIMEOUT_US}|max_delay;500000|fflags;nobuffer",
-)
-
-
-def _open_network_source(url: str) -> tuple[cv2.VideoCapture | None, Any, str | None]:
-    """Open an RTSP or HTTP URL. RTSP tries TCP then UDP — phone apps often
-    only speak UDP, while NVRs prefer TCP.
-    """
-    if url.lower().startswith("http://") or url.lower().startswith("https://"):
-        return _open_http_source(url)
-
-    ffmpeg = getattr(cv2, "CAP_FFMPEG", None)
-    is_rtsp = url.lower().startswith("rtsp")
-    prev_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
-    attempts: list[tuple[str, int | None]] = []
-    if is_rtsp:
-        for opts in _RTSP_FFMPEG_OPTS:
-            attempts.append((opts, ffmpeg))
-        attempts.append(("", None))
-    else:
-        attempts.append((prev_opts or "", ffmpeg))
-        attempts.append(("", None))
-
-    last_err: str | None = None
-    seen: set[tuple[str, int | None]] = set()
-    try:
-        for opts, backend in attempts:
-            key = (opts, backend)
-            if key in seen:
-                continue
-            seen.add(key)
-            if opts:
-                os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = opts
-            cap = _open_capture(url, backend)
-            if is_rtsp:
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            if not cap.isOpened():
-                cap.release()
-                last_err = f"Could not connect to camera '{redact_source(url)}'."
-                continue
-            frame = _read_first_frame(cap, tries=4 if is_rtsp else 3, pause=0.15)
-            if frame is not None:
-                return cap, frame, None
-            cap.release()
-            time.sleep(_V4L_RELEASE_PAUSE)
-            last_err = (
-                f"Connected to '{redact_source(url)}', but received no video frame. "
-                "The stream may be offline, already in use, or using a transport "
-                "this PC cannot read."
-            )
-    finally:
-        if prev_opts is not None:
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = prev_opts
-
-    hint = ""
-    if is_rtsp:
-        hint = (
-            " Generic RTSP on port 554 is for CCTV/NVRs, not phones. "
-            "For IP Webcam, use rtsp://PHONE_IP:8080/h264_ulaw.sdp with empty "
-            "username and password, or Protocol 'Phone HTTP' at "
-            "http://PHONE_IP:8080/video. Both devices must be on the same Wi-Fi."
-        )
-    return None, None, (last_err or f"Could not connect to camera '{redact_source(url)}'.") + hint
-
-
-def open_video_source(
-    source: int | str,
-) -> tuple[cv2.VideoCapture | None, int | str, Any, str | None]:
-    """Open capture on the calling thread and read one frame.
-
-    Webcam opens only the requested index (V4L2, DirectShow, or AVFoundation).
-    Network RTSP/HTTP uses a 2–3s timeout per transport so a dead URL cannot
-    stall the worker for tens of seconds.
-    """
-    parsed = parse_source(source)
-    if isinstance(parsed, int):
-        cap = _open_webcam_index(parsed)
-        if cap is None:
-            return None, parsed, None, f"Could not open camera index {parsed}."
-        frame = _read_first_frame(cap, tries=4, pause=0.1)
-        if frame is not None:
-            return cap, parsed, frame, None
-        cap.release()
-        time.sleep(_V4L_RELEASE_PAUSE)
-        return None, parsed, None, (
-            f"Camera index {parsed} opened but produced no frames "
-            "(busy device or index out of range)."
-        )
-
-    cap, frame, err = _open_network_source(str(parsed))
-    if cap is None or frame is None:
-        return None, parsed, None, err
-    return cap, parsed, frame, None
+    def is_connected(self) -> bool:
+        return False
 
 
 class LiveStreamEngine:
     """Background engine that captures video, performs YOLO11 pose inference,
 
-    tracks store occupancy, saves proofs, sends alerts, and delivers frames to the web UI.
+    tracks garage bay occupancy and wrench time, saves proofs, and delivers
+    frames to the web UI. Media ingest (AsyncFrameGrabber + go2rtc) is unchanged.
     """
 
     def __init__(self):
@@ -720,7 +444,11 @@ class LiveStreamEngine:
         self.thread: threading.Thread | None = None
         self.current_frame_jpeg: bytes | None = None
         self.new_frame_event = threading.Event()
-        self.cap: cv2.VideoCapture | None = None
+        self.grabber = AsyncFrameGrabber()
+        self.media = Go2RtcManager()
+        self.discovery = DiscoveryEngine()
+        self._gateway_stream_id: str | None = None
+        self._gateway_main_stream_id: str | None = None
         self.model = None
         self.face_rec = None
         self.staff_names: list[str] = []
@@ -728,6 +456,7 @@ class LiveStreamEngine:
 
         # Telemetry stats
         self.fps = 0.0
+        self.infer_ms = 0.0
         self.is_occupied = False
         self.empty_elapsed = 0.0
         self.person_count = 0
@@ -735,25 +464,33 @@ class LiveStreamEngine:
         self.connection_state = "STANDBY"
         self.stream_resolution = "--"
         self.error_message: str | None = None
+        self.bay_telemetry: list[dict[str, Any]] = []
+        self.last_face_seen: dict[str, float] = {}
+        self._wifi_last_tick: float | None = None
 
         # Load initial config. SQLite is opened on the worker thread —
         # connections cannot be shared across threads.
         self.cfg = read_config()
         self.conn = None
         self.bot = TelegramOut(self.cfg.get("telegram_bot_token", ""), self.cfg.get("telegram_chat_id", ""))
-
-        self._reopen_requested = False
-        self._connect_generation = 0
-        self._connect_event = threading.Event()
-        self._connect_ok = False
-        self._connect_error: str | None = None
-        self._connect_wh: tuple[int, int] = (0, 0)
+        self.bay_manager = BayZoneManager(
+            self.cfg.get("bays"),
+            fallback_roi=parse_roi(self.cfg.get("roi")),
+        )
+        self.wifi = WifiTracker(self.cfg.get("wifi_devices"))
+        self.bay_telemetry = self.bay_manager.telemetry()
 
     def start(self):
         with self.lock:
             if self.running:
                 return
             self.running = True
+            try:
+                self.media.start()
+            except Exception as exc:
+                print(f"[go2rtc] start failed: {exc}", flush=True)
+            self.grabber.start()
+            self.wifi.start()
             self.thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.thread.start()
 
@@ -761,8 +498,16 @@ class LiveStreamEngine:
         with self.lock:
             self.running = False
             self.is_streaming = False
-            self._reopen_requested = True
-            self._connect_event.set()
+            self._drop_gateway_stream()
+        self.grabber.stop()
+        try:
+            self.wifi.stop()
+        except Exception:
+            pass
+        try:
+            self.media.stop()
+        except Exception:
+            pass
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
 
@@ -774,13 +519,78 @@ class LiveStreamEngine:
         except Exception as exc:
             print(f"[FaceID] Reload failed: {exc}")
 
-    def connect_camera(self, new_cfg: dict[str, Any]) -> dict[str, Any]:
-        """Ask the worker thread to open the camera. Never open VideoCapture
-        from the HTTP thread — V4L2 devices are exclusive and SQLite/OpenCV
-        objects are thread-affine.
+    def _drop_gateway_stream(self) -> None:
+        sid = self._gateway_stream_id
+        main_sid = self._gateway_main_stream_id
+        self._gateway_stream_id = None
+        self._gateway_main_stream_id = None
+        for name in (sid, main_sid):
+            if not name:
+                continue
+            try:
+                self.media.client.remove_stream(name)
+            except Exception:
+                pass
 
-        Returns immediately. The worker reports CONNECTING → CONNECTED or FAILED
-        via telemetry; the HTTP thread must not wait on capture open.
+    def _bind_gateway(self, source: Any, camera_id: str, main_source: Any = None) -> str | None:
+        """Register a network camera with go2rtc. Webcams skip the gateway."""
+        kind = protocol_from_source(source)
+        if kind == "webcam" or not self.media.is_ready():
+            self._drop_gateway_stream()
+            return None
+        stream_id = sanitize_stream_id(camera_id or "live")
+        url = str(parse_source(source))
+        prev = self._gateway_stream_id
+        prev_main = self._gateway_main_stream_id
+        if prev and prev != stream_id:
+            try:
+                self.media.client.remove_stream(prev)
+            except Exception:
+                pass
+        main_id = f"{stream_id}-main"
+        if prev_main and prev_main != main_id:
+            try:
+                self.media.client.remove_stream(prev_main)
+            except Exception:
+                pass
+        try:
+            ok = self.media.client.register_stream(stream_id, url)
+        except Exception as exc:
+            print(f"[go2rtc] register failed: {exc}", flush=True)
+            ok = False
+        if not ok:
+            print(f"[go2rtc] could not register {stream_id}", flush=True)
+            self._gateway_stream_id = None
+            self._gateway_main_stream_id = None
+            return None
+        self._gateway_stream_id = stream_id
+        main_url = str(main_source or "").strip()
+        if main_url:
+            try:
+                if self.media.client.register_stream(main_id, main_url):
+                    self._gateway_main_stream_id = main_id
+                    print(f"[go2rtc] stream {main_id} <- {redact_source(main_url)}", flush=True)
+                else:
+                    self._gateway_main_stream_id = None
+            except Exception as exc:
+                print(f"[go2rtc] main register failed: {exc}", flush=True)
+                self._gateway_main_stream_id = None
+        else:
+            if prev_main:
+                try:
+                    self.media.client.remove_stream(prev_main)
+                except Exception:
+                    pass
+            self._gateway_main_stream_id = None
+        print(f"[go2rtc] stream {stream_id} <- {redact_source(url)}", flush=True)
+        return stream_id
+
+    def connect_camera(self, new_cfg: dict[str, Any]) -> dict[str, Any]:
+        """Queue a camera switch on the grabber thread and return immediately.
+
+        Never opens VideoCapture on the HTTP thread — V4L2/DirectShow handles
+        are exclusive and OpenCV objects are thread-affine. Status moves
+        CONNECTING → CONNECTED or FAILED via telemetry.
         """
         payload = dict(new_cfg)
         cid = str(payload.pop("camera_id", "") or "")
@@ -793,16 +603,23 @@ class LiveStreamEngine:
             payload.pop("name", None)
         else:
             cam_name = str(payload.pop("name", "") or "")
+        creds = payload.pop("credentials", None)
+        if not isinstance(creds, dict):
+            creds = {}
+        password = str(payload.pop("password", "") or creds.get("password") or "")
         camera_fields = {
             "id": cid,
             "name": cam_name,
             "protocol": payload.pop("protocol", ""),
             "vendor": payload.pop("vendor", ""),
-            "username": payload.pop("username", ""),
+            "username": str(payload.pop("username", "") or creds.get("username") or ""),
         }
         if "roi" in payload:
             camera_fields["roi"] = payload.pop("roi")
-        payload.pop("password", None)
+        if "main_source" in payload:
+            camera_fields["main_source"] = payload.pop("main_source")
+        if "xaddrs" in payload:
+            camera_fields["xaddrs"] = payload.pop("xaddrs")
         with self.lock:
             self.cfg.update(payload)
             if str(camera_fields.get("name") or "").strip() or str(camera_fields.get("id") or "").strip():
@@ -810,27 +627,86 @@ class LiveStreamEngine:
                 camera_fields["rotate"] = self.cfg.get("rotate")
                 camera_fields["flip"] = self.cfg.get("flip")
                 upsert_camera(self.cfg, camera_fields)
+            cameras = list(self.cfg.get("cameras") or [])
+            active_id = str(self.cfg.get("active_camera_id") or cid or "")
+            active: dict[str, Any] = {}
+            for cam in cameras:
+                if cam.get("id") == active_id or cam.get("id") == cid:
+                    active = cam
+                    break
+            protocol = str(
+                active.get("protocol")
+                or camera_fields.get("protocol")
+                or self.cfg.get("protocol")
+                or protocol_from_source(self.cfg.get("source"))
+            )
+            main_source = active.get("main_source") or self.cfg.get("main_source") or ""
+            xaddrs = active.get("xaddrs") or camera_fields.get("xaddrs") or []
+            username = str(active.get("username") or camera_fields.get("username") or "")
+            self.cfg["protocol"] = protocol
+            self.cfg["main_source"] = main_source
             save_config(self.cfg)
             self.bot = TelegramOut(
                 self.cfg.get("telegram_bot_token", ""),
                 self.cfg.get("telegram_chat_id", ""),
             )
             self.error_message = None
-            self._connect_ok = False
-            self._connect_error = None
-            self._connect_generation += 1
-            self._reopen_requested = True
             self.is_streaming = True
             self.current_frame_jpeg = None
             self.fps = 0.0
+            self.is_occupied = False
+            self.person_count = 0
+            self.staff_names = []
+            self.identities = []
             self.status_text = "CONNECTING"
             self.connection_state = "CONNECTING"
-            self._connect_event.clear()
             self.new_frame_event.set()
-            cameras = list(self.cfg.get("cameras") or [])
-            active_id = str(self.cfg.get("active_camera_id") or "")
             source = self.cfg.get("source", 0)
             roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
+            if _needs_onvif_onboard(protocol, source, xaddrs):
+                self.grabber.mark_connecting()
+                threading.Thread(
+                    target=self._onboard_onvif,
+                    kwargs={
+                        "xaddrs": xaddrs,
+                        "source": source,
+                        "username": username,
+                        "password": password,
+                        "camera_id": active_id or cid,
+                        "camera_name": cam_name or str(active.get("name") or ""),
+                    },
+                    name="OnvifOnboard",
+                    daemon=True,
+                ).start()
+                media = {"ready": self.media.is_ready()}
+                return {
+                    "success": True,
+                    "pending": True,
+                    "connection": "CONNECTING",
+                    "status": "CONNECTING",
+                    "message": f"Resolving ONVIF '{redact_source(onvif_xaddr(source, xaddrs))}'…",
+                    "roi": roi,
+                    "bays": list(self.cfg.get("bays") or DEFAULT_BAYS),
+                    "rotate": self.cfg.get("rotate", 0),
+                    "flip": self.cfg.get("flip", "none"),
+                    "cameras": cameras,
+                    "active_camera_id": active_id,
+                    "stream_id": None,
+                    "media": media,
+                }
+            stream_id = self._bind_gateway(source, active_id, main_source=main_source)
+            adapter = create_adapter(
+                source,
+                gateway=self.media if stream_id else None,
+                stream_id=stream_id,
+                protocol=protocol,
+                username=username,
+                password=password,
+                xaddrs=xaddrs,
+                main_source=main_source,
+            )
+            self.grabber.switch_source(adapter)
+            media = self.media.status(stream_id) if stream_id else {"ready": self.media.is_ready()}
             return {
                 "success": True,
                 "pending": True,
@@ -838,11 +714,83 @@ class LiveStreamEngine:
                 "status": "CONNECTING",
                 "message": f"Connecting to '{redact_source(source)}'…",
                 "roi": roi,
+                "bays": list(self.cfg.get("bays") or DEFAULT_BAYS),
                 "rotate": self.cfg.get("rotate", 0),
                 "flip": self.cfg.get("flip", "none"),
                 "cameras": cameras,
                 "active_camera_id": active_id,
+                "stream_id": stream_id,
+                "media": media,
             }
+
+    def _onboard_onvif(
+        self,
+        *,
+        xaddrs: Any,
+        source: Any,
+        username: str,
+        password: str,
+        camera_id: str,
+        camera_name: str,
+    ) -> None:
+        """SOAP on a worker: persist RTSP URLs, then queue the grabber switch."""
+        from adapters.onvif import ONVIFAdapter
+
+        adapter = ONVIFAdapter(
+            onvif_xaddr(source, xaddrs),
+            username=username,
+            password=password,
+            xaddrs=xaddrs,
+            source=source,
+        )
+        try:
+            ok = adapter.resolve()
+        except Exception as exc:
+            ok = False
+            adapter.error = str(exc)
+        if not ok:
+            self.grabber.switch_source(
+                _ConnectErrorAdapter(adapter.error or "ONVIF resolve failed.")
+            )
+            return
+        sub = adapter.source
+        main = adapter.main_source or sub
+        try:
+            with self.lock:
+                self.cfg["source"] = sub
+                self.cfg["main_source"] = main
+                self.cfg["protocol"] = "onvif"
+                if adapter.manufacturer:
+                    self.cfg["vendor"] = adapter.manufacturer
+                if camera_id or camera_name:
+                    upsert_camera(
+                        self.cfg,
+                        {
+                            "id": camera_id,
+                            "name": camera_name or "Untitled camera",
+                            "source": sub,
+                            "main_source": main,
+                            "protocol": "onvif",
+                            "vendor": adapter.manufacturer or "generic",
+                            "username": username,
+                            "xaddrs": xaddrs,
+                        },
+                    )
+                save_config(self.cfg)
+                stream_id = self._bind_gateway(
+                    sub,
+                    str(self.cfg.get("active_camera_id") or camera_id or ""),
+                    main_source=main,
+                )
+                inner = create_adapter(
+                    sub,
+                    gateway=self.media if stream_id else None,
+                    stream_id=stream_id,
+                    protocol="rtsp",
+                )
+            self.grabber.switch_source(inner)
+        except Exception as exc:
+            self.grabber.switch_source(_ConnectErrorAdapter(str(exc)))
 
     def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         updates: dict[str, Any] = {}
@@ -851,9 +799,20 @@ class LiveStreamEngine:
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
         if "venue" in payload:
-            updates["venue"] = str(payload.get("venue") or "").strip() or "Demo store"
+            updates["venue"] = str(payload.get("venue") or "").strip() or "Demo Garage"
+            updates["garage_name"] = updates["venue"]
+        if "garage_name" in payload:
+            updates["garage_name"] = str(payload.get("garage_name") or "").strip() or "Demo Garage"
+            updates["venue"] = updates["garage_name"]
         if "open_time" in payload:
-            updates["open_time"] = str(payload.get("open_time") or "08:00")
+            updates["open_time"] = parse_clock(payload.get("open_time"), "08:00")
+        if "close_time" in payload:
+            updates["close_time"] = parse_clock(payload.get("close_time"), "18:00")
+        if "open_time" in updates or "close_time" in updates:
+            updates["operating_hours"] = {
+                "open": updates.get("open_time") or str(self.cfg.get("open_time") or "08:00"),
+                "close": updates.get("close_time") or str(self.cfg.get("close_time") or "18:00"),
+            }
         if "absent_seconds" in payload:
             try:
                 updates["absent_seconds"] = max(5.0, min(600.0, float(payload.get("absent_seconds"))))
@@ -871,6 +830,9 @@ class LiveStreamEngine:
                 )
             snapshot = {key: self.cfg.get(key) for key in _SETTINGS_KEYS}
         snapshot["success"] = True
+        snapshot["bays"] = list(self.cfg.get("bays") or [])
+        snapshot["wifi_devices"] = list(self.cfg.get("wifi_devices") or [])
+        snapshot["operating_hours"] = self.cfg.get("operating_hours")
         return snapshot
 
     def save_camera(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -888,6 +850,10 @@ class LiveStreamEngine:
             "flip": fields.get("flip", "none"),
             "roi": fields.get("roi"),
         }
+        if "main_source" in fields:
+            mapped["main_source"] = fields.get("main_source", "")
+        if "xaddrs" in fields:
+            mapped["xaddrs"] = fields.get("xaddrs")
         with self.lock:
             entry = upsert_camera(self.cfg, mapped)
             save_config(self.cfg)
@@ -907,6 +873,8 @@ class LiveStreamEngine:
             self.cfg["cameras"] = cameras
             if str(self.cfg.get("active_camera_id") or "") == cid:
                 self.cfg["active_camera_id"] = cameras[0]["id"] if cameras else ""
+            if self._gateway_stream_id == sanitize_stream_id(cid):
+                self._drop_gateway_stream()
             save_config(self.cfg)
             return {
                 "success": True,
@@ -920,15 +888,171 @@ class LiveStreamEngine:
             return {"success": False, "error": "ROI must be [x, y, width, height] fractions."}
         with self.lock:
             self.cfg["roi"] = parsed
+            bays = parse_bays(self.cfg.get("bays"), fallback_roi=parsed)
+            if bays:
+                bays[0] = {**bays[0], "roi": parsed}
+            self.cfg["bays"] = bays
             cameras = _normalize_cameras(self.cfg.get("cameras"))
             active = str(self.cfg.get("active_camera_id") or "")
             for cam in cameras:
                 if cam["id"] == active:
                     cam["roi"] = parsed
+                    cam["bays"] = bays
                     break
             self.cfg["cameras"] = cameras
+            self.bay_manager.set_bays(bays)
+            self.bay_telemetry = self.bay_manager.telemetry()
             save_config(self.cfg)
-        return {"success": True, "roi": parsed, "cameras": cameras, "active_camera_id": active}
+        return {"success": True, "roi": parsed, "bays": bays, "cameras": cameras, "active_camera_id": active}
+
+    def set_bays(self, bays_value: Any) -> dict[str, Any]:
+        parsed = parse_bays(
+            bays_value,
+            fallback_roi=parse_roi(self.cfg.get("roi")),
+            seed_if_empty=False,
+        )
+        with self.lock:
+            previous = parse_bays(self.cfg.get("bays"), seed_if_empty=False)
+            previous_ids = {str(bay.get("id") or "") for bay in previous}
+            keep_ids = {str(bay.get("id") or "") for bay in parsed}
+            removed_ids = [bay_id for bay_id in previous_ids if bay_id and bay_id not in keep_ids]
+            self.cfg["bays"] = parsed
+            if parsed:
+                self.cfg["roi"] = list(parsed[0]["roi"])
+            cameras = _normalize_cameras(self.cfg.get("cameras"))
+            active = str(self.cfg.get("active_camera_id") or "")
+            for cam in cameras:
+                if cam["id"] == active:
+                    cam["roi"] = self.cfg.get("roi")
+                    cam["bays"] = parsed
+                    break
+            self.cfg["cameras"] = cameras
+            self.bay_manager.set_bays(parsed)
+            self.bay_telemetry = self.bay_manager.telemetry()
+            save_config(self.cfg)
+            roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
+        if removed_ids:
+            try:
+                conn = connect(DATA_DIR / "events.db", check_same_thread=False)
+                try:
+                    close_bay_sessions(conn, removed_ids, datetime.now())
+                finally:
+                    conn.close()
+            except Exception as exc:
+                print(f"[set_bays] close sessions failed: {exc}", flush=True)
+        return {
+            "success": True,
+            "bays": parsed,
+            "roi": roi,
+            "cameras": cameras,
+            "active_camera_id": active,
+            "removed_bay_ids": removed_ids,
+        }
+
+    def set_wifi_devices(self, devices_value: Any) -> dict[str, Any]:
+        parsed = self.wifi.set_devices(devices_value)
+        with self.lock:
+            self.cfg["wifi_devices"] = parsed
+            save_config(self.cfg)
+        return {"success": True, "wifi_devices": parsed}
+
+    def garage_telemetry(self) -> dict[str, Any]:
+        with self.lock:
+            bays = list(self.bay_telemetry or self.bay_manager.telemetry())
+            cfg = dict(self.cfg)
+            fps = self.fps
+            staff = list(self.staff_names)
+            identities = list(self.identities)
+            last_seen = dict(self.last_face_seen)
+        wifi_rows = self.wifi.snapshot()
+        wifi_by_name = {row["name"]: row for row in wifi_rows}
+        now = time.time()
+        for bay in bays:
+            name = bay.get("mechanic_name")
+            face_recent = bool(name) and (now - last_seen.get(name, 0)) < 30
+            wifi_on = self.wifi.is_connected(name) if name else False
+            bay["presence"] = presence_status(face_recent, wifi_on)
+            bay["wifi_connected"] = wifi_on
+        active = sum(1 for bay in bays if bay.get("state") != "EMPTY")
+        return {
+            "bays": bays,
+            "fps": fps,
+            "garage_name": garage_name_of(cfg),
+            "shop_open": shop_is_open(cfg),
+            "open_time": str(cfg.get("open_time") or "08:00"),
+            "close_time": str(cfg.get("close_time") or "18:00"),
+            "active_bay_count": active,
+            "total_bays": len(bays),
+            "staff_names": staff,
+            "identities": identities,
+            "wifi_devices": wifi_rows,
+            "roi": list(cfg.get("roi") or [0.30, 0.20, 0.40, 0.60]),
+        }
+
+    def garage_scorecard(self) -> dict[str, Any]:
+        cfg = dict(self.cfg)
+        day = datetime.now().date()
+        conn = connect(DATA_DIR / "events.db", check_same_thread=False)
+        try:
+            summary = get_daily_garage_summary(
+                conn,
+                day,
+                open_time=str(cfg.get("open_time") or "08:00"),
+                close_time=str(cfg.get("close_time") or "18:00"),
+                bay_ids=[b["id"] for b in (cfg.get("bays") or DEFAULT_BAYS)],
+            )
+        finally:
+            conn.close()
+        wifi_rows = self.wifi.snapshot()
+        wifi_by = {row["name"].lower(): row for row in wifi_rows}
+        live = {b.get("mechanic_name"): b for b in self.garage_telemetry().get("bays") or [] if b.get("mechanic_name")}
+        now = time.time()
+        technicians = []
+        for tech in summary["technicians"]:
+            name = tech["staff_name"]
+            wifi = wifi_by.get(name.lower(), {})
+            face_recent = (now - self.last_face_seen.get(name, 0)) < 45
+            wifi_on = bool(wifi.get("connected"))
+            bay = live.get(name) or {}
+            if tech["clocked_in"] and bay.get("state") == "WORKING":
+                attendance = f"Active in {bay.get('name') or bay.get('bay_id')}"
+            elif tech["clocked_in"] and bay.get("state") == "IDLE":
+                attendance = "On Break"
+            elif tech["clocked_in"] and wifi_on:
+                attendance = "Clocked In"
+            elif tech["clocked_in"]:
+                attendance = "Clocked In"
+            else:
+                attendance = "Clocked Out"
+            if not wifi_on and tech["clocked_in"] and not face_recent:
+                attendance = "Off-site break"
+            score = float(tech["performance_score"])
+            technicians.append(
+                {
+                    **tech,
+                    "attendance": attendance,
+                    "wifi_connected": wifi_on,
+                    "presence": presence_status(face_recent, wifi_on),
+                    "current_bay": bay.get("bay_id"),
+                    "wrench_pct": score,
+                    "badge": "high" if score >= 70 else ("normal" if score >= 40 else "low"),
+                }
+            )
+        enrolled = []
+        try:
+            enrolled = [row["name"] for row in list_identities(cfg)]
+        except Exception:
+            enrolled = list({t["staff_name"] for t in technicians})
+        return {
+            "date": summary["date"],
+            "garage_name": garage_name_of(cfg),
+            "shop": summary["shop"],
+            "technicians": technicians,
+            "bays": summary["bays"],
+            "wifi_devices": wifi_rows,
+            "enrolled": enrolled,
+            "attendance_logs": technicians,
+        }
 
     def set_orient(self, rotate: Any = None, flip: Any = None) -> dict[str, Any]:
         with self.lock:
@@ -957,6 +1081,22 @@ class LiveStreamEngine:
                 "active_camera_id": active,
             }
 
+    def _sync_connection_from_grabber(self) -> tuple[str, str | None, int]:
+        grabber = self.grabber
+        state = grabber.connection_state
+        error = grabber.error
+        generation = grabber.generation
+        self.connection_state = state
+        if error:
+            self.error_message = error
+        if state == "CONNECTING":
+            self.status_text = "CONNECTING"
+        elif state == "RECONNECTING":
+            self.status_text = "RECONNECTING..."
+        elif state == "FAILED":
+            self.status_text = "FAILED"
+        return state, error, generation
+
     def _worker_loop(self):
         from ultralytics import YOLO
 
@@ -972,248 +1112,310 @@ class LiveStreamEngine:
         except Exception as e:
             self.error_message = f"Failed to load YOLO model: {e}"
             with self.lock:
-                self._connect_ok = False
-                self._connect_error = self.error_message
                 self.connection_state = "FAILED"
                 self.status_text = "FAILED"
-                self._connect_event.set()
             return
 
         proofs = DATA_DIR / "proofs"
+        session_gen = -1
+        source: int | str = 0
+        absent = 10.0
+        interval = 1.0 / 8.0
+        person_conf = 0.35
+        min_person_height = 0.12
+        min_aspect = 1.1
+        min_keypoints = 4
+        kpt_conf = 0.4
+        imgsz = 640
+        ghost = GhostCounter(absent, 30.0)
+        last_accepted: list[Detection] = []
+        last_rejected: list[Detection] = []
+        last_state = GhostState(False, 0.0, False)
+        last_infer = 0.0
+        frame_count = 0
+        t_fps = time.time()
+        clock_out_grace = 600.0
+        if self.conn is not None:
+            summary = get_daily_garage_summary(
+                self.conn,
+                datetime.now().date(),
+                bay_ids=[b["id"] for b in self.bay_manager.configs()],
+            )
+            self.bay_manager.hydrate_today(summary.get("bays") or [])
 
         while self.running:
             with self.lock:
                 streaming = self.is_streaming
                 cfg = dict(self.cfg)
-                generation = self._connect_generation
-                self._reopen_requested = False
 
             if not streaming:
+                session_gen = -1
                 time.sleep(0.2)
                 continue
 
-            source = parse_source(cfg.get("source", 0))
-            absent = float(cfg.get("absent_seconds") or 10)
-            cooldown = float(cfg.get("cooldown_seconds") or 30)
-            detect_fps = max(0.5, float(cfg.get("detect_fps") or 15.0))
-            interval = 1.0 / detect_fps
-            person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
-            min_person_height = float(
-                cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
-            )
-            min_aspect = float(cfg.get("min_aspect") if cfg.get("min_aspect") is not None else 1.1)
-            min_keypoints = int(cfg.get("min_keypoints") if cfg.get("min_keypoints") is not None else 4)
-            kpt_conf = float(cfg.get("kpt_conf") if cfg.get("kpt_conf") is not None else 0.4)
-            imgsz = max(32, int(cfg.get("imgsz") or 640) // 32 * 32)
-            confirm = float(
-                cfg.get("occupy_confirm_seconds") if cfg.get("occupy_confirm_seconds") is not None else 1.0
-            )
-            clear = float(
-                cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
-            )
-            rotate_deg, flip = resolve_orient(cfg.get("rotate"), source, None, cfg.get("flip"))
-
-            print(f"[LiveStreamEngine] Ingesting camera stream: {redact_source(source)} (target detect_fps: {detect_fps:.1f})")
-            cap, actual, first_frame, err = open_video_source(source)
-            if cap is not None:
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                if isinstance(source, int) or str(source).isdigit():
-                    cap.set(cv2.CAP_PROP_FPS, 30)
-
-            with self.lock:
-                stale = generation != self._connect_generation
-            if stale:
-                if cap is not None:
-                    cap.release()
-                    time.sleep(_V4L_RELEASE_PAUSE)
-                continue
-
-            if cap is None or first_frame is None:
+            state, err, generation = self._sync_connection_from_grabber()
+            if state == "FAILED" and generation != session_gen:
                 with self.lock:
+                    if self.grabber.generation != generation:
+                        continue
+                    session_gen = generation
                     self.is_streaming = False
                     self.current_frame_jpeg = None
-                    self.cap = None
-                    self._connect_ok = False
-                    self._connect_error = err
                     self.error_message = err
                     self.status_text = "FAILED"
                     self.connection_state = "FAILED"
-                    self._connect_event.set()
                     self.new_frame_event.set()
-                time.sleep(0.5)
                 continue
 
-            if actual != source:
-                print(f"[LiveStreamEngine] Camera index {source} unavailable, using {actual}")
-                with self.lock:
-                    self.cfg["source"] = actual
-                    cfg["source"] = actual
-                    save_config(self.cfg)
+            packet = self.grabber.get_latest_frame(timeout=0.1)
+            if packet is None:
+                continue
 
-            self.cap = cap
-            rotate_deg, flip = resolve_orient(cfg.get("rotate"), source, first_frame, cfg.get("flip"))
-            first_oriented = orient_frame(first_frame, rotate_deg, flip)
-            h0, w0 = first_oriented.shape[:2]
+            generation = self.grabber.generation
+            if generation != session_gen:
+                session_gen = generation
+                source = parse_source(cfg.get("source", 0))
+                absent = float(cfg.get("absent_seconds") or 10)
+                cooldown = float(cfg.get("cooldown_seconds") or 30)
+                detect_fps = max(0.5, float(cfg.get("detect_fps") or 8.0))
+                interval = 1.0 / detect_fps
+                person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
+                min_person_height = float(
+                    cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
+                )
+                min_aspect = float(cfg.get("min_aspect") if cfg.get("min_aspect") is not None else 1.1)
+                min_keypoints = int(cfg.get("min_keypoints") if cfg.get("min_keypoints") is not None else 4)
+                kpt_conf = float(cfg.get("kpt_conf") if cfg.get("kpt_conf") is not None else 0.4)
+                imgsz = max(32, int(cfg.get("imgsz") or 640) // 32 * 32)
+                confirm = float(
+                    cfg.get("occupy_confirm_seconds")
+                    if cfg.get("occupy_confirm_seconds") is not None
+                    else 1.0
+                )
+                clear = float(
+                    cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
+                )
+                clock_out_grace = float(cfg.get("clock_out_seconds") or 600)
+                idle_hold = float(cfg.get("idle_stationary_seconds") or 120)
+                print(f"[LiveStreamEngine] Ingesting camera stream: {redact_source(source)}")
+                ghost = GhostCounter(absent, cooldown)
+                self.bay_manager.confirm = confirm
+                self.bay_manager.clear = clear
+                self.bay_manager.idle_stationary_seconds = idle_hold
+                self.bay_manager.set_bays(cfg.get("bays"), fallback_roi=parse_roi(cfg.get("roi")))
+                last_accepted = []
+                last_rejected = []
+                last_state = GhostState(False, 0.0, False)
+                last_infer = 0.0
+                frame_count = 0
+                t_fps = time.time()
+                rotate_deg, flip = resolve_orient(cfg.get("rotate"), source, packet.frame, cfg.get("flip"))
+                first_oriented = orient_frame(packet.frame, rotate_deg, flip)
+                h0, w0 = first_oriented.shape[:2]
+                with self.lock:
+                    self.error_message = None
+                    self.status_text = "CONNECTED"
+                    self.connection_state = "CONNECTED"
+                    self.stream_resolution = f"{w0}x{h0}"
+
             with self.lock:
-                self._connect_wh = (w0, h0)
-                self._connect_ok = True
-                self._connect_error = None
-                self.error_message = None
-                self.status_text = "CONNECTED"
-                self.connection_state = "CONNECTED"
-                self.stream_resolution = f"{w0}x{h0}"
-                self._connect_event.set()
+                venue = garage_name_of(self.cfg)
+                rotate_now = self.cfg.get("rotate")
+                flip_now = self.cfg.get("flip")
 
-            ghost = GhostCounter(absent, cooldown)
-            gate = OccupancyGate(confirm, clear)
-            last_accepted: list[Detection] = []
-            last_rejected: list[Detection] = []
-            last_state = GhostState(False, 0.0, False)
-            last_infer = 0.0
-            frame_count = 0
-            t_fps = time.time()
-            pending = first_frame
+            frame = packet.frame
+            rotate_deg, flip = resolve_orient(rotate_now, source, frame, flip_now)
+            frame = orient_frame(frame, rotate_deg, flip)
+            h, w = frame.shape[:2]
+            self.stream_resolution = f"{w}x{h}"
 
-            while self.running:
-                with self.lock:
-                    if not self.is_streaming or self._reopen_requested:
-                        break
-                    roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
-                    venue = str(self.cfg.get("venue") or "Store")
-                    rotate_now = self.cfg.get("rotate")
-                    flip_now = self.cfg.get("flip")
+            now = time.time()
+            frame_count += 1
+            if now - t_fps >= 1.0:
+                self.fps = frame_count / (now - t_fps)
+                frame_count = 0
+                t_fps = now
 
-                if pending is not None:
-                    frame = pending
-                    pending = None
-                else:
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        self.status_text = "RECONNECTING..."
-                        time.sleep(0.2)
-                        continue
+            snapshots = self.bay_manager.snapshots()
+            any_occupied = any(s.state != "EMPTY" for s in snapshots)
 
-                rotate_deg, flip = resolve_orient(rotate_now, source, frame, flip_now)
-                frame = orient_frame(frame, rotate_deg, flip)
-                h, w = frame.shape[:2]
-                self.stream_resolution = f"{w}x{h}"
+            if now - last_infer >= interval:
+                last_infer = now
+                try:
+                    t_pred = time.perf_counter()
+                    result = self.model.predict(
+                        frame,
+                        imgsz=imgsz,
+                        conf=person_conf,
+                        device=None,
+                        verbose=False,
+                    )[0]
+                    self.infer_ms = (time.perf_counter() - t_pred) * 1000.0
+                    last_accepted, last_rejected = person_detections(
+                        result,
+                        h,
+                        conf_min=person_conf,
+                        min_height_frac=min_person_height,
+                        min_aspect=min_aspect,
+                        min_keypoints=min_keypoints,
+                        kpt_conf=kpt_conf,
+                    )
+                    if self.face_rec is not None:
+                        self.face_rec.annotate_detections(frame, last_accepted)
+                    snapshots = self.bay_manager.update(
+                        last_accepted, w, h, now, kpt_conf=kpt_conf
+                    )
+                    any_occupied = any(s.state != "EMPTY" for s in snapshots)
+                    last_state = ghost.update(any_occupied, now)
+                    stamp = datetime.now()
+                    self._record_garage_tick(last_accepted, snapshots, last_state, stamp, now, clock_out_grace)
 
-                now = time.time()
-                frame_count += 1
-                if now - t_fps >= 1.0:
-                    self.fps = frame_count / (now - t_fps)
-                    frame_count = 0
-                    t_fps = now
-
-                roi_px = roi_to_pixels(w, h, roi)
-
-                if now - last_infer >= interval:
-                    last_infer = now
-                    try:
-                        result = self.model.predict(
-                            frame,
-                            imgsz=imgsz,
-                            conf=person_conf,
-                            device=None,
-                            verbose=False,
-                        )[0]
-                        last_accepted, last_rejected = person_detections(
-                            result,
-                            h,
-                            conf_min=person_conf,
-                            min_height_frac=min_person_height,
-                            min_aspect=min_aspect,
-                            min_keypoints=min_keypoints,
-                            kpt_conf=kpt_conf,
-                        )
-                        if self.face_rec is not None:
-                            self.face_rec.annotate_detections(frame, last_accepted)
-                        detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
-                        occupied = gate.update(detected, now)
-                        last_state = ghost.update(occupied, now)
-                        stamp = datetime.now()
-
-                        self.is_occupied = last_state.occupied
-                        self.empty_elapsed = last_state.empty_elapsed
-                        self.person_count = len(last_accepted)
-                        self.staff_names = [
-                            det.identity for det in last_accepted if det.is_staff and det.identity
-                        ]
-                        self.identities = [det.identity or "person" for det in last_accepted]
-                        in_roi_dets = [det for det in last_accepted if det.in_roi(roi_px, kpt_conf)]
+                    self.is_occupied = last_state.occupied
+                    self.empty_elapsed = last_state.empty_elapsed
+                    self.person_count = len(last_accepted)
+                    self.staff_names = [
+                        det.identity for det in last_accepted if det.is_staff and det.identity
+                    ]
+                    self.identities = [det.identity or "person" for det in last_accepted]
+                    working = [s for s in snapshots if s.state == "WORKING"]
+                    if working:
+                        names = ", ".join(s.mechanic_name or s.name for s in working)
+                        self.status_text = f"WRENCH TIME [{names}]"
+                    elif any_occupied:
                         self.status_text = till_status_label(
-                            self.is_occupied,
-                            in_roi_dets,
+                            True,
+                            last_accepted,
                             self.empty_elapsed,
                             absent,
                             face_id_enabled=self.face_rec is not None,
                         )
+                    else:
+                        self.status_text = "SHOP FLOOR EMPTY"
+                    with self.lock:
+                        self.bay_telemetry = [s.as_dict() for s in snapshots]
 
-                        if self.conn is not None:
-                            upsert_minute(
-                                self.conn,
-                                stamp.strftime("%Y-%m-%d %H:%M"),
-                                len(last_accepted),
-                                last_state.occupied,
-                            )
-                            if last_state.occupied and not has_opened_today(self.conn, stamp.date()):
-                                insert_event(self.conn, "opened", stamp)
+                    if self.conn is not None:
+                        upsert_minute(
+                            self.conn,
+                            stamp.strftime("%Y-%m-%d %H:%M"),
+                            len(last_accepted),
+                            last_state.occupied,
+                        )
+                        if last_state.occupied and not has_opened_today(self.conn, stamp.date()):
+                            insert_event(self.conn, "opened", stamp)
 
-                            if last_state.should_alert:
-                                path = save_proof(frame, roi_px, stamp, proofs, kind="abandoned")
-                                insert_event(self.conn, "abandoned", stamp, str(path))
-                                caption = (
-                                    f"{venue}: front desk unattended "
-                                    f"for {int(absent)}s.\n{stamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                        if last_state.should_alert:
+                            primary = snapshots[0] if snapshots else None
+                            roi_px = roi_to_pixels(w, h, primary.roi if primary else [0.3, 0.2, 0.4, 0.6])
+                            proof_frame = frame
+                            main_src = str(cfg.get("main_source") or "").strip()
+                            if main_src:
+                                still = request_still(
+                                    main_src,
+                                    gateway=self.media,
+                                    stream_id=self._gateway_main_stream_id,
+                                    timeout=1.5,
                                 )
-                                print(f"[LiveStreamEngine Alert] {path}")
-                                self.bot.send_photo(path, caption)
-                    except Exception as exc:
-                        print(f"[LiveStreamEngine Infer Error] {exc}")
+                                if still is not None:
+                                    sh, sw = still.shape[:2]
+                                    roi_px = scale_roi_px(roi_px, (w, h), (sw, sh))
+                                    proof_frame = still
+                            path = save_proof(proof_frame, roi_px, stamp, proofs, kind="idle_bay")
+                            insert_event(self.conn, "abandoned", stamp, str(path))
+                            caption = (
+                                f"{venue}: no active wrench time "
+                                f"for {int(absent)}s.\n{stamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                            print(f"[LiveStreamEngine Alert] {path}")
+                            self.bot.send_photo(path, caption)
+                except Exception as exc:
+                    print(f"[LiveStreamEngine Infer Error] {exc}")
 
-                annotated = frame.copy()
-                for det in last_rejected:
-                    draw_detection(
-                        annotated, det, in_roi=det.in_roi(roi_px, kpt_conf), kpt_conf=kpt_conf
-                    )
-                for det in last_accepted:
-                    draw_detection(
-                        annotated, det, in_roi=det.in_roi(roi_px, kpt_conf), kpt_conf=kpt_conf
-                    )
+            annotated = frame.copy()
+            occupied_ids = {s.bay_id for s in snapshots if s.state != "EMPTY"}
+            for det in last_rejected:
+                in_any = any(s.bay_id in occupied_ids and True for s in snapshots)
+                draw_detection(
+                    annotated, det, in_roi=in_any, kpt_conf=kpt_conf
+                )
+            for det in last_accepted:
+                draw_detection(
+                    annotated,
+                    det,
+                    in_roi=any(s.state != "EMPTY" for s in snapshots),
+                    kpt_conf=kpt_conf,
+                )
 
-                color = (80, 200, 80) if self.is_occupied else (40, 180, 255)
-                x1, y1, x2, y2 = roi_px
+            for snap in snapshots:
+                color = bay_draw_color(snap.bay_id, snap.state)
+                x1, y1, x2, y2 = roi_to_pixels(w, h, snap.roi)
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-                draw_roi_handles(annotated, roi_px, color)
-
-                status_label = self.status_text
+                draw_roi_handles(annotated, (x1, y1, x2, y2), color)
+                label = bay_badge(snap.state, snap.mechanic_name, snap.wrench_time_today)
                 cv2.putText(
                     annotated,
-                    status_label,
+                    f"{snap.name}: {label}",
                     (x1, max(24, y1 - 8)),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
+                    0.5,
                     color,
                     2,
                     cv2.LINE_AA,
                 )
 
-                success, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75])
-                if success:
-                    with self.lock:
-                        self.current_frame_jpeg = buffer.tobytes()
-                    self.new_frame_event.set()
-
-                time.sleep(0.001)
-
-            if cap is not None:
-                cap.release()
-            self.cap = None
-            time.sleep(_V4L_RELEASE_PAUSE)
+            success, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if success:
+                with self.lock:
+                    self.current_frame_jpeg = buffer.tobytes()
+                self.new_frame_event.set()
 
         if self.conn is not None:
             self.conn.close()
             self.conn = None
+
+    def _record_garage_tick(
+        self,
+        detections: list[Detection],
+        snapshots,
+        last_state: GhostState,
+        stamp: datetime,
+        now: float,
+        clock_out_grace: float,
+    ) -> None:
+        if self.conn is None:
+            return
+        for det in detections:
+            if det.is_staff and det.identity:
+                self.last_face_seen[det.identity] = now
+                record_face_clock_in(self.conn, det.identity, stamp)
+
+        occupied_ids: set[str] = set()
+        for bay_id, technician, is_working, dt in self.bay_manager.activity_ticks():
+            if dt <= 0:
+                continue
+            occupied_ids.add(bay_id)
+            update_technician_activity(self.conn, technician, bay_id, is_working, dt, stamp)
+        close_empty_bays(self.conn, occupied_ids, stamp)
+
+        wifi_dt = 0.0
+        if self._wifi_last_tick is not None:
+            wifi_dt = max(0.0, min(now - self._wifi_last_tick, 120.0))
+        self._wifi_last_tick = now
+        for row in self.wifi.snapshot():
+            if row.get("connected") and wifi_dt > 0:
+                add_wifi_minutes(self.conn, row["name"], wifi_dt, stamp)
+
+        for departed in self.wifi.departures():
+            last = self.last_face_seen.get(departed, 0.0)
+            if now - last >= min(clock_out_grace, 90.0):
+                record_face_clock_out(self.conn, departed, stamp)
+
+        for name, last in list(self.last_face_seen.items()):
+            if now - last < clock_out_grace:
+                continue
+            if self.wifi.is_connected(name):
+                continue
+            record_face_clock_out(self.conn, name, stamp)
 
 
 GLOBAL_ENGINE = LiveStreamEngine()
@@ -1407,6 +1609,16 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(cfg).encode("utf-8"))
 
         elif parsed.path == "/api/telemetry":
+            grabber = GLOBAL_ENGINE.grabber
+            connection = grabber.connection_state
+            if connection == "STANDBY":
+                connection = GLOBAL_ENGINE.connection_state
+            sid = GLOBAL_ENGINE._gateway_stream_id
+            garage = GLOBAL_ENGINE.garage_telemetry()
+            protocol = str(
+                GLOBAL_ENGINE.cfg.get("protocol")
+                or protocol_from_source(GLOBAL_ENGINE.cfg.get("source"))
+            )
             data = {
                 "occupied": GLOBAL_ENGINE.is_occupied,
                 "empty_elapsed": GLOBAL_ENGINE.empty_elapsed,
@@ -1414,16 +1626,59 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 "staff_names": GLOBAL_ENGINE.staff_names,
                 "identities": GLOBAL_ENGINE.identities,
                 "fps": GLOBAL_ENGINE.fps,
+                "ingest_fps": grabber.ingest_fps,
+                "infer_ms": round(float(GLOBAL_ENGINE.infer_ms or 0.0), 1),
+                "protocol": protocol,
+                "main_stream": bool(str(GLOBAL_ENGINE.cfg.get("main_source") or "").strip()),
                 "status": GLOBAL_ENGINE.status_text,
-                "connection": GLOBAL_ENGINE.connection_state,
+                "connection": connection,
                 "resolution": GLOBAL_ENGINE.stream_resolution,
-                "error": GLOBAL_ENGINE.error_message,
+                "error": grabber.error or GLOBAL_ENGINE.error_message,
                 "roi": list(GLOBAL_ENGINE.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60]),
+                "bays": garage.get("bays"),
+                "garage": {
+                    "name": garage.get("garage_name"),
+                    "shop_open": garage.get("shop_open"),
+                    "active_bay_count": garage.get("active_bay_count"),
+                    "total_bays": garage.get("total_bays"),
+                },
+                "stream_id": sid,
+                "media": GLOBAL_ENGINE.media.status(sid),
             }
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode("utf-8"))
+
+        elif parsed.path == "/api/garage/telemetry":
+            data = GLOBAL_ENGINE.garage_telemetry()
+            grabber = GLOBAL_ENGINE.grabber
+            data.update(
+                {
+                    "fps": GLOBAL_ENGINE.fps,
+                    "ingest_fps": grabber.ingest_fps,
+                    "infer_ms": round(float(GLOBAL_ENGINE.infer_ms or 0.0), 1),
+                    "protocol": str(
+                        GLOBAL_ENGINE.cfg.get("protocol")
+                        or protocol_from_source(GLOBAL_ENGINE.cfg.get("source"))
+                    ),
+                    "main_stream": bool(str(GLOBAL_ENGINE.cfg.get("main_source") or "").strip()),
+                    "status": GLOBAL_ENGINE.status_text,
+                    "connection": grabber.connection_state
+                    if grabber.connection_state != "STANDBY"
+                    else GLOBAL_ENGINE.connection_state,
+                    "resolution": GLOBAL_ENGINE.stream_resolution,
+                    "error": grabber.error or GLOBAL_ENGINE.error_message,
+                    "person_count": GLOBAL_ENGINE.person_count,
+                }
+            )
+            self._send_json(data)
+
+        elif parsed.path == "/api/garage/scorecard":
+            self._send_json(GLOBAL_ENGINE.garage_scorecard())
+
+        elif parsed.path == "/api/discovery/results":
+            self._send_json(GLOBAL_ENGINE.discovery.results())
 
         elif parsed.path == "/api/stream":
             # MJPEG stream response
@@ -1468,13 +1723,15 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         content_type = self.headers.get("Content-Type") or ""
         files: list[tuple[str, bytes]] = []
         payload: dict[str, Any] = {}
+        raw_json: Any = {}
         if "multipart/form-data" in content_type:
             files = self._parse_multipart_files(content_type, body)
         else:
             try:
-                payload = json.loads(body.decode("utf-8") or "{}")
+                raw_json = json.loads(body.decode("utf-8") or "{}")
             except Exception:
-                payload = {}
+                raw_json = {}
+            payload = raw_json if isinstance(raw_json, dict) else {}
 
         if self._handle_identities_write(parts, "POST", payload, files):
             return
@@ -1485,6 +1742,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
+
+        elif parsed.path == "/api/discovery/scan":
+            self._send_json(GLOBAL_ENGINE.discovery.start_scan())
 
         elif parsed.path in ("/api/settings", "/api/config"):
             result = GLOBAL_ENGINE.apply_hub_settings(payload)
@@ -1516,15 +1776,30 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/roi":
             result = GLOBAL_ENGINE.set_roi(payload.get("roi"))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(result).encode("utf-8"))
+            self._send_json(result)
+
+        elif parsed.path == "/api/garage/bays":
+            bays_payload = raw_json if isinstance(raw_json, list) else (
+                payload.get("bays") if "bays" in payload else payload
+            )
+            result = GLOBAL_ENGINE.set_bays(bays_payload)
+            self._send_json(result)
+
+        elif parsed.path == "/api/garage/wifi":
+            devices = raw_json if isinstance(raw_json, list) else payload.get("wifi_devices")
+            if devices is None:
+                devices = payload.get("devices")
+            if devices is None and payload.get("name"):
+                existing = list(GLOBAL_ENGINE.cfg.get("wifi_devices") or [])
+                existing.append(payload)
+                devices = existing
+            result = GLOBAL_ENGINE.set_wifi_devices(devices)
+            self._send_json(result)
 
         elif parsed.path == "/api/test-telegram":
             token = str(payload.get("token") or payload.get("telegram_bot_token") or "").strip()
             chat = str(payload.get("chat_id") or payload.get("telegram_chat_id") or "").strip()
-            venue = str(payload.get("venue") or "Demo store").strip()
+            venue = str(payload.get("venue") or payload.get("garage_name") or "Demo Garage").strip()
 
             if not token or not chat:
                 res = {"success": False, "error": "Bot Token and Chat ID are required."}
@@ -1559,10 +1834,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     )
                     identified = ", ".join(GLOBAL_ENGINE.identities) or "none"
                     caption = (
-                        f"🛡️ *Inbound Surveillance Snapshot Report*\n\n"
-                        f"🏢 *Venue:* {venue}\n"
+                        f"🔧 *Inbound Garage Snapshot*\n\n"
+                        f"🏢 *Shop:* {venue}\n"
                         f"⏰ *Timestamp:* {now_str}\n"
-                        f"👤 *Till Status:* {status_str}\n"
+                        f"🛠️ *Floor Status:* {status_str}\n"
                         f"👥 *Detections:* {GLOBAL_ENGINE.person_count} Person(s)\n"
                         f"🪪 *Identified:* {identified}\n"
                     )
@@ -1614,7 +1889,7 @@ def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
     GLOBAL_ENGINE.start()
 
     url = f"http://127.0.0.1:{actual_port}"
-    print("Inbound Surveillance", flush=True)
+    print("Inbound Garage", flush=True)
     print(f"Dashboard: {url}", flush=True)
     print(f"[INBOUND_SERVER_READY] port={actual_port}", flush=True)
 
@@ -1630,7 +1905,7 @@ def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
         if shutting_down["done"]:
             return
         shutting_down["done"] = True
-        print("\nStopping Inbound Surveillance...", flush=True)
+        print("\nStopping Inbound Garage...", flush=True)
         try:
             GLOBAL_ENGINE.stop()
         except Exception:
@@ -1655,7 +1930,7 @@ def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Inbound Surveillance camera hub")
+    parser = argparse.ArgumentParser(description="Inbound Garage camera hub")
     parser.add_argument(
         "--port",
         type=int,

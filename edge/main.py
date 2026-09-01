@@ -59,7 +59,7 @@ from report import build_report
 from roi_edit import RoiEditor, draw_roi_handles
 from telegram_out import TelegramOut
 
-WIN = "Inbound Automated Store Manager"
+WIN = "Inbound Garage Floor"
 ROTATES = (0, 90, 180, 270)
 ROTATE_CODE = {
     90: cv2.ROTATE_90_CLOCKWISE,
@@ -85,12 +85,7 @@ def open_preview_window(win: str, on_mouse) -> None:
 
 
 def default_rotate(source: int | str) -> int:
-    """PC webcam and RTSP are landscape. Phone IP Webcam HTTP is portrait."""
-    if isinstance(source, int):
-        return 0
-    text = str(source).strip().lower()
-    if text.startswith("http://") or text.startswith("https://"):
-        return 90
+    """Default to native orientation (0) across all camera sources."""
     return 0
 
 
@@ -223,8 +218,10 @@ def send_shift_report(conn, cfg: dict, bot: TelegramOut) -> None:
     text, paths = build_report(
         conn,
         day,
-        venue=str(cfg.get("venue") or "Store"),
+        venue=str(cfg.get("garage_name") or cfg.get("venue") or "Garage"),
         open_time=str(cfg.get("open_time") or "08:00"),
+        close_time=str(cfg.get("close_time") or "18:00"),
+        bay_ids=[b.get("id") for b in (cfg.get("bays") or []) if isinstance(b, dict)],
     )
     print(text)
     bot.send_message(text)
@@ -367,7 +364,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 path = save_proof(frame, roi_px, stamp, proofs, kind="abandoned")
                 insert_event(conn, "abandoned", stamp, str(path))
                 caption = (
-                    f"{cfg.get('venue', 'Store')}: front desk unattended "
+                    f"{cfg.get('garage_name', cfg.get('venue', 'Garage'))}: shop floor idle "
                     f"for {int(absent)}s.\n{stamp.strftime('%Y-%m-%d %H:%M:%S')}"
                 )
                 print(f"[alert] {path}")
@@ -434,7 +431,7 @@ from launcher import start_unified_server
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="ClearView Camera Hub — live AI store monitor (webcam or RTSP)."
+        description="Inbound Garage — live AI shop-floor monitor (webcam or RTSP)."
     )
     parser.add_argument(
         "--config",

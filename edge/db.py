@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
+from typing import Any
 
 
 def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=check_same_thread, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS events (
@@ -26,6 +28,36 @@ def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connect
             max_persons INTEGER NOT NULL,
             occupied_frames INTEGER NOT NULL,
             total_frames INTEGER NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS technician_shifts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            day TEXT NOT NULL,
+            staff_name TEXT NOT NULL,
+            clock_in_time TEXT,
+            clock_out_time TEXT,
+            total_shift_minutes REAL NOT NULL DEFAULT 0,
+            wrench_minutes REAL NOT NULL DEFAULT 0,
+            idle_minutes REAL NOT NULL DEFAULT 0,
+            wifi_active_minutes REAL NOT NULL DEFAULT 0,
+            performance_score REAL NOT NULL DEFAULT 0,
+            UNIQUE(day, staff_name)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bay_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bay_id TEXT NOT NULL,
+            technician_name TEXT,
+            start_time TEXT NOT NULL,
+            end_time TEXT,
+            active_duration REAL NOT NULL DEFAULT 0,
+            idle_duration REAL NOT NULL DEFAULT 0
         )
         """
     )
@@ -102,3 +134,356 @@ def day_minutes(conn: sqlite3.Connection, day: date) -> list[sqlite3.Row]:
             (f"{prefix}%",),
         )
     )
+
+
+def _iso(ts: datetime) -> str:
+    return ts.isoformat(timespec="seconds")
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _shift_minutes(clock_in: str | None, clock_out: str | None, now: datetime) -> float:
+    start = _parse_ts(clock_in)
+    if start is None:
+        return 0.0
+    end = _parse_ts(clock_out) or now
+    return max(0.0, (end - start).total_seconds() / 60.0)
+
+
+def _performance_score(wrench_minutes: float, shift_minutes: float) -> float:
+    if shift_minutes <= 0:
+        return 0.0
+    return round(100.0 * wrench_minutes / shift_minutes, 1)
+
+
+def _refresh_shift_row(conn: sqlite3.Connection, day: date, name: str, now: datetime) -> None:
+    row = conn.execute(
+        "SELECT * FROM technician_shifts WHERE day = ? AND staff_name = ?",
+        (day.isoformat(), name),
+    ).fetchone()
+    if row is None:
+        return
+    total = _shift_minutes(row["clock_in_time"], row["clock_out_time"], now)
+    score = _performance_score(float(row["wrench_minutes"]), total)
+    conn.execute(
+        """
+        UPDATE technician_shifts
+        SET total_shift_minutes = ?, performance_score = ?
+        WHERE day = ? AND staff_name = ?
+        """,
+        (round(total, 3), score, day.isoformat(), name),
+    )
+
+
+def record_face_clock_in(
+    conn: sqlite3.Connection,
+    name: str,
+    timestamp: datetime,
+) -> dict[str, Any]:
+    """First Face ID sighting of the day. Returning from a break reopens the shift."""
+    staff = str(name or "").strip()
+    if not staff:
+        return {}
+    day = timestamp.date()
+    row = conn.execute(
+        "SELECT * FROM technician_shifts WHERE day = ? AND staff_name = ?",
+        (day.isoformat(), staff),
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO technician_shifts (
+                day, staff_name, clock_in_time, total_shift_minutes
+            ) VALUES (?, ?, ?, 0)
+            """,
+            (day.isoformat(), staff, _iso(timestamp)),
+        )
+        insert_event(conn, "clock_in", timestamp, staff)
+        conn.commit()
+        return {"name": staff, "clock_in_time": _iso(timestamp), "created": True}
+    if row["clock_out_time"]:
+        conn.execute(
+            """
+            UPDATE technician_shifts
+            SET clock_out_time = NULL
+            WHERE day = ? AND staff_name = ?
+            """,
+            (day.isoformat(), staff),
+        )
+        insert_event(conn, "clock_in", timestamp, staff)
+    _refresh_shift_row(conn, day, staff, timestamp)
+    conn.commit()
+    return {
+        "name": staff,
+        "clock_in_time": row["clock_in_time"],
+        "created": False,
+    }
+
+
+def record_face_clock_out(
+    conn: sqlite3.Connection,
+    name: str,
+    timestamp: datetime,
+) -> dict[str, Any]:
+    staff = str(name or "").strip()
+    if not staff:
+        return {}
+    day = timestamp.date()
+    row = conn.execute(
+        "SELECT * FROM technician_shifts WHERE day = ? AND staff_name = ?",
+        (day.isoformat(), staff),
+    ).fetchone()
+    if row is None or not row["clock_in_time"]:
+        return {}
+    if row["clock_out_time"]:
+        return {"name": staff, "clock_out_time": row["clock_out_time"]}
+    conn.execute(
+        """
+        UPDATE technician_shifts
+        SET clock_out_time = ?
+        WHERE day = ? AND staff_name = ?
+        """,
+        (_iso(timestamp), day.isoformat(), staff),
+    )
+    _refresh_shift_row(conn, day, staff, timestamp)
+    insert_event(conn, "clock_out", timestamp, staff)
+    conn.commit()
+    return {"name": staff, "clock_out_time": _iso(timestamp)}
+
+
+def add_wifi_minutes(
+    conn: sqlite3.Connection,
+    name: str,
+    dt_seconds: float,
+    timestamp: datetime,
+) -> None:
+    staff = str(name or "").strip()
+    if not staff or dt_seconds <= 0:
+        return
+    conn.execute(
+        """
+        UPDATE technician_shifts
+        SET wifi_active_minutes = wifi_active_minutes + ?
+        WHERE day = ? AND staff_name = ?
+        """,
+        (dt_seconds / 60.0, timestamp.date().isoformat(), staff),
+    )
+    _refresh_shift_row(conn, timestamp.date(), staff, timestamp)
+    conn.commit()
+
+
+def update_technician_activity(
+    conn: sqlite3.Connection,
+    name: str | None,
+    bay_id: str,
+    is_working: bool,
+    dt_seconds: float,
+    timestamp: datetime | None = None,
+) -> None:
+    """Increment wrench/idle seconds for a mechanic and the open bay session."""
+    stamp = timestamp or datetime.now()
+    dt = max(0.0, float(dt_seconds))
+    if dt <= 0 or not bay_id:
+        return
+    staff = str(name or "").strip() or None
+    if staff:
+        record_face_clock_in(conn, staff, stamp)
+        field = "wrench_minutes" if is_working else "idle_minutes"
+        conn.execute(
+            f"""
+            UPDATE technician_shifts
+            SET {field} = {field} + ?
+            WHERE day = ? AND staff_name = ?
+            """,
+            (dt / 60.0, stamp.date().isoformat(), staff),
+        )
+        _refresh_shift_row(conn, stamp.date(), staff, stamp)
+
+    open_row = conn.execute(
+        """
+        SELECT * FROM bay_sessions
+        WHERE bay_id = ? AND end_time IS NULL
+        ORDER BY id DESC LIMIT 1
+        """,
+        (bay_id,),
+    ).fetchone()
+    needs_new = (
+        open_row is None
+        or (open_row["technician_name"] or None) != staff
+    )
+    if needs_new:
+        if open_row is not None:
+            conn.execute(
+                "UPDATE bay_sessions SET end_time = ? WHERE id = ?",
+                (_iso(stamp), open_row["id"]),
+            )
+        conn.execute(
+            """
+            INSERT INTO bay_sessions (
+                bay_id, technician_name, start_time, active_duration, idle_duration
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                bay_id,
+                staff,
+                _iso(stamp),
+                dt if is_working else 0.0,
+                0.0 if is_working else dt,
+            ),
+        )
+    else:
+        field = "active_duration" if is_working else "idle_duration"
+        conn.execute(
+            f"UPDATE bay_sessions SET {field} = {field} + ? WHERE id = ?",
+            (dt, open_row["id"]),
+        )
+    conn.commit()
+
+
+def close_empty_bays(
+    conn: sqlite3.Connection,
+    occupied_bay_ids: set[str],
+    timestamp: datetime,
+) -> None:
+    rows = conn.execute("SELECT id, bay_id FROM bay_sessions WHERE end_time IS NULL").fetchall()
+    for row in rows:
+        if row["bay_id"] not in occupied_bay_ids:
+            conn.execute(
+                "UPDATE bay_sessions SET end_time = ? WHERE id = ?",
+                (_iso(timestamp), row["id"]),
+            )
+    conn.commit()
+
+
+def close_bay_sessions(
+    conn: sqlite3.Connection,
+    bay_ids: list[str] | set[str],
+    timestamp: datetime | None = None,
+) -> int:
+    """End open sessions for removed bays. Past (already ended) rows stay intact."""
+    ids = [str(bay_id).strip() for bay_id in bay_ids if str(bay_id).strip()]
+    if not ids:
+        return 0
+    stamp = _iso(timestamp or datetime.now())
+    closed = 0
+    for bay_id in ids:
+        cur = conn.execute(
+            "UPDATE bay_sessions SET end_time = ? WHERE bay_id = ? AND end_time IS NULL",
+            (stamp, bay_id),
+        )
+        closed += int(cur.rowcount or 0)
+    conn.commit()
+    return closed
+
+
+def _parse_clock(value: str | None, default: str) -> time:
+    text = str(value or default)
+    try:
+        hour, minute = text.split(":")
+        return time(int(hour), int(minute))
+    except (TypeError, ValueError):
+        return time(8, 0)
+
+
+def get_daily_garage_summary(
+    conn: sqlite3.Connection,
+    day: date,
+    *,
+    open_time: str = "08:00",
+    close_time: str = "18:00",
+    bay_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    now = datetime.now()
+    technicians: list[dict[str, Any]] = []
+    for row in conn.execute(
+        "SELECT * FROM technician_shifts WHERE day = ? ORDER BY clock_in_time ASC",
+        (day.isoformat(),),
+    ):
+        shift_min = _shift_minutes(row["clock_in_time"], row["clock_out_time"], now)
+        wrench = float(row["wrench_minutes"] or 0)
+        idle = float(row["idle_minutes"] or 0)
+        score = _performance_score(wrench, shift_min)
+        technicians.append(
+            {
+                "staff_name": row["staff_name"],
+                "clock_in_time": row["clock_in_time"],
+                "clock_out_time": row["clock_out_time"],
+                "total_shift_minutes": round(shift_min, 2),
+                "wrench_minutes": round(wrench, 2),
+                "idle_minutes": round(idle, 2),
+                "wifi_active_minutes": round(float(row["wifi_active_minutes"] or 0), 2),
+                "performance_score": score,
+                "clocked_in": row["clock_in_time"] is not None and not row["clock_out_time"],
+            }
+        )
+
+    prefix = day.isoformat()
+    bay_rows = list(
+        conn.execute(
+            """
+            SELECT bay_id,
+                   SUM(active_duration) AS active_duration,
+                   SUM(idle_duration) AS idle_duration,
+                   COUNT(*) AS session_count
+            FROM bay_sessions
+            WHERE start_time LIKE ?
+            GROUP BY bay_id
+            """,
+            (f"{prefix}%",),
+        )
+    )
+    by_id = {row["bay_id"]: row for row in bay_rows}
+    ids = list(bay_ids or []) or list(by_id.keys())
+    open_t = _parse_clock(open_time, "08:00")
+    close_t = _parse_clock(close_time, "18:00")
+    window_start = datetime.combine(day, open_t)
+    window_end = datetime.combine(day, close_t)
+    if now.date() == day:
+        elapsed = max(0.0, (min(now, window_end) - window_start).total_seconds())
+    else:
+        elapsed = max(0.0, (window_end - window_start).total_seconds())
+    operating_hours = max(0.01, elapsed / 3600.0)
+
+    bays: list[dict[str, Any]] = []
+    used_seconds = 0.0
+    for bay_id in ids:
+        row = by_id.get(bay_id)
+        active = float(row["active_duration"] if row else 0) or 0.0
+        idle = float(row["idle_duration"] if row else 0) or 0.0
+        occupied = active + idle
+        used_seconds += occupied
+        util = 0.0 if elapsed <= 0 else 100.0 * occupied / elapsed
+        bays.append(
+            {
+                "bay_id": bay_id,
+                "active_seconds": round(active, 2),
+                "idle_seconds": round(idle, 2),
+                "active_duration": round(active, 2),
+                "idle_duration": round(idle, 2),
+                "utilization_pct": round(util, 1),
+                "session_count": int(row["session_count"]) if row else 0,
+            }
+        )
+
+    n_bays = max(1, len(bays) if bays else 1)
+    shop_util = 0.0 if elapsed <= 0 else 100.0 * used_seconds / (elapsed * n_bays)
+    total_shift_hours = sum(t["total_shift_minutes"] for t in technicians) / 60.0
+    return {
+        "date": day.isoformat(),
+        "technicians": technicians,
+        "bays": bays,
+        "shop": {
+            "operating_hours": round(operating_hours, 2),
+            "total_shift_hours": round(total_shift_hours, 2),
+            "utilization_pct": round(shop_util, 1),
+            "open_time": open_time,
+            "close_time": close_time,
+        },
+    }

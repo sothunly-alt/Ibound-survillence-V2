@@ -8,6 +8,7 @@ renames it with the Tauri target triple and copies it to
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PyInstaller.building.api import EXE, PYZ
@@ -37,6 +38,24 @@ hiddenimports = [
     "report",
     "roi_edit",
     "telegram_out",
+    "capture",
+    "adapters",
+    "adapters.base",
+    "adapters.webcam",
+    "adapters.rtsp",
+    "adapters.phone_http",
+    "adapters.gateway",
+    "adapters.onvif",
+    "adapters.tapo",
+    "adapters.webrtc",
+    "discovery",
+    "discovery.scanner",
+    "zeroconf",
+    "media",
+    "media.client",
+    "media.go2rtc",
+    "sensors",
+    "sensors.wifi_tracker",
 ]
 
 for name in (
@@ -55,6 +74,11 @@ models = EDGE / "models"
 if models.is_dir():
     for onnx in models.glob("*.onnx"):
         datas.append((str(onnx), "models"))
+
+go2rtc_name = "go2rtc.exe" if sys.platform == "win32" else "go2rtc"
+go2rtc_bin = EDGE / "bin" / go2rtc_name
+if go2rtc_bin.is_file():
+    binaries.append((str(go2rtc_bin), "bin"))
 
 for pkg in ("ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests"):
     try:

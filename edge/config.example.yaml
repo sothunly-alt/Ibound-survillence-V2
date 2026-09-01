@@ -9,11 +9,20 @@
 # If the app has a username/password, fill those fields. IP Webcam uses HTTP Digest
 # (browsers handle it; a raw OpenCV URL does not).
 
-venue: Demo store
+venue: Demo Garage
+garage_name: Demo Garage
 source: 0
 
 # Named cameras added in the hub. Empty until the operator saves one.
 cameras: []
+# Example dual-stream camera (AI sub-stream + evidence main stream):
+# cameras:
+#   - id: cam-01
+#     name: Front Lift Bay
+#     source: rtsp://USER:PASS@192.168.1.64:554/Streaming/Channels/102
+#     main_source: rtsp://USER:PASS@192.168.1.64:554/Streaming/Channels/101
+#     protocol: rtsp
+#     vendor: hikvision
 active_camera_id: ""
 
 # Degrees clockwise. auto = 90 for phone HTTP (IP Webcam), 0 for PC webcam / RTSP.
@@ -22,9 +31,18 @@ rotate: auto
 # none | h | v  (selfie / front-camera mirror if needed). Live: press m.
 flip: none
 
-# Cashier till as fractions of the frame: [x, y, width, height]
-# Drag the box, its handles, or empty space on the live web feed to change it.
-roi: [0.30, 0.20, 0.40, 0.60]
+# Legacy single ROI (kept in sync with bays[0]). Prefer the bays list below.
+roi: [0.10, 0.20, 0.35, 0.60]
+
+# Named service-bay ROIs as fractions of the frame: [x, y, width, height]
+# Drag boxes on the live feed to create, move, or resize bays.
+bays:
+  - {id: bay_1, name: Lift Bay 1, roi: [0.10, 0.20, 0.35, 0.60], type: vehicle_bay}
+  - {id: bay_2, name: Bay 2 (Brakes/Tires), roi: [0.55, 0.20, 0.35, 0.60], type: vehicle_bay}
+  - {id: tools, name: Tool Station, roi: [0.42, 0.05, 0.16, 0.20], type: tool_area}
+
+# Mechanic phones on garage Wi-Fi (MAC and/or static IP from the ARP table).
+wifi_devices: []
 
 # Person detector — YOLO11n-pose. Staff = skeleton OR a close-up face
 # (laptop webcam). Blankets still fail: no eyes/shoulders.
@@ -39,14 +57,20 @@ kpt_conf: 0.4
 detect_fps: 15
 occupy_confirm_seconds: 1.0
 occupy_clear_seconds: 1.0
+idle_stationary_seconds: 120
+clock_out_seconds: 600
 
 # Product default is 180. Use ~10 so mentors do not wait.
 absent_seconds: 10
 cooldown_seconds: 30
 sample_fps: 30
 
-# Used to flag "opened late" in the shift report (local time).
+# Shop operating hours (local time) for utilization % and open/closed badge.
 open_time: "08:00"
+close_time: "18:00"
+operating_hours:
+  open: "08:00"
+  close: "18:00"
 
 # Local face ID (YuNet + SFace). Put staff photos in faces/<Name>/*.jpg
 # (several angles help). Unknown people overlay as Customer.

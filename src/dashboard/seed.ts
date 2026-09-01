@@ -17,12 +17,12 @@ export const seedState: OpsState = {
   alertSeq: 2045,
   detectionSeq: 94,
   cameras: [
-    { id: "cam-01", name: "CAM-01", zone: "Info desk", rtspLabel: "rtsp://cam-01" },
-    { id: "cam-03", name: "CAM-03", zone: "Food court", rtspLabel: "rtsp://cam-03" },
-    { id: "cam-07", name: "CAM-07", zone: "Produce aisle", rtspLabel: "rtsp://cam-07" },
-    { id: "cam-12", name: "CAM-12", zone: "Level 2 escalator", rtspLabel: "rtsp://cam-12" },
-    { id: "cam-18", name: "CAM-18", zone: "Parking B", rtspLabel: "rtsp://cam-18" },
-    { id: "cam-24", name: "CAM-24", zone: "Backroom", rtspLabel: "rtsp://cam-24" },
+    { id: "cam-01", name: "CAM-01", zone: "Info desk", rtspLabel: "rtsp://cam-01", protocol: "rtsp" },
+    { id: "cam-03", name: "CAM-03", zone: "Food court", rtspLabel: "rtsp://cam-03", protocol: "rtsp" },
+    { id: "cam-07", name: "CAM-07", zone: "Produce aisle", rtspLabel: "rtsp://cam-07", protocol: "rtsp" },
+    { id: "cam-12", name: "CAM-12", zone: "Level 2 escalator", rtspLabel: "rtsp://cam-12", protocol: "rtsp" },
+    { id: "cam-18", name: "CAM-18", zone: "Parking B", rtspLabel: "rtsp://cam-18", protocol: "rtsp" },
+    { id: "cam-24", name: "CAM-24", zone: "Backroom", rtspLabel: "rtsp://cam-24", protocol: "rtsp" },
   ],
   rules: {
     roiEnabled: true,

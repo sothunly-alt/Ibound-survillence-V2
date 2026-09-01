@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Inbound Surveillance</title>
+  <title>Inbound Garage</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
@@ -92,7 +92,8 @@
       overscroll-behavior: contain;
     }
     #workspace.hidden,
-    #identity-workspace.hidden { display: none !important; }
+    #identity-workspace.hidden,
+    #scorecard-workspace.hidden { display: none !important; }
     #feed-column { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-height: 0; min-width: 0; }
     #config-panel { max-height: 42vh; }
     /* Live feed keeps the stream aspect ratio but never grows past the
@@ -123,10 +124,22 @@
       max-height: 100%;
       background: #000;
     }
-    #live-camera-feed { display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; background: #000; }
+    #live-camera-feed, #live-webrtc {
+      display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%;
+      object-fit: contain; background: #000;
+    }
+    #live-webrtc { display: none; }
     .glass-panel { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
     .roi-overlay { position: absolute; z-index: 8; user-select: none; touch-action: none; }
     .roi-box { position: absolute; box-sizing: border-box; }
+    .roi-box.selected { z-index: 10; }
+    .roi-box .bay-chip {
+      position: absolute; top: -22px; left: 0;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 10px; line-height: 16px; padding: 1px 6px;
+      color: #0c1322; font-weight: 700; white-space: nowrap; max-width: 240px;
+      overflow: hidden; text-overflow: ellipsis;
+    }
     .roi-handle {
       position: absolute; width: 8px; height: 8px;
       background: #fabd34; z-index: 9;
@@ -139,6 +152,8 @@
     .roi-handle.s  { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize; }
     .roi-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
     .roi-handle.w  { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    #bay-context-menu { min-width: 220px; }
+    #bay-context-menu button { background: transparent; border: 0; color: inherit; cursor: pointer; }
     input[type=range] { accent-color: #60a5fa; }
     .orient-on { background: #60a5fa; color: #00315d; border-color: #60a5fa; }
     .tab-on { color: #a4c9ff; border-bottom: 2px solid #a4c9ff; }
@@ -161,6 +176,16 @@
       display: none; align-items: center; justify-content: center;
     }
     .identity-photo:hover button { display: flex; }
+    #scorecard-workspace {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      overflow-y: auto;
+    }
+    .wrench-bar { height: 8px; background: #2e3545; border-radius: 9999px; overflow: hidden; }
+    .wrench-bar > span { display: block; height: 100%; background: #34d399; }
+    #discovery-results { max-height: 11rem; overflow-y: auto; }
+    #discover-cred-modal.hidden { display: none; }
     @media (prefers-reduced-motion: reduce) {
       .animate-pulse { animation: none; }
     }
@@ -182,6 +207,12 @@
         <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="identity" onclick="setNav('identity')">
           <span class="material-symbols-outlined">badge</span>
           <span>Identity</span>
+        </button>
+      </li>
+      <li>
+        <button type="button" class="nav-off w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container-high hover:text-on-surface text-left" data-nav="scorecards" onclick="setNav('scorecards')">
+          <span class="material-symbols-outlined">monitoring</span>
+          <span>Mechanics</span>
         </button>
       </li>
       <li>
@@ -223,15 +254,23 @@
   <main class="ml-[288px] flex-1 flex flex-col h-full bg-[#111827] relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
       <div class="flex items-center gap-4 min-w-0">
-        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Surveillance</h1>
+        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Garage</h1>
         <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
           <span class="text-outline">/</span>
-          <span class="text-primary border-b border-primary pb-0.5" id="crumb-venue">Venue</span>
+          <span class="text-primary border-b border-primary pb-0.5" id="crumb-venue">Garage</span>
           <span class="text-outline">&gt;</span>
           <span id="crumb-cam">No camera</span>
         </div>
       </div>
       <div class="flex items-center gap-3 shrink-0">
+        <div id="shop-status-pill" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant">
+          <span id="shop-status-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+          <span id="shop-status-label" class="font-label-upper text-label-upper text-on-surface-variant">SHOP</span>
+        </div>
+        <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant">
+          <span class="material-symbols-outlined text-[16px] text-primary">garage</span>
+          <span id="header-bay-count" class="font-mono-data text-mono-data text-on-surface">0 / 0 bays</span>
+        </div>
         <button type="button" class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Alerts" onclick="showConfigTab('alerts')">
           <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -247,11 +286,12 @@
     <div class="flex-1 min-h-0 p-edge-margin" id="workspace">
       <div class="flex-1 min-h-0" id="feed-column">
         <div class="flex items-center gap-3">
-          <h2 class="font-headline-md text-headline-md text-on-surface">Surveillance Feed</h2>
+          <h2 class="font-headline-md text-headline-md text-on-surface">Shop Floor Feed</h2>
           <div id="live-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant">
             <span id="live-dot" class="w-2 h-2 rounded-full bg-outline"></span>
             <span id="live-label" class="font-label-upper text-label-upper text-on-surface-variant">STANDBY</span>
           </div>
+          <span id="live-protocol-pill" class="hidden font-label-upper text-label-upper px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant text-primary"></span>
         </div>
 
         <div class="video-stage w-full flex-1 min-h-0 bg-black rounded-xl border border-outline-variant relative overflow-hidden shadow-2xl flex items-center justify-center" id="video-viewport">
@@ -262,22 +302,11 @@
           </div>
 
           <div id="video-stage" style="display: none;">
+            <video id="live-webrtc" autoplay playsinline muted></video>
             <img id="live-camera-feed" alt="Live camera feed" onerror="handleStreamError()"/>
-            <div id="roi-overlay" class="roi-overlay" onmousedown="onRoiDown(event)">
-              <div class="roi-box border border-dashed border-tertiary bg-tertiary/10 cursor-move" id="roi-box">
-                <div class="absolute -top-6 left-0 bg-tertiary text-black font-mono-data text-[10px] px-1 py-0.5 font-bold">Till ROI</div>
-                <span class="roi-handle nw" data-handle="nw"></span>
-                <span class="roi-handle n" data-handle="n"></span>
-                <span class="roi-handle ne" data-handle="ne"></span>
-                <span class="roi-handle e" data-handle="e"></span>
-                <span class="roi-handle se" data-handle="se"></span>
-                <span class="roi-handle s" data-handle="s"></span>
-                <span class="roi-handle sw" data-handle="sw"></span>
-                <span class="roi-handle w" data-handle="w"></span>
-              </div>
-            </div>
+            <div id="roi-overlay" class="roi-overlay" onmousedown="onRoiDown(event)" oncontextmenu="onBayContextMenu(event)"></div>
             <div class="absolute bottom-3 left-1/2 -translate-x-1/2 glass-panel px-3 py-1 rounded-full z-20 pointer-events-none text-label-upper font-label-upper text-on-surface">
-              Drag the box to set till ROI
+              Drag empty space to add a bay · right-click a bay to rename or delete
             </div>
           </div>
 
@@ -287,8 +316,12 @@
           <div class="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
             <span class="font-body-sm text-body-sm font-semibold text-on-surface" id="overlay-cam">—</span>
           </div>
-          <div class="absolute bottom-4 right-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
+          <div class="absolute bottom-4 right-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none flex flex-col items-end gap-0.5">
+            <span class="font-mono-data text-mono-data text-primary" id="overlay-protocol">—</span>
             <span class="font-mono-data text-mono-data text-green-400" id="overlay-quality">—</span>
+            <span class="font-mono-data text-mono-data text-on-surface-variant" id="overlay-ingest">—</span>
+            <span class="font-mono-data text-mono-data text-on-surface-variant" id="overlay-infer">—</span>
+            <span class="font-mono-data text-mono-data text-on-surface-variant hidden" id="overlay-main">MAIN</span>
           </div>
         </div>
       </div>
@@ -302,7 +335,17 @@
 
         <div id="panel-source" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div class="space-y-4">
-            <h3 class="text-sm font-semibold text-on-surface">Connection Settings</h3>
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-sm font-semibold text-on-surface">Connection Settings</h3>
+              <button type="button" id="btn-scan-network" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-1.5 px-3 rounded-lg font-medium transition-colors text-xs border border-outline-variant disabled:opacity-60 flex items-center gap-1.5" onclick="scanNetwork()">
+                <span class="material-symbols-outlined text-[16px]">wifi_find</span>
+                Scan Network
+              </button>
+            </div>
+            <div id="discovery-panel" class="rounded-lg border border-outline-variant bg-surface-container p-3 space-y-2">
+              <p id="discovery-status" class="text-xs text-on-surface-variant">Scan the LAN for ONVIF, RTSP, and local webcams.</p>
+              <div id="discovery-results" class="space-y-1"></div>
+            </div>
             <div class="flex flex-col gap-1.5">
               <label class="font-label-upper text-label-upper text-on-surface-variant" for="camera-name-input">Camera location</label>
               <input id="camera-name-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="" placeholder="e.g. Front Entrance" autocomplete="off"/>
@@ -314,6 +357,9 @@
                   <option value="webcam">Webcam</option>
                   <option value="rtsp">RTSP</option>
                   <option value="phone">Phone HTTP</option>
+                  <option value="onvif">ONVIF</option>
+                  <option value="tapo">Tapo</option>
+                  <option value="webrtc">WebRTC</option>
                 </select>
               </div>
               <div class="flex flex-col gap-1.5">
@@ -330,6 +376,10 @@
               <label class="font-label-upper text-label-upper text-on-surface-variant" for="source-input">Stream URL</label>
               <input id="source-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="0" placeholder="0, rtsp://…, or http://PHONE_IP:8080/video"/>
               <p id="source-hint" class="text-xs text-on-surface-variant leading-relaxed"></p>
+            </div>
+            <div id="main-source-wrap" class="flex flex-col gap-1.5 hidden">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="main-source-input">Main stream (evidence)</label>
+              <input id="main-source-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="" placeholder="optional high-res rtsp://… for snapshots" autocomplete="off"/>
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div class="flex flex-col gap-1.5">
@@ -357,7 +407,7 @@
               <h3 class="text-sm font-semibold text-on-surface mb-4">Stream Processing</h3>
               <div class="py-3 border-b border-outline-variant/50">
                 <p class="text-sm text-on-surface mb-1">Orientation</p>
-                <p class="text-xs text-on-surface-variant mb-3">Auto uprights a phone camera and sizes the video box to the stream. Mirror flips the image; it does not switch portrait and landscape.</p>
+                <p class="text-xs text-on-surface-variant mb-3">Auto keeps the camera's native orientation and sizes the video box to the stream. Choose CW, CCW, or 180° if a phone is mounted on its side. Mirror flips the image; it does not switch portrait and landscape.</p>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" id="rot-auto" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate('auto')">Auto</button>
                   <button type="button" id="rot-270" class="px-3 py-1.5 text-xs rounded border border-outline-variant bg-surface-container-highest text-on-surface-variant" onclick="setRotate(270)">CCW</button>
@@ -389,16 +439,20 @@
 
         <div id="panel-alerts" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
           <div class="flex flex-col gap-1.5">
-            <label class="font-label-upper text-label-upper text-on-surface-variant" for="venue-input">Venue Name</label>
-            <input id="venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="Demo store" oninput="updateCrumbs()" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="venue-input">Garage Name</label>
+            <input id="venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="Demo Garage" oninput="updateCrumbs()" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="font-label-upper text-label-upper text-on-surface-variant" for="open-time-input">Operating Hours</label>
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="open-time-input">Shop Opens</label>
             <input id="open-time-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="time" value="08:00" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="font-label-upper text-label-upper text-on-surface-variant" for="close-time-input">Shop Closes</label>
+            <input id="close-time-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="time" value="18:00" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
           </div>
           <div class="md:col-span-2 flex flex-col gap-2">
             <div class="flex justify-between items-center">
-              <label class="font-label-upper text-label-upper text-on-surface-variant" for="absent-slider">Absent-till threshold</label>
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="absent-slider">Idle-bay alert threshold</label>
               <span class="font-mono-data text-mono-data text-primary" id="absent-val-label">10s</span>
             </div>
             <input id="absent-slider" class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" max="600" min="5" step="5" type="range" value="10" oninput="updateAbsentLabel(this.value)" onchange="saveHubSettings()"/>
@@ -406,6 +460,18 @@
               <span>0s</span>
               <span>600s</span>
             </div>
+          </div>
+          <div class="md:col-span-2 space-y-3">
+            <h3 class="text-sm font-semibold text-on-surface">Mechanic Wi-Fi phones</h3>
+            <p class="text-xs text-on-surface-variant">Register a phone MAC or static IP. Presence is confirmed when Face ID and garage Wi-Fi both match.</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input id="wifi-name-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg p-2.5" type="text" placeholder="Mechanic name"/>
+              <input id="wifi-mac-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg p-2.5" type="text" placeholder="aa:bb:cc:dd:ee:ff"/>
+              <input id="wifi-ip-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg p-2.5" type="text" placeholder="192.168.1.42 (optional)"/>
+            </div>
+            <button type="button" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg text-sm border border-outline-variant" onclick="registerWifiDevice()">Register phone</button>
+            <p id="wifi-feedback" class="hidden text-sm"></p>
+            <div id="wifi-device-list" class="space-y-1"></div>
           </div>
         </div>
 
@@ -441,10 +507,23 @@
       <input id="identity-file-input" class="hidden" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple/>
     </div>
 
+    <div class="flex-1 min-h-0 p-edge-margin hidden" id="scorecard-workspace">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface">Mechanics &amp; Scorecards</h2>
+          <p class="text-body-sm text-on-surface-variant mt-1">Live attendance, wrench time, and garage Wi-Fi presence for today.</p>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+          <span id="scorecard-util" class="font-mono-data text-mono-data text-primary">Utilization —</span>
+        </div>
+      </div>
+      <div id="scorecard-content" class="flex-1 min-h-0 space-y-4"></div>
+    </div>
+
     <footer class="flex justify-between items-center px-container-padding h-8 bg-surface-container-lowest border-t border-outline-variant shrink-0 z-10 w-full gap-4">
       <div class="font-mono-data text-mono-data text-primary truncate">
-        FPS: <span id="telem-fps">—</span> | Detections: <span id="telem-people">—</span> | Identified: <span id="telem-identities">—</span> | Stream Health: <span id="telem-health">Standby</span>
-        <span class="text-on-surface-variant"> | Till <span id="telem-status">STANDBY</span> · Empty <span id="telem-elapsed">—</span></span>
+        FPS: <span id="telem-fps">—</span> | Ingest: <span id="telem-ingest-fps">—</span> | Infer: <span id="telem-infer-ms">—</span> | Protocol: <span id="telem-protocol">—</span> | Main: <span id="telem-main-stream">—</span> | Detections: <span id="telem-people">—</span> | Identified: <span id="telem-identities">—</span> | Stream Health: <span id="telem-health">Standby</span>
+        <span class="text-on-surface-variant"> | Floor <span id="telem-status">STANDBY</span> · Bays <span id="telem-elapsed">—</span></span>
       </div>
       <div class="flex gap-4 font-mono-data text-mono-data text-on-surface-variant shrink-0">
         <span>Privacy Policy</span>
@@ -453,10 +532,51 @@
     </footer>
   </main>
 
+  <div id="discover-cred-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onclick="if (event.target === this) cancelDiscoverConnect()">
+    <div class="bg-surface-container-low border border-outline-variant rounded-xl w-full max-w-md p-5 space-y-4 shadow-2xl">
+      <h3 class="text-sm font-semibold text-on-surface" id="discover-cred-title">Connect camera</h3>
+      <p class="text-xs text-on-surface-variant" id="discover-cred-meta"></p>
+      <div class="flex flex-col gap-1.5">
+        <label class="font-label-upper text-label-upper text-on-surface-variant" for="discover-user">Username</label>
+        <input id="discover-user" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="" placeholder="camera login" autocomplete="off"/>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="font-label-upper text-label-upper text-on-surface-variant" for="discover-pass">Password</label>
+        <input id="discover-pass" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" value="" placeholder="camera password" autocomplete="off"/>
+      </div>
+      <p id="discover-cred-error" class="hidden text-sm text-error"></p>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg font-medium text-sm border border-outline-variant" onclick="cancelDiscoverConnect()">Cancel</button>
+        <button type="button" id="btn-discover-connect" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-5 rounded-lg font-medium text-sm" onclick="submitDiscoverConnect()">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bay-context-menu" class="hidden fixed z-50 bg-surface-container-high border border-outline-variant rounded-lg shadow-xl py-1 text-sm text-on-surface">
+    <button type="button" id="ctx-rename-bay" class="w-full px-4 py-1.5 text-left hover:bg-surface-container-highest flex items-center gap-2">
+      <span>✏️</span> Rename Bay
+    </button>
+    <button type="button" id="ctx-type-bay" class="w-full px-4 py-1.5 text-left hover:bg-surface-container-highest flex items-center gap-2">
+      <span>🏷️</span> Toggle Vehicle Bay / Tool Station
+    </button>
+    <div class="my-1 border-t border-outline-variant"></div>
+    <button type="button" id="ctx-delete-bay" class="w-full px-4 py-1.5 text-left text-error hover:bg-error/10 flex items-center gap-2">
+      <span>🗑️</span> Delete Bay
+    </button>
+  </div>
+
   <script>
     let currentConfig = {};
     let isStreamActive = false;
-    let liveRoi = [0.30, 0.20, 0.40, 0.60];
+    let liveRoi = [0.10, 0.20, 0.35, 0.60];
+    let liveBays = [
+      { id: 'bay_1', name: 'Lift Bay 1', roi: [0.10, 0.20, 0.35, 0.60], type: 'vehicle_bay' },
+      { id: 'bay_2', name: 'Bay 2 (Brakes/Tires)', roi: [0.55, 0.20, 0.35, 0.60], type: 'vehicle_bay' },
+      { id: 'tools', name: 'Tool Station', roi: [0.42, 0.05, 0.16, 0.20], type: 'tool_area' }
+    ];
+    let selectedBayId = 'bay_1';
+    let bayLive = {};
+    let wifiDevices = [];
     let roiDragging = false;
     let roiMode = null;
     let roiHandle = null;
@@ -471,10 +591,18 @@
     let streamW = 0;
     let streamH = 0;
     let connectSeq = 0;
+    let discoveryScanGen = 0;
+    let discoveryPollTimer = 0;
+    let pendingDiscoverDevice = null;
+    let pendingXaddrs = [];
     let currentNav = 'live';
     let identityView = 'list';
     let identityName = '';
     let identityCreating = false;
+    let go2rtcHandle = null;
+    let go2rtcFallbackTimer = 0;
+    let lastLiveStreamId = '';
+    let lastLiveMedia = null;
 
     const VENDOR_TEMPLATES = {
       dahua: { port: 554, path: '/cam/realmonitor?channel=1&subtype=0', forcePort: true, defaultHost: '192.168.1.108' },
@@ -483,10 +611,12 @@
       ipwebcam: { port: 8080, path: '/h264_ulaw.sdp', forcePort: true, defaultHost: '192.168.1.50' }
     };
 
+    const BAY_COLORS = ['#34d399', '#fbbf24', '#c084fc', '#60a5fa', '#f472b6', '#2dd4bf'];
+
     function greetingText() {
       const h = new Date().getHours();
       const part = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
-      return 'Good ' + part + ', Operator';
+      return 'Good ' + part + ', Owner';
     }
 
     function showConfigTab(name) {
@@ -502,27 +632,29 @@
     }
 
     function setNav(name) {
-      const highlight = name === 'identity' ? 'identity' : 'live';
+      currentNav = name;
       document.querySelectorAll('[data-nav]').forEach((el) => {
         const key = el.getAttribute('data-nav');
-        const isOn = key === highlight;
-        el.className = (isOn ? 'nav-on' : 'nav-off') + ' w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left' + (isOn ? '' : ' hover:bg-surface-container-high hover:text-on-surface');
+        const on = key === name;
+        el.className = (on ? 'nav-on' : 'nav-off') + ' w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left' + (on ? '' : ' hover:bg-surface-container-high hover:text-on-surface');
         const icon = el.querySelector('.material-symbols-outlined');
         if (icon && key === 'live') {
-          icon.style.fontVariationSettings = isOn ? "'FILL' 1" : "'FILL' 0";
+          icon.style.fontVariationSettings = on ? "'FILL' 1" : "'FILL' 0";
         }
       });
-      document.getElementById('workspace').classList.toggle('hidden', name === 'identity');
+      document.getElementById('workspace').classList.toggle('hidden', name === 'identity' || name === 'scorecards');
       document.getElementById('identity-workspace').classList.toggle('hidden', name !== 'identity');
+      document.getElementById('scorecard-workspace').classList.toggle('hidden', name !== 'scorecards');
       if (name === 'identity') {
         if (identityView === 'detail' && identityName) openIdentity(identityName);
         else showIdentityList();
       }
+      if (name === 'scorecards') renderScorecard();
       if (name === 'cameras') {
         document.getElementById('camera-list-label').scrollIntoView({ behavior: 'smooth' });
       }
       if (name === 'settings') showConfigTab('alerts');
-      if (name !== 'identity') requestAnimationFrame(layoutVideoStage);
+      if (name !== 'identity' && name !== 'scorecards') requestAnimationFrame(layoutVideoStage);
     }
 
     function identityFeedback(ok, message) {
@@ -752,6 +884,7 @@
       if (deg === 'auto') flipMode = 'none';
       paintOrient();
       pushOrient();
+      if (isStreamActive) startLivePlayer(lastLiveStreamId, lastLiveMedia);
       requestAnimationFrame(layoutVideoStage);
     }
 
@@ -788,7 +921,9 @@
         telegram_bot_token: document.getElementById('tg-token-input').value,
         telegram_chat_id: document.getElementById('tg-chat-input').value,
         venue: document.getElementById('venue-input').value,
+        garage_name: document.getElementById('venue-input').value,
         open_time: document.getElementById('open-time-input').value,
+        close_time: document.getElementById('close-time-input').value,
         absent_seconds: Number(document.getElementById('absent-slider').value)
       };
     }
@@ -815,10 +950,187 @@
     }
 
     function detachLiveFeed() {
+      stopGo2rtcPlayer();
       const img = document.getElementById('live-camera-feed');
       if (!img) return;
       img.removeAttribute('src');
       img.src = '';
+      img.style.display = 'block';
+    }
+
+    function stopGo2rtcPlayer() {
+      if (go2rtcFallbackTimer) {
+        clearTimeout(go2rtcFallbackTimer);
+        go2rtcFallbackTimer = 0;
+      }
+      const handle = go2rtcHandle;
+      go2rtcHandle = null;
+      if (handle && typeof handle.close === 'function') {
+        try { handle.close(); } catch (err) { /* ignore */ }
+      }
+      const video = document.getElementById('live-webrtc');
+      if (!video) return;
+      try { video.pause(); } catch (err) { /* ignore */ }
+      video.srcObject = null;
+      video.removeAttribute('src');
+      video.style.display = 'none';
+    }
+
+    function showAnnotatedMjpeg() {
+      stopGo2rtcPlayer();
+      const img = document.getElementById('live-camera-feed');
+      if (!img) return;
+      img.style.display = 'block';
+      img.src = '/api/stream?t=' + Date.now();
+    }
+
+    function showGo2rtcMjpeg(url) {
+      const video = document.getElementById('live-webrtc');
+      const img = document.getElementById('live-camera-feed');
+      if (video) video.style.display = 'none';
+      if (!img) return;
+      img.style.display = 'block';
+      img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+    }
+
+    function startLivePlayer(streamId, media) {
+      const img = document.getElementById('live-camera-feed');
+      lastLiveStreamId = streamId || lastLiveStreamId;
+      lastLiveMedia = media || lastLiveMedia;
+      // Rotated streams use server-side MJPEG so YOLO boxes stay pixel-aligned.
+      if (rotateDeg !== 0 && rotateDeg !== 'auto') {
+        showAnnotatedMjpeg();
+        return;
+      }
+      const ready = media && media.ready && (media.ws || streamId);
+      if (!ready) {
+        showAnnotatedMjpeg();
+        return;
+      }
+      const wsUrl = media.ws || ('ws://127.0.0.1:1984/api/ws?src=' + encodeURIComponent(streamId));
+      const started = startGo2rtcPlayer(wsUrl, media);
+      if (!started) {
+        if (media.mjpeg) showGo2rtcMjpeg(media.mjpeg);
+        else showAnnotatedMjpeg();
+      }
+      go2rtcFallbackTimer = setTimeout(function () {
+        go2rtcFallbackTimer = 0;
+        const video = document.getElementById('live-webrtc');
+        const hasRtc = video && video.style.display !== 'none' && (video.videoWidth > 1 || video.srcObject);
+        if (hasRtc) return;
+        if (media && media.mjpeg && img && !img.src) {
+          showGo2rtcMjpeg(media.mjpeg);
+          return;
+        }
+        if (!img || !img.getAttribute('src')) showAnnotatedMjpeg();
+      }, 3500);
+    }
+
+    function startGo2rtcPlayer(wsUrl, media) {
+      const video = document.getElementById('live-webrtc');
+      const img = document.getElementById('live-camera-feed');
+      if (!video || !window.RTCPeerConnection || !window.WebSocket) return false;
+      stopGo2rtcPlayer();
+      let ws = null;
+      let pc = null;
+      let closed = false;
+      const iceServers = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
+
+      function close() {
+        if (closed) return;
+        closed = true;
+        if (ws) {
+          try { ws.close(); } catch (err) { /* ignore */ }
+          ws = null;
+        }
+        if (pc) {
+          try { pc.close(); } catch (err) { /* ignore */ }
+          pc = null;
+        }
+      }
+
+      function onVideoReady() {
+        if (closed) return;
+        video.style.display = 'block';
+        if (img) {
+          img.removeAttribute('src');
+          img.src = '';
+          img.style.display = 'none';
+        }
+        requestAnimationFrame(layoutVideoStage);
+      }
+
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        return false;
+      }
+      ws.binaryType = 'arraybuffer';
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      video.addEventListener('loadedmetadata', onVideoReady);
+
+      ws.addEventListener('open', async function () {
+        if (closed) return;
+        try {
+          pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle', iceServers: iceServers });
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+          pc.addEventListener('icecandidate', function (ev) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) return;
+            const candidate = ev.candidate ? ev.candidate.candidate : '';
+            ws.send(JSON.stringify({ type: 'webrtc/candidate', value: candidate }));
+          });
+          pc.addEventListener('track', function (ev) {
+            if (ev.streams && ev.streams[0]) video.srcObject = ev.streams[0];
+            else video.srcObject = new MediaStream([ev.track]);
+            video.play().catch(function () {});
+            onVideoReady();
+          });
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'webrtc/offer', value: offer.sdp }));
+            if (window.MediaSource) {
+              const types = ['avc1.640029', 'avc1.64002A', 'mp4a.40.2', 'opus']
+                .filter(function (c) { return MediaSource.isTypeSupported('video/mp4; codecs="' + c + '"'); })
+                .join();
+              ws.send(JSON.stringify({ type: 'mse', value: types }));
+            }
+          }
+        } catch (err) {
+          close();
+          if (media && media.mjpeg) showGo2rtcMjpeg(media.mjpeg);
+          else showAnnotatedMjpeg();
+        }
+      });
+
+      ws.addEventListener('message', async function (ev) {
+        if (closed || typeof ev.data !== 'string') return;
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch (err) { return; }
+        if (msg.type === 'webrtc/answer' && pc) {
+          try { await pc.setRemoteDescription({ type: 'answer', sdp: msg.value }); } catch (err) { /* ignore */ }
+        } else if (msg.type === 'webrtc/candidate' && pc && msg.value) {
+          try { await pc.addIceCandidate({ candidate: msg.value, sdpMid: '0' }); } catch (err) { /* ignore */ }
+        } else if (msg.type === 'error') {
+          const value = String(msg.value || '');
+          if (value.indexOf('webrtc') === 0 && media && media.mjpeg) {
+            showGo2rtcMjpeg(media.mjpeg);
+          }
+        }
+      });
+
+      ws.addEventListener('error', function () {
+        if (closed) return;
+        close();
+        if (media && media.mjpeg) showGo2rtcMjpeg(media.mjpeg);
+        else showAnnotatedMjpeg();
+      });
+
+      go2rtcHandle = { close: close };
+      return true;
     }
 
     function resetConnectButton() {
@@ -872,6 +1184,12 @@
         hint.textContent = 'Use 0 for the default laptop camera, or 1 if 0 is a metadata device.';
       } else if (protocol === 'phone') {
         hint.textContent = 'IP Webcam: start the server on the phone, same Wi-Fi as this PC. Use http://PHONE_IP:8080/video (not the / web page). Fill username and password if the app asks for them — this hub now sends HTTP Digest, which a browser handles but OpenCV does not.';
+      } else if (protocol === 'onvif') {
+        hint.textContent = 'ONVIF device URL such as http://CAMERA_IP/onvif/device_service, or Scan Network and Connect. Username and password are sent separately — they are not put in the URL.';
+      } else if (protocol === 'tapo') {
+        hint.textContent = 'Camera IP or tapo://user:pass@CAMERA_IP. go2rtc speaks Tapo; if that fails the engine probes common RTSP paths.';
+      } else if (protocol === 'webrtc') {
+        hint.textContent = 'WHEP/WHIP URL. go2rtc ingests WebRTC; this hub does not terminate ICE.';
       } else if (vendor === 'ipwebcam') {
         hint.textContent = 'Phone RTSP via IP Webcam: rtsp://PHONE_IP:8080/h264_ulaw.sdp with empty username and password. If this fails, switch Protocol to Phone HTTP.';
       } else if (vendor === 'generic') {
@@ -916,26 +1234,35 @@
       const user = document.getElementById('username-input');
       const pass = document.getElementById('password-input');
       const vendor = document.getElementById('vendor-input');
+      const mainWrap = document.getElementById('main-source-wrap');
       const authDisabled = tab === 'webcam';
       user.disabled = authDisabled;
       pass.disabled = authDisabled;
       vendor.disabled = tab !== 'rtsp';
+      if (mainWrap) mainWrap.classList.toggle('hidden', tab === 'webcam');
       if (tab === 'webcam') {
-        if (!sourceInput.value || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http')) {
+        if (!sourceInput.value || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http') || sourceInput.value.startsWith('tapo') || sourceInput.value.startsWith('whep') || sourceInput.value.startsWith('webrtc')) {
           sourceInput.value = '0';
         }
       } else if (tab === 'rtsp') {
-        if (sourceInput.value === '0' || sourceInput.value.startsWith('http://') || sourceInput.value.startsWith('https://')) {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('http://') || sourceInput.value.startsWith('https://') || sourceInput.value.startsWith('tapo') || sourceInput.value.startsWith('onvif')) {
           applyVendorTemplate();
         }
       } else if (tab === 'phone') {
-        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp')) {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('tapo') || sourceInput.value.startsWith('onvif')) {
           sourceInput.value = 'http://192.168.1.50:8080/video';
         }
-        if (rotateDeg === 0) {
-          rotateDeg = 'auto';
-          flipMode = 'none';
-          paintOrient();
+      } else if (tab === 'onvif') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp') || /\/video$/i.test(sourceInput.value)) {
+          sourceInput.value = 'http://192.168.1.64/onvif/device_service';
+        }
+      } else if (tab === 'tapo') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http')) {
+          sourceInput.value = '192.168.1.64';
+        }
+      } else if (tab === 'webrtc') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp')) {
+          sourceInput.value = 'http://127.0.0.1:1984/api/webrtc?src=cam';
         }
       }
       updateSourceHint();
@@ -959,31 +1286,59 @@
       }
     }
 
-    function buildSource() {
-      const protocol = document.getElementById('protocol-input').value;
-      let src = document.getElementById('source-input').value.trim();
-      if (/^https?:\/\//i.test(src) || protocol === 'phone') return buildHttpSource(src);
-      if (protocol === 'webcam') return src || '0';
-      if (!src) return src;
-      if (!/^rtsp:\/\//i.test(src)) src = 'rtsp://' + src.replace(/^\/+/, '');
+    function withUserPass(url) {
       const user = document.getElementById('username-input').value.trim();
       const pass = document.getElementById('password-input').value;
-      if (!user) return src;
+      if (!user) return url;
       try {
-        const u = new URL(src);
+        const u = new URL(url);
         u.username = user;
         u.password = pass;
         return u.toString();
       } catch {
+        return url;
+      }
+    }
+
+    function buildSource() {
+      const protocol = document.getElementById('protocol-input').value;
+      let src = document.getElementById('source-input').value.trim();
+      if (protocol === 'webcam') return src || '0';
+      if (protocol === 'onvif') {
+        if (!src) return src;
+        if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(src)) src = 'http://' + src + '/onvif/device_service';
+        else if (!/:\/\//.test(src)) src = 'http://' + src.replace(/^\/+/, '');
         return src;
       }
+      if (protocol === 'tapo') {
+        if (!src) return src;
+        if (!/:\/\//.test(src)) src = 'tapo://' + src.replace(/^\/+/, '');
+        return withUserPass(src);
+      }
+      if (protocol === 'webrtc') return src;
+      if (/^https?:\/\//i.test(src) || protocol === 'phone') return buildHttpSource(src);
+      if (!src) return src;
+      if (!/^rtsp:\/\//i.test(src)) src = 'rtsp://' + src.replace(/^\/+/, '');
+      return withUserPass(src);
     }
 
     function applySourceToFields(srcStr) {
       const sourceInput = document.getElementById('source-input');
       sourceInput.value = srcStr;
+      const lower = String(srcStr || '').toLowerCase();
       if (/^\d+$/.test(srcStr)) {
         document.getElementById('protocol-input').value = 'webcam';
+      } else if (lower.startsWith('tapo://')) {
+        document.getElementById('protocol-input').value = 'tapo';
+        try {
+          const u = new URL(srcStr);
+          document.getElementById('username-input').value = u.username ? decodeURIComponent(u.username) : '';
+          document.getElementById('password-input').value = u.password ? decodeURIComponent(u.password) : '';
+        } catch { /* keep defaults */ }
+      } else if (lower.startsWith('webrtc://') || lower.startsWith('whep://') || lower.startsWith('whip://') || lower.indexOf('/api/webrtc') !== -1) {
+        document.getElementById('protocol-input').value = 'webrtc';
+      } else if (lower.startsWith('onvif://') || lower.indexOf('/onvif') !== -1) {
+        document.getElementById('protocol-input').value = 'onvif';
       } else if (srcStr.startsWith('http://') || srcStr.startsWith('https://')) {
         document.getElementById('protocol-input').value = 'phone';
         try {
@@ -1016,7 +1371,7 @@
     }
 
     function updateCrumbs() {
-      const venue = document.getElementById('venue-input').value || 'Venue';
+      const venue = document.getElementById('venue-input').value || 'Garage';
       const loc = cameraLocationName() || 'No camera';
       document.getElementById('crumb-venue').textContent = venue;
       document.getElementById('crumb-cam').textContent = loc;
@@ -1099,15 +1454,25 @@
       if (cam.username) document.getElementById('username-input').value = cam.username;
       if (cam.protocol) document.getElementById('protocol-input').value = cam.protocol;
       if (cam.vendor) document.getElementById('vendor-input').value = cam.vendor;
-      if (Array.isArray(cam.roi) && cam.roi.length === 4) liveRoi = cam.roi.map(Number);
-      const proto = cam.protocol || document.getElementById('protocol-input').value;
+      const mainEl = document.getElementById('main-source-input');
+      if (mainEl) mainEl.value = cam.main_source || '';
+      pendingXaddrs = Array.isArray(cam.xaddrs) ? cam.xaddrs.slice() : [];
+      if (Array.isArray(cam.bays) && cam.bays.length) {
+        liveBays = cam.bays.map(cloneBay);
+        selectedBayId = liveBays[0].id;
+        liveRoi = liveBays[0].roi.slice();
+      } else if (Array.isArray(cam.roi) && cam.roi.length === 4) {
+        liveRoi = cam.roi.map(Number);
+      }
+      syncBayDom();
       const rot = cam.rotate;
-      if (proto === 'phone' && (rot === undefined || rot === '' || rot === 'auto' || String(rot) === '0')) {
-        rotateDeg = 'auto';
-        flipMode = 'none';
-      } else if (rot !== undefined && rot !== 'auto') {
+      if (rot !== undefined && rot !== '' && rot !== 'auto') {
         const n = Number(rot);
-        if ([0, 90, 180, 270].indexOf(n) !== -1) rotateDeg = n;
+        if ([0, 90, 180, 270].indexOf(n) !== -1) {
+          rotateDeg = n;
+        } else {
+          rotateDeg = 'auto';
+        }
       } else {
         rotateDeg = 'auto';
       }
@@ -1126,6 +1491,9 @@
       document.getElementById('protocol-input').value = 'rtsp';
       document.getElementById('vendor-input').value = 'generic';
       document.getElementById('source-input').value = '';
+      const mainEl = document.getElementById('main-source-input');
+      if (mainEl) mainEl.value = '';
+      pendingXaddrs = [];
       rotateDeg = 'auto';
       flipMode = 'none';
       liveRoi = [0.30, 0.20, 0.40, 0.60];
@@ -1153,17 +1521,296 @@
     }
 
     function cameraPayload() {
+      const username = document.getElementById('username-input').value.trim();
+      const password = document.getElementById('password-input').value;
+      const mainEl = document.getElementById('main-source-input');
       return {
         id: activeCameraId || '',
         name: document.getElementById('camera-name-input').value.trim(),
         source: buildSource(),
+        main_source: mainEl ? mainEl.value.trim() : '',
         protocol: document.getElementById('protocol-input').value,
         vendor: document.getElementById('vendor-input').value,
-        username: document.getElementById('username-input').value.trim(),
+        username: username,
+        password: password,
+        credentials: { username: username, password: password },
+        xaddrs: pendingXaddrs.slice(),
         rotate: document.getElementById('rotate-input').value,
         flip: document.getElementById('flip-input').value,
-        roi: liveRoi
+        roi: liveRoi,
+        bays: liveBays
       };
+    }
+
+    function stopDiscoveryPoll() {
+      if (discoveryPollTimer) {
+        clearTimeout(discoveryPollTimer);
+        discoveryPollTimer = 0;
+      }
+    }
+
+    function protocolFromDevice(dev) {
+      const st = String((dev && dev.service_type) || '').toLowerCase();
+      const brand = String((dev && (dev.manufacturer || dev.model)) || '').toLowerCase();
+      if (st === 'webcam') return 'webcam';
+      if (st === 'onvif') return 'onvif';
+      if (st === 'tapo' || brand.indexOf('tapo') !== -1 || brand.indexOf('tp-link') !== -1 || brand.indexOf('tplink') !== -1) return 'tapo';
+      if (st === 'webrtc' || st === 'whep' || st === 'whip') return 'webrtc';
+      if (st === 'http' || st === 'phone') return 'phone';
+      if (st === 'rtsp') return 'rtsp';
+      return 'rtsp';
+    }
+
+    function vendorFromDevice(dev) {
+      const brand = String((dev && (dev.manufacturer || dev.model || '')) || '').toLowerCase();
+      if (brand.indexOf('hik') !== -1) return 'hikvision';
+      if (brand.indexOf('dahua') !== -1) return 'dahua';
+      if (brand.indexOf('ip webcam') !== -1) return 'ipwebcam';
+      return 'generic';
+    }
+
+    function webcamIndex(dev) {
+      const xaddrs = Array.isArray(dev.xaddrs) ? dev.xaddrs.filter(Boolean) : [];
+      if (xaddrs.length && /^\d+$/.test(String(xaddrs[0]))) return String(xaddrs[0]);
+      if (dev.port != null && String(dev.port) !== '' && Number(dev.port) >= 0 && Number(dev.port) < 64) {
+        return String(dev.port);
+      }
+      if (/^\d+$/.test(String(dev.ip || ''))) return String(dev.ip);
+      const fromName = String(dev.name || '').match(/(\d+)/);
+      return fromName ? fromName[1] : '0';
+    }
+
+    function sourceFromDevice(dev) {
+      const protocol = protocolFromDevice(dev);
+      const xaddrs = Array.isArray(dev.xaddrs) ? dev.xaddrs.filter(Boolean) : [];
+      if (protocol === 'webcam') return webcamIndex(dev);
+      if (xaddrs.length) return xaddrs[0];
+      const host = dev.ip || '';
+      const port = dev.port;
+      if (protocol === 'onvif') {
+        const p = port && Number(port) !== 80 ? (':' + port) : '';
+        return 'http://' + host + p + '/onvif/device_service';
+      }
+      if (protocol === 'tapo') return host;
+      if (protocol === 'webrtc') return host ? ('http://' + host + (port ? ':' + port : '') + '/') : '';
+      if (protocol === 'phone') return 'http://' + host + ':' + (port || 8080) + '/video';
+      return 'rtsp://' + host + ':' + (port || 554);
+    }
+
+    function fillFormFromDevice(dev, creds) {
+      const protocol = protocolFromDevice(dev);
+      const name = (dev.name || '').trim() || [dev.manufacturer, dev.model].filter(Boolean).join(' ') || (dev.ip ? ('Camera ' + dev.ip) : 'Discovered camera');
+      pendingXaddrs = Array.isArray(dev.xaddrs) ? dev.xaddrs.filter(Boolean) : [];
+      document.getElementById('camera-name-input').value = name;
+      document.getElementById('protocol-input').value = protocol;
+      document.getElementById('vendor-input').value = vendorFromDevice(dev);
+      document.getElementById('source-input').value = sourceFromDevice(dev);
+      document.getElementById('username-input').value = (creds && creds.username) || '';
+      document.getElementById('password-input').value = (creds && creds.password) || '';
+      onProtocolChange();
+      updateCrumbs();
+    }
+
+    function renderDiscoveryResults(data) {
+      const list = document.getElementById('discovery-results');
+      const statusEl = document.getElementById('discovery-status');
+      if (!list || !statusEl) return;
+      const status = (data && data.status) || 'idle';
+      const devices = (data && Array.isArray(data.devices)) ? data.devices : [];
+      if (status === 'scanning') {
+        statusEl.textContent = devices.length
+          ? 'Scanning… ' + devices.length + ' device' + (devices.length === 1 ? '' : 's') + ' so far.'
+          : 'Scanning the network…';
+      } else if (status === 'error') {
+        statusEl.textContent = data.error || 'Scan failed.';
+      } else if (status === 'done') {
+        statusEl.textContent = devices.length
+          ? devices.length + ' device' + (devices.length === 1 ? '' : 's') + ' found.'
+          : 'No cameras found on this network.';
+      } else {
+        statusEl.textContent = 'Not scanned yet. Scan the LAN for ONVIF, RTSP, and local webcams.';
+      }
+      list.innerHTML = '';
+      devices.forEach((dev) => {
+        const brand = [dev.manufacturer, dev.model].filter(Boolean).join(' ') || '—';
+        const host = dev.ip ? (dev.ip + (dev.port ? ':' + dev.port : '')) : 'local';
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-2.5 py-2';
+        const meta = document.createElement('div');
+        meta.className = 'min-w-0 flex-1';
+        const title = document.createElement('p');
+        title.className = 'text-sm text-on-surface font-medium truncate';
+        title.textContent = (dev.name || '').trim() || host;
+        const sub = document.createElement('p');
+        sub.className = 'font-mono-data text-mono-data text-on-surface-variant truncate';
+        sub.textContent = host + ' · ' + brand + ' · ' + (dev.service_type || 'unknown');
+        meta.appendChild(title);
+        meta.appendChild(sub);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'shrink-0 bg-primary-container hover:bg-primary text-on-primary py-1 px-3 rounded-lg font-medium text-xs';
+        btn.textContent = 'Connect';
+        btn.addEventListener('click', () => beginDiscoverConnect(dev));
+        row.appendChild(meta);
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+    }
+
+    async function pollDiscoveryResults(gen) {
+      if (gen !== discoveryScanGen) return;
+      try {
+        const res = await fetch('/api/discovery/results');
+        if (!res.ok) {
+          renderDiscoveryResults({
+            status: 'error',
+            devices: [],
+            error: res.status === 404 ? 'Discovery API is not available yet.' : ('Scan results failed (' + res.status + ').')
+          });
+          stopDiscoveryPoll();
+          const btn = document.getElementById('btn-scan-network');
+          if (btn) btn.disabled = false;
+          return;
+        }
+        const data = await res.json();
+        renderDiscoveryResults(data);
+        const status = data.status || 'idle';
+        if (status !== 'done' && status !== 'error') {
+          discoveryPollTimer = setTimeout(() => pollDiscoveryResults(gen), 700);
+          return;
+        }
+      } catch (err) {
+        renderDiscoveryResults({ status: 'error', devices: [], error: 'Scan failed: ' + err.message });
+      }
+      stopDiscoveryPoll();
+      const btn = document.getElementById('btn-scan-network');
+      if (btn) btn.disabled = false;
+    }
+
+    async function scanNetwork() {
+      showConfigTab('source');
+      const btn = document.getElementById('btn-scan-network');
+      const gen = ++discoveryScanGen;
+      stopDiscoveryPoll();
+      if (btn) btn.disabled = true;
+      renderDiscoveryResults({ status: 'scanning', devices: [] });
+      try {
+        const res = await fetch('/api/discovery/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) {
+          renderDiscoveryResults({
+            status: 'error',
+            devices: [],
+            error: data.error || (res.status === 404 ? 'Discovery API is not available yet.' : 'Could not start scan.')
+          });
+          if (btn) btn.disabled = false;
+          return;
+        }
+        pollDiscoveryResults(gen);
+      } catch (err) {
+        renderDiscoveryResults({ status: 'error', devices: [], error: 'Scan failed: ' + err.message });
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function beginDiscoverConnect(dev) {
+      pendingDiscoverDevice = dev;
+      fillFormFromDevice(dev, null);
+      showConfigTab('source');
+      if (protocolFromDevice(dev) === 'webcam') {
+        document.getElementById('discover-user').value = '';
+        document.getElementById('discover-pass').value = '';
+        submitDiscoverConnect();
+        return;
+      }
+      const modal = document.getElementById('discover-cred-modal');
+      document.getElementById('discover-cred-title').textContent = 'Connect ' + ((dev.name || '').trim() || dev.ip || 'camera');
+      document.getElementById('discover-cred-meta').textContent =
+        (dev.ip || 'local') + ' · ' + ([dev.manufacturer, dev.model].filter(Boolean).join(' ') || 'unknown brand') + ' · ' + (dev.service_type || '');
+      document.getElementById('discover-user').value = document.getElementById('username-input').value;
+      document.getElementById('discover-pass').value = '';
+      const err = document.getElementById('discover-cred-error');
+      err.classList.add('hidden');
+      err.textContent = '';
+      modal.classList.remove('hidden');
+      document.getElementById('discover-user').focus();
+    }
+
+    function cancelDiscoverConnect() {
+      pendingDiscoverDevice = null;
+      document.getElementById('discover-cred-modal').classList.add('hidden');
+    }
+
+    async function submitDiscoverConnect() {
+      const dev = pendingDiscoverDevice;
+      const feedback = document.getElementById('camera-feedback');
+      const modalErr = document.getElementById('discover-cred-error');
+      const creds = {
+        username: document.getElementById('discover-user').value.trim(),
+        password: document.getElementById('discover-pass').value
+      };
+      if (dev) fillFormFromDevice(dev, creds);
+      const payload = cameraPayload();
+      if (!payload.name) {
+        const msg = 'Name the camera location before connecting.';
+        if (modalErr && !document.getElementById('discover-cred-modal').classList.contains('hidden')) {
+          modalErr.classList.remove('hidden');
+          modalErr.textContent = msg;
+        } else {
+          showBanner(feedback, false, msg);
+        }
+        return;
+      }
+      if (!payload.source && !(payload.xaddrs && payload.xaddrs.length)) {
+        const msg = 'No stream URL for this device.';
+        if (modalErr && !document.getElementById('discover-cred-modal').classList.contains('hidden')) {
+          modalErr.classList.remove('hidden');
+          modalErr.textContent = msg;
+        } else {
+          showBanner(feedback, false, msg);
+        }
+        return;
+      }
+      const btn = document.getElementById('btn-discover-connect');
+      if (btn) btn.disabled = true;
+      try {
+        const saveRes = await fetch('/api/cameras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const saveData = await saveRes.json().catch(() => ({}));
+        if (!saveData.success) {
+          const msg = saveData.error || 'Could not save camera.';
+          if (modalErr && !document.getElementById('discover-cred-modal').classList.contains('hidden')) {
+            modalErr.classList.remove('hidden');
+            modalErr.textContent = msg;
+          } else {
+            showBanner(feedback, false, msg);
+          }
+          return;
+        }
+        applyCameraList(saveData);
+        if (saveData.camera && saveData.camera.id) activeCameraId = saveData.camera.id;
+        else if (saveData.active_camera_id) activeCameraId = saveData.active_camera_id;
+        document.getElementById('discover-cred-modal').classList.add('hidden');
+        pendingDiscoverDevice = null;
+        await connectAndStreamCamera();
+      } catch (err) {
+        const msg = 'Connect failed: ' + err.message;
+        if (modalErr && !document.getElementById('discover-cred-modal').classList.contains('hidden')) {
+          modalErr.classList.remove('hidden');
+          modalErr.textContent = msg;
+        } else {
+          showBanner(feedback, false, msg);
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     async function saveCameraOnly() {
@@ -1175,6 +1822,7 @@
         document.getElementById('camera-name-input').focus();
         return;
       }
+      if (!payload.source && payload.xaddrs && payload.xaddrs[0]) payload.source = payload.xaddrs[0];
       if (!payload.source) {
         showBanner(feedback, false, 'Enter a stream URL or webcam index.');
         return;
@@ -1229,6 +1877,44 @@
       document.getElementById('live-label').textContent = label;
     }
 
+    function paintLiveBadges(data) {
+      data = data || {};
+      const proto = data.protocol || document.getElementById('protocol-input').value || '';
+      const protoLabel = proto ? String(proto).toUpperCase() : '—';
+      const ingestRaw = data.ingest_fps != null ? data.ingest_fps : data.fps;
+      const ingest = ingestRaw != null && ingestRaw !== '' ? Number(ingestRaw) : NaN;
+      const ingestText = isNaN(ingest) ? '—' : ingest.toFixed(1) + ' fps';
+      const inferRaw = data.infer_ms;
+      const infer = inferRaw != null && inferRaw !== '' ? Number(inferRaw) : NaN;
+      const inferText = isNaN(infer) ? '—' : Math.round(infer) + ' ms';
+      let res = data.resolution || '';
+      if (!res && data.width && data.height) res = data.width + 'x' + data.height;
+      const overlayProto = document.getElementById('overlay-protocol');
+      if (overlayProto) overlayProto.textContent = protoLabel;
+      const overlayQuality = document.getElementById('overlay-quality');
+      if (overlayQuality && res) overlayQuality.textContent = res;
+      const overlayIngest = document.getElementById('overlay-ingest');
+      if (overlayIngest) overlayIngest.textContent = ingestText;
+      const overlayInfer = document.getElementById('overlay-infer');
+      if (overlayInfer) overlayInfer.textContent = inferText;
+      const pill = document.getElementById('live-protocol-pill');
+      if (pill) {
+        pill.textContent = protoLabel;
+        pill.classList.toggle('hidden', !proto);
+      }
+      const telemProto = document.getElementById('telem-protocol');
+      if (telemProto) telemProto.textContent = protoLabel;
+      const telemIngest = document.getElementById('telem-ingest-fps');
+      if (telemIngest) telemIngest.textContent = isNaN(ingest) ? '—' : ingest.toFixed(1);
+      const telemInfer = document.getElementById('telem-infer-ms');
+      if (telemInfer) telemInfer.textContent = inferText;
+      const hasMain = !!data.main_stream;
+      const overlayMain = document.getElementById('overlay-main');
+      if (overlayMain) overlayMain.classList.toggle('hidden', !hasMain);
+      const telemMain = document.getElementById('telem-main-stream');
+      if (telemMain) telemMain.textContent = hasMain ? 'yes' : 'no';
+    }
+
     async function loadInitialConfig() {
       try {
         const res = await fetch('/api/config');
@@ -1236,8 +1922,15 @@
         currentConfig = await res.json();
         cameras = Array.isArray(currentConfig.cameras) ? currentConfig.cameras : [];
         activeCameraId = currentConfig.active_camera_id || '';
-        if (currentConfig.venue) document.getElementById('venue-input').value = currentConfig.venue;
+        if (currentConfig.venue || currentConfig.garage_name) {
+          document.getElementById('venue-input').value = currentConfig.garage_name || currentConfig.venue;
+        }
         if (currentConfig.open_time) document.getElementById('open-time-input').value = currentConfig.open_time;
+        if (currentConfig.close_time) document.getElementById('close-time-input').value = currentConfig.close_time;
+        if (currentConfig.operating_hours) {
+          if (currentConfig.operating_hours.open) document.getElementById('open-time-input').value = currentConfig.operating_hours.open;
+          if (currentConfig.operating_hours.close) document.getElementById('close-time-input').value = currentConfig.operating_hours.close;
+        }
         if (currentConfig.absent_seconds) {
           document.getElementById('absent-slider').value = currentConfig.absent_seconds;
           updateAbsentLabel(currentConfig.absent_seconds);
@@ -1250,9 +1943,17 @@
         paintOrient();
         if (currentConfig.telegram_bot_token) document.getElementById('tg-token-input').value = currentConfig.telegram_bot_token;
         if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
-        if (Array.isArray(currentConfig.roi) && currentConfig.roi.length === 4) {
+        if (Array.isArray(currentConfig.bays) && currentConfig.bays.length) {
+          liveBays = currentConfig.bays.map(cloneBay);
+          selectedBayId = liveBays[0].id;
+          liveRoi = liveBays[0].roi.slice();
+        } else if (Array.isArray(currentConfig.roi) && currentConfig.roi.length === 4) {
           liveRoi = currentConfig.roi.map(Number);
+          if (liveBays[0]) liveBays[0].roi = liveRoi.slice();
         }
+        wifiDevices = Array.isArray(currentConfig.wifi_devices) ? currentConfig.wifi_devices : [];
+        renderWifiDevices();
+        syncBayDom();
         const selected = cameras.find((c) => c.id === activeCameraId) || cameras[0];
         if (selected) {
           activeCameraId = selected.id;
@@ -1265,6 +1966,9 @@
         }
         renderCameraList();
         updateCrumbs();
+        if (activeCameraId || currentConfig.source !== undefined) {
+          connectAndStreamCamera();
+        }
       } catch (err) {
         console.error('Failed to load config:', err);
       }
@@ -1309,7 +2013,6 @@
       const feedback = document.getElementById('camera-feedback');
       const btn = document.getElementById('btn-connect');
       const placeholder = document.getElementById('stream-placeholder');
-      const img = document.getElementById('live-camera-feed');
       const stage = document.getElementById('video-stage');
       const name = document.getElementById('camera-name-input').value.trim();
 
@@ -1337,16 +2040,21 @@
 
       try {
         const payload = cameraPayload();
+        if (!payload.source && payload.xaddrs && payload.xaddrs[0]) payload.source = payload.xaddrs[0];
         const res = await fetch('/api/connect-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             source: payload.source,
+            main_source: payload.main_source,
             camera_id: payload.id,
             camera_name: payload.name,
             protocol: payload.protocol,
             vendor: payload.vendor,
             username: payload.username,
+            password: payload.password,
+            credentials: payload.credentials,
+            xaddrs: payload.xaddrs,
             venue: document.getElementById('venue-input').value,
             open_time: document.getElementById('open-time-input').value,
             absent_seconds: Number(document.getElementById('absent-slider').value),
@@ -1367,6 +2075,12 @@
         }
         if (Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
         updateCrumbs();
+        if (data.stream_id && data.media && data.media.ready) {
+          isStreamActive = true;
+          stage.style.display = 'block';
+          placeholder.style.display = 'none';
+          startLivePlayer(data.stream_id, data.media);
+        }
 
         const outcome = data.pending === false && data.width
           ? { connected: true, data: data }
@@ -1382,7 +2096,9 @@
         lastFailedId = '';
         liveStatusText = 'Live';
         showBanner(feedback, true, data.message || 'Camera connected.');
-        img.src = '/api/stream?t=' + Date.now();
+        const streamId = data.stream_id || (outcome.data && outcome.data.stream_id) || '';
+        const media = data.media || (outcome.data && outcome.data.media) || {};
+        startLivePlayer(streamId, media);
         stage.style.display = 'block';
         placeholder.style.display = 'none';
         setLiveChrome(true, 'LIVE');
@@ -1391,11 +2107,16 @@
         const width = data.width || tel.width;
         const height = data.height || tel.height;
         if (width && height) {
-          document.getElementById('overlay-quality').textContent = width + 'x' + height;
           applyStreamSize(width, height);
         } else {
           parseResolution(tel.resolution);
         }
+        paintLiveBadges(Object.assign({}, tel, {
+          protocol: tel.protocol || payload.protocol,
+          resolution: tel.resolution || ((width && height) ? (width + 'x' + height) : tel.resolution),
+          width: width,
+          height: height
+        }));
         renderCameraList();
         updateCrumbs();
         requestAnimationFrame(layoutVideoStage);
@@ -1422,6 +2143,16 @@
       if (!el) return;
       el.textContent = text;
       el.className = 'font-mono-data text-mono-data ' + cls;
+    }
+
+    async function pollGarage() {
+      try {
+        const res = await fetch('/api/garage/telemetry');
+        if (!res.ok) return;
+        const data = await res.json();
+        applyGarageHeader(data);
+        if (!roiDragging && Array.isArray(data.bays) && data.bays.length) mergeBayTelemetry(data.bays);
+      } catch (err) { /* ignore */ }
     }
 
     async function pollTelemetry() {
@@ -1456,15 +2187,257 @@
         document.getElementById('telem-fps').textContent = fps;
         document.getElementById('telem-health').textContent = 'Stable';
         setLiveChrome(true, 'LIVE');
-        const resText = data.resolution || document.getElementById('overlay-quality').textContent;
-        document.getElementById('overlay-quality').textContent = resText + '  ' + fps + 'FPS';
-        setCamStatus((data.resolution || 'live') + ' | ' + fps + 'FPS', 'text-green-400');
+        paintLiveBadges(data);
+        const ingestRaw = data.ingest_fps != null ? data.ingest_fps : data.fps;
+        const ingest = ingestRaw != null ? Number(ingestRaw).toFixed(1) : fps;
+        setCamStatus((data.resolution || 'live') + ' | ' + ingest + 'FPS', 'text-green-400');
         parseResolution(data.resolution);
-        if (!roiDragging && Array.isArray(data.roi) && data.roi.length === 4) liveRoi = data.roi;
+        applyGarageHeader(data);
+        if (!roiDragging && Array.isArray(data.bays) && data.bays.length) {
+          mergeBayTelemetry(data.bays);
+        }
         layoutVideoStage();
       } catch (err) {
         /* ignore poll glitches */
       }
+    }
+
+    function applyGarageHeader(data) {
+      const garage = data.garage || {};
+      const bays = data.bays || liveBays;
+      const active = garage.active_bay_count != null
+        ? garage.active_bay_count
+        : bays.filter((b) => (bayLive[b.bay_id || b.id] || b).state && (bayLive[b.bay_id || b.id] || b).state !== 'EMPTY').length;
+      const total = garage.total_bays != null ? garage.total_bays : bays.length;
+      const countEl = document.getElementById('header-bay-count');
+      if (countEl) countEl.textContent = active + ' / ' + total + ' bays';
+      const open = garage.shop_open;
+      const dot = document.getElementById('shop-status-dot');
+      const label = document.getElementById('shop-status-label');
+      if (dot && label) {
+        dot.className = 'w-2 h-2 rounded-full ' + (open ? 'bg-green-500' : 'bg-outline');
+        label.textContent = open ? 'SHOP OPEN' : 'SHOP CLOSED';
+        label.className = 'font-label-upper text-label-upper ' + (open ? 'text-green-400' : 'text-on-surface-variant');
+      }
+      if (garage.name) {
+        const crumb = document.getElementById('crumb-venue');
+        if (crumb && !document.getElementById('venue-input').matches(':focus')) {
+          crumb.textContent = garage.name;
+        }
+      }
+    }
+
+    function mergeBayTelemetry(rows) {
+      rows.forEach((row) => {
+        const id = row.bay_id || row.id;
+        bayLive[id] = row;
+        const existing = liveBays.find((b) => b.id === id);
+        if (existing && Array.isArray(row.roi) && row.roi.length === 4) {
+          existing.roi = row.roi.map(Number);
+          existing.name = row.name || existing.name;
+          existing.type = row.type || existing.type;
+        }
+      });
+      syncBayDom();
+    }
+
+    function cloneBay(bay) {
+      return {
+        id: String(bay.id || ('bay_' + Date.now())),
+        name: String(bay.name || bay.id || 'Bay'),
+        type: bay.type === 'tool_area' ? 'tool_area' : 'vehicle_bay',
+        roi: Array.isArray(bay.roi) ? bay.roi.map(Number) : [0.3, 0.2, 0.2, 0.3]
+      };
+    }
+
+    function nextAvailableBayName(bays) {
+      const usedNumbers = new Set();
+      (bays || []).forEach((b) => {
+        const m = (b.name || '').match(/Bay\s*(\d+)/i);
+        if (m) usedNumbers.add(parseInt(m[1], 10));
+      });
+      let num = 1;
+      while (usedNumbers.has(num)) num++;
+      return 'Bay ' + num;
+    }
+
+    function hideBayContextMenu() {
+      const menu = document.getElementById('bay-context-menu');
+      if (menu) menu.classList.add('hidden');
+    }
+
+    function showBayContextMenu(clientX, clientY) {
+      const menu = document.getElementById('bay-context-menu');
+      if (!menu) return;
+      menu.classList.remove('hidden');
+      const pad = 8;
+      const mw = menu.offsetWidth || 220;
+      const mh = menu.offsetHeight || 120;
+      const left = Math.min(clientX, window.innerWidth - mw - pad);
+      const top = Math.min(clientY, window.innerHeight - mh - pad);
+      menu.style.left = Math.max(pad, left) + 'px';
+      menu.style.top = Math.max(pad, top) + 'px';
+    }
+
+    function onBayContextMenu(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!isStreamActive) return;
+      const fromBox = ev.target && ev.target.closest ? ev.target.closest('.roi-box') : null;
+      let bay = null;
+      if (fromBox) bay = liveBays.find((b) => b.id === fromBox.dataset.bayId) || null;
+      if (!bay) {
+        const [nx, ny] = clientToRoi(ev);
+        bay = hitBay(nx, ny);
+      }
+      if (!bay) {
+        hideBayContextMenu();
+        return;
+      }
+      selectedBayId = bay.id;
+      syncBayDom();
+      layoutRoiOverlay();
+      showBayContextMenu(ev.clientX, ev.clientY);
+    }
+
+    async function persistLiveBays() {
+      try {
+        const res = await fetch('/api/garage/bays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bays: liveBays })
+        });
+        const data = await res.json();
+        if (Array.isArray(data.bays)) liveBays = data.bays.map(cloneBay);
+        if (data.cameras) applyCameraList(data);
+        if (!liveBays.some((b) => b.id === selectedBayId)) {
+          selectedBayId = liveBays[0] ? liveBays[0].id : '';
+        }
+        syncBayDom();
+        layoutRoiOverlay();
+      } catch (err) {
+        console.error('Failed to save bays', err);
+      }
+    }
+
+    async function renameSelectedBay() {
+      hideBayContextMenu();
+      const bay = selectedBay();
+      if (!bay) return;
+      const label = prompt('Rename bay', bay.name);
+      if (label == null) return;
+      const next = label.trim();
+      if (!next) return;
+      bay.name = next;
+      if (/tool/i.test(bay.name)) bay.type = 'tool_area';
+      syncBayDom();
+      layoutRoiOverlay();
+      await persistLiveBays();
+    }
+
+    async function toggleSelectedBayType() {
+      hideBayContextMenu();
+      const bay = selectedBay();
+      if (!bay) return;
+      bay.type = bay.type === 'tool_area' ? 'vehicle_bay' : 'tool_area';
+      syncBayDom();
+      layoutRoiOverlay();
+      await persistLiveBays();
+    }
+
+    async function deleteBay(bayId) {
+      hideBayContextMenu();
+      const id = String(bayId || selectedBayId || '');
+      const bay = liveBays.find((b) => b.id === id);
+      if (!bay) return;
+      const ok = confirm('Delete "' + bay.name + '"? Past reports keep their history.');
+      if (!ok) return;
+      liveBays = liveBays.filter((b) => b.id !== id);
+      selectedBayId = liveBays[0] ? liveBays[0].id : '';
+      if (selectedBayId) {
+        const sel = selectedBay();
+        if (sel) liveRoi = sel.roi.slice();
+      }
+      syncBayDom();
+      layoutRoiOverlay();
+      await persistLiveBays();
+    }
+
+    function bayColor(id, index) {
+      if (id === 'tools') return '#c084fc';
+      return BAY_COLORS[index % BAY_COLORS.length];
+    }
+
+    function selectedBay() {
+      return liveBays.find((b) => b.id === selectedBayId) || liveBays[0];
+    }
+
+    function stateBadge(bay) {
+      const live = bayLive[bay.id] || {};
+      const state = live.state || 'EMPTY';
+      const name = live.mechanic_name || '';
+      if (state === 'WORKING') {
+        return '🟢 WORKING' + (name ? ' - ' + name : '') + (live.wrench_time_today ? ' (' + formatSecs(live.wrench_time_today) + ')' : '');
+      }
+      if (state === 'IDLE') return '🟡 IDLE' + (name ? ' - ' + name : '');
+      return 'EMPTY';
+    }
+
+    function formatSecs(seconds) {
+      const total = Math.max(0, Math.floor(Number(seconds) || 0));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      if (h) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+      return m + 'm';
+    }
+
+    function syncBayDom() {
+      const overlay = document.getElementById('roi-overlay');
+      if (!overlay) return;
+      const keep = new Set();
+      liveBays.forEach((bay, index) => {
+        keep.add(bay.id);
+        let el = document.getElementById('bay-box-' + bay.id);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'bay-box-' + bay.id;
+          el.dataset.bayId = bay.id;
+          el.className = 'roi-box border border-dashed cursor-move';
+          el.innerHTML = '<div class="bay-chip"></div>'
+            + '<span class="roi-handle nw" data-handle="nw"></span>'
+            + '<span class="roi-handle n" data-handle="n"></span>'
+            + '<span class="roi-handle ne" data-handle="ne"></span>'
+            + '<span class="roi-handle e" data-handle="e"></span>'
+            + '<span class="roi-handle se" data-handle="se"></span>'
+            + '<span class="roi-handle s" data-handle="s"></span>'
+            + '<span class="roi-handle sw" data-handle="sw"></span>'
+            + '<span class="roi-handle w" data-handle="w"></span>';
+          overlay.appendChild(el);
+        }
+        const color = bayColor(bay.id, index);
+        const selected = bay.id === selectedBayId;
+        el.classList.toggle('selected', selected);
+        el.style.borderColor = color;
+        el.style.background = color + (selected ? '33' : '18');
+        const chip = el.querySelector('.bay-chip');
+        if (chip) {
+          chip.style.background = color;
+          chip.textContent = bay.name + ' · ' + stateBadge(bay);
+        }
+      });
+      overlay.querySelectorAll('.roi-box').forEach((el) => {
+        if (!keep.has(el.dataset.bayId)) el.remove();
+      });
+      const sel = selectedBay();
+      if (sel) liveRoi = sel.roi.slice();
+    }
+
+    function hitBay(nx, ny) {
+      for (let i = liveBays.length - 1; i >= 0; i--) {
+        const [x, y, w, h] = liveBays[i].roi;
+        if (nx >= x && nx <= x + w && ny >= y && ny <= y + h) return liveBays[i];
+      }
+      return null;
     }
 
     function clamp01(v) { return Math.max(0, Math.min(1, v)); }
@@ -1501,22 +2474,29 @@
 
     function layoutVideoStage() {
       const img = document.getElementById('live-camera-feed');
+      const video = document.getElementById('live-webrtc');
       const viewport = document.getElementById('video-viewport');
       const stage = document.getElementById('video-stage');
+      const placeholder = document.getElementById('stream-placeholder');
       const workspace = document.getElementById('workspace');
-      if (!img || !viewport || !stage || !isStreamActive) return;
-      const nw = streamW || img.naturalWidth || 0;
-      const nh = streamH || img.naturalHeight || 0;
-      if (nw < 2 || nh < 2) return;
+      if (!viewport || !stage || !isStreamActive) return;
+
+      stage.style.display = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+
+      const usingRtc = video && video.style.display !== 'none' && video.videoWidth > 1 && video.videoHeight > 1;
+      const nw = usingRtc ? video.videoWidth : (streamW || (img && img.naturalWidth) || 640);
+      const nh = usingRtc ? video.videoHeight : (streamH || (img && img.naturalHeight) || 480);
+
       if (workspace && !workspace.classList.contains('is-native-feed')) {
         workspace.classList.add('is-native-feed');
         requestAnimationFrame(layoutVideoStage);
         return;
       }
-      const vw = viewport.clientWidth;
+      const vw = viewport.clientWidth || 640;
       if (vw < 2) return;
       const maxH = visibleFeedMaxHeight(workspace);
-      const ar = nw / nh;
+      const ar = (nw > 0 && nh > 0) ? (nw / nh) : (16 / 9);
       let w = vw;
       let h = Math.max(1, w / ar);
       if (h > maxH) {
@@ -1528,7 +2508,6 @@
         h = Math.max(1, w / ar);
       }
       viewport.style.height = Math.round(h) + 'px';
-      stage.style.display = 'block';
       stage.style.width = Math.round(w) + 'px';
       stage.style.height = Math.round(h) + 'px';
       layoutRoiOverlay();
@@ -1536,17 +2515,21 @@
 
     function layoutRoiOverlay() {
       const overlay = document.getElementById('roi-overlay');
-      const box = document.getElementById('roi-box');
-      if (!overlay || !box || !isStreamActive) return;
+      if (!overlay || !isStreamActive) return;
       overlay.style.left = '0';
       overlay.style.top = '0';
       overlay.style.width = '100%';
       overlay.style.height = '100%';
-      const [x, y, w, h] = liveRoi;
-      box.style.left = (x * 100) + '%';
-      box.style.top = (y * 100) + '%';
-      box.style.width = (w * 100) + '%';
-      box.style.height = (h * 100) + '%';
+      syncBayDom();
+      liveBays.forEach((bay) => {
+        const box = document.getElementById('bay-box-' + bay.id);
+        if (!box) return;
+        const [x, y, w, h] = bay.roi;
+        box.style.left = (x * 100) + '%';
+        box.style.top = (y * 100) + '%';
+        box.style.width = (w * 100) + '%';
+        box.style.height = (h * 100) + '%';
+      });
     }
 
     function clientToRoi(ev) {
@@ -1590,63 +2573,191 @@
 
     function onRoiDown(ev) {
       if (!isStreamActive) return;
+      if (ev.button !== 0) return;
+      hideBayContextMenu();
       ev.preventDefault();
       const [nx, ny] = clientToRoi(ev);
-      const handle = ev.target.dataset.handle || hitHandle(nx, ny, liveRoi, 0.045);
+      const fromHandle = ev.target.dataset.handle;
+      let bay = selectedBay();
+      if (fromHandle && ev.target.closest('.roi-box')) {
+        const id = ev.target.closest('.roi-box').dataset.bayId;
+        bay = liveBays.find((b) => b.id === id) || bay;
+      } else {
+        bay = hitBay(nx, ny);
+      }
       roiDragging = true;
       roiOrigin = [nx, ny];
-      roiStart = liveRoi.slice();
-      if (handle) {
+      if (fromHandle && bay) {
+        selectedBayId = bay.id;
         roiMode = 'resize';
-        roiHandle = handle;
+        roiHandle = fromHandle;
+        roiStart = bay.roi.slice();
+      } else if (bay) {
+        selectedBayId = bay.id;
+        roiMode = 'move';
+        roiStart = bay.roi.slice();
       } else {
-        const [x, y, w, h] = liveRoi;
-        if (nx >= x && nx <= x + w && ny >= y && ny <= y + h) {
-          roiMode = 'move';
-        } else {
-          roiMode = 'draw';
-          liveRoi = [nx, ny, 0.02, 0.02];
-        }
+        roiMode = 'draw';
+        const id = 'bay_' + Date.now();
+        const created = { id: id, name: nextAvailableBayName(liveBays), type: 'vehicle_bay', roi: [nx, ny, 0.02, 0.02] };
+        liveBays.push(created);
+        selectedBayId = id;
+        roiStart = created.roi.slice();
+        syncBayDom();
       }
+      liveRoi = (selectedBay() || { roi: [nx, ny, 0.02, 0.02] }).roi.slice();
       layoutRoiOverlay();
     }
 
     function onRoiMove(ev) {
       if (!roiDragging) return;
       const [nx, ny] = clientToRoi(ev);
+      const bay = selectedBay();
+      if (!bay) return;
       if (roiMode === 'draw') {
         const x = Math.min(roiOrigin[0], nx);
         const y = Math.min(roiOrigin[1], ny);
-        liveRoi = [x, y, Math.max(0.02, Math.abs(nx - roiOrigin[0])), Math.max(0.02, Math.abs(ny - roiOrigin[1]))];
+        bay.roi = [x, y, Math.max(0.02, Math.abs(nx - roiOrigin[0])), Math.max(0.02, Math.abs(ny - roiOrigin[1]))];
       } else if (roiMode === 'move') {
         const dx = nx - roiOrigin[0];
         const dy = ny - roiOrigin[1];
         let [x, y, w, h] = roiStart;
         x = clamp01(Math.min(1 - w, x + dx));
         y = clamp01(Math.min(1 - h, y + dy));
-        liveRoi = [x, y, w, h];
+        bay.roi = [x, y, w, h];
       } else if (roiMode === 'resize' && roiHandle) {
-        liveRoi = applyHandle(roiStart, roiHandle, nx, ny);
+        bay.roi = applyHandle(roiStart, roiHandle, nx, ny);
       }
+      liveRoi = bay.roi.slice();
       layoutRoiOverlay();
     }
 
     async function onRoiUp() {
       if (!roiDragging) return;
+      const wasDraw = roiMode === 'draw';
       roiDragging = false;
       roiMode = null;
       roiHandle = null;
+      const bay = selectedBay();
+      if (bay && wasDraw) {
+        const label = prompt('Name this service bay', bay.name);
+        if (label) bay.name = label.trim() || bay.name;
+        if (/tool/i.test(bay.name)) bay.type = 'tool_area';
+      }
       layoutRoiOverlay();
+      await persistLiveBays();
+    }
+
+    async function registerWifiDevice() {
+      const feedback = document.getElementById('wifi-feedback');
+      const name = (document.getElementById('wifi-name-input').value || '').trim();
+      const mac = (document.getElementById('wifi-mac-input').value || '').trim();
+      const ip = (document.getElementById('wifi-ip-input').value || '').trim();
+      if (!name || (!mac && !ip)) {
+        showBanner(feedback, false, 'Need a mechanic name and a MAC or IP.');
+        return;
+      }
+      const next = wifiDevices.filter((d) => d.name.toLowerCase() !== name.toLowerCase());
+      next.push({ name, mac, ip });
       try {
-        const res = await fetch('/api/roi', {
+        const res = await fetch('/api/garage/wifi', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roi: liveRoi })
+          body: JSON.stringify({ wifi_devices: next })
         });
         const data = await res.json();
-        if (data.cameras) applyCameraList(data);
+        wifiDevices = data.wifi_devices || next;
+        renderWifiDevices();
+        document.getElementById('wifi-name-input').value = '';
+        document.getElementById('wifi-mac-input').value = '';
+        document.getElementById('wifi-ip-input').value = '';
+        showBanner(feedback, true, 'Saved Wi-Fi device for ' + name + '.');
       } catch (err) {
-        console.error('Failed to save ROI', err);
+        showBanner(feedback, false, err.message);
+      }
+    }
+
+    async function removeWifiDevice(name) {
+      const next = wifiDevices.filter((d) => d.name !== name);
+      const res = await fetch('/api/garage/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wifi_devices: next })
+      });
+      const data = await res.json();
+      wifiDevices = data.wifi_devices || next;
+      renderWifiDevices();
+    }
+
+    function renderWifiDevices() {
+      const root = document.getElementById('wifi-device-list');
+      if (!root) return;
+      if (!wifiDevices.length) {
+        root.innerHTML = '<p class="text-xs text-on-surface-variant">No phones registered yet.</p>';
+        return;
+      }
+      root.innerHTML = wifiDevices.map((d) => {
+        return '<div class="flex items-center justify-between gap-2 py-1 text-sm">'
+          + '<span class="text-on-surface">' + identityEsc(d.name) + ' <span class="font-mono-data text-mono-data text-on-surface-variant">'
+          + identityEsc(d.mac || d.ip || '') + '</span></span>'
+          + '<button type="button" class="text-error text-xs" onclick="removeWifiDevice(\'' + identityAttr(d.name) + '\')">Remove</button></div>';
+      }).join('');
+    }
+
+    function badgeEmoji(badge) {
+      if (badge === 'high') return '🟢 High';
+      if (badge === 'normal') return '🟡 Normal';
+      return '🔴 Low';
+    }
+
+    async function renderScorecard() {
+      const root = document.getElementById('scorecard-content');
+      if (!root) return;
+      try {
+        const res = await fetch('/api/garage/scorecard', { cache: 'no-store' });
+        const data = await res.json();
+        const shop = data.shop || {};
+        const util = document.getElementById('scorecard-util');
+        if (util) util.textContent = 'Utilization ' + (shop.utilization_pct != null ? shop.utilization_pct + '%' : '—');
+        const techs = data.technicians || data.attendance_logs || [];
+        const wifi = {};
+        (data.wifi_devices || []).forEach((d) => { wifi[d.name] = d; });
+        let html = '';
+        if (!techs.length) {
+          html += '<div class="rounded-xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">No clock-ins yet today. Face ID at the entrance starts a shift.</div>';
+        } else {
+          html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">';
+          techs.forEach((tech) => {
+            const score = Number(tech.performance_score || tech.wrench_pct || 0);
+            const wifiOn = !!(tech.wifi_connected || (wifi[tech.staff_name] && wifi[tech.staff_name].connected));
+            html += '<div class="rounded-xl border border-outline-variant bg-surface-container p-4 space-y-3">'
+              + '<div class="flex items-start justify-between gap-3">'
+              + '<div><p class="text-on-surface font-medium">' + identityEsc(tech.staff_name) + '</p>'
+              + '<p class="text-xs text-on-surface-variant mt-0.5">' + identityEsc(tech.attendance || 'Clocked In') + '</p></div>'
+              + '<div class="flex items-center gap-2">'
+              + '<span title="Garage Wi-Fi" class="w-2.5 h-2.5 rounded-full ' + (wifiOn ? 'bg-green-500' : 'bg-outline') + '"></span>'
+              + '<span class="text-xs">' + badgeEmoji(tech.badge) + '</span></div></div>'
+              + '<p class="font-mono-data text-mono-data text-on-surface-variant">In ' + identityEsc((tech.clock_in_time || '').slice(11, 16) || '—')
+              + ' · Out ' + identityEsc((tech.clock_out_time || '').slice(11, 16) || '—') + '</p>'
+              + '<div><div class="flex justify-between text-xs mb-1"><span>Wrench time</span><span>' + score.toFixed(0) + '%</span></div>'
+              + '<div class="wrench-bar"><span style="width:' + Math.min(100, score) + '%"></span></div></div>'
+              + '</div>';
+          });
+          html += '</div>';
+        }
+        const bays = data.bays || [];
+        if (bays.length) {
+          html += '<div class="rounded-xl border border-outline-variant bg-surface-container-low p-4">'
+            + '<h3 class="text-sm font-semibold text-on-surface mb-3">Bay utilization</h3><div class="grid grid-cols-1 md:grid-cols-3 gap-3">';
+          bays.forEach((bay) => {
+            html += '<div class="bg-surface-container rounded-lg p-3"><p class="text-sm text-on-surface">' + identityEsc(bay.bay_id)
+              + '</p><p class="font-mono-data text-mono-data text-primary mt-1">' + Number(bay.utilization_pct || 0).toFixed(0) + '%</p></div>';
+          });
+          html += '</div></div>';
+        }
+        root.innerHTML = html;
+      } catch (err) {
+        root.innerHTML = '<p class="text-error text-sm">' + identityEsc(err.message) + '</p>';
       }
     }
 
@@ -1663,6 +2774,7 @@
             token: document.getElementById('tg-token-input').value,
             chat_id: document.getElementById('tg-chat-input').value,
             venue: document.getElementById('venue-input').value,
+            garage_name: document.getElementById('venue-input').value,
             source: buildSource()
           })
         });
@@ -1691,9 +2803,35 @@
       tickClock();
       setInterval(tickClock, 1000);
       setInterval(pollTelemetry, 600);
+      setInterval(pollGarage, 1200);
+      setInterval(() => { if (currentNav === 'scorecards') renderScorecard(); }, 2500);
       window.addEventListener('mousemove', onRoiMove);
       window.addEventListener('mouseup', onRoiUp);
       window.addEventListener('resize', layoutVideoStage);
+      window.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+          hideBayContextMenu();
+          cancelDiscoverConnect();
+          return;
+        }
+        if (ev.key !== 'Delete' && ev.key !== 'Backspace') return;
+        const tag = ((ev.target && ev.target.tagName) || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || (ev.target && ev.target.isContentEditable)) return;
+        if (!selectedBayId || !liveBays.some((b) => b.id === selectedBayId)) return;
+        ev.preventDefault();
+        deleteBay(selectedBayId);
+      });
+      window.addEventListener('mousedown', (ev) => {
+        const menu = document.getElementById('bay-context-menu');
+        if (!menu || menu.classList.contains('hidden')) return;
+        if (!menu.contains(ev.target)) hideBayContextMenu();
+      });
+      const ctxRename = document.getElementById('ctx-rename-bay');
+      const ctxType = document.getElementById('ctx-type-bay');
+      const ctxDelete = document.getElementById('ctx-delete-bay');
+      if (ctxRename) ctxRename.addEventListener('click', () => renameSelectedBay());
+      if (ctxType) ctxType.addEventListener('click', () => toggleSelectedBayType());
+      if (ctxDelete) ctxDelete.addEventListener('click', () => deleteBay(selectedBayId));
       const feed = document.getElementById('live-camera-feed');
       if (feed) feed.addEventListener('load', layoutVideoStage);
       const fileInput = document.getElementById('identity-file-input');

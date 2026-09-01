@@ -25,6 +25,8 @@ export type TelegramMethod = "sendMessage" | "getUpdates" | "getMe" | "ticket" |
 
 export type ViewId = "live" | "rules" | "cases" | "alerts" | "bot";
 
+export type CameraProtocol = "webcam" | "rtsp" | "phone" | "onvif" | "tapo" | "webrtc";
+
 export type BBox = {
   x: number;
   y: number;
@@ -37,6 +39,54 @@ export type Camera = {
   name: string;
   zone: string;
   rtspLabel: string;
+  protocol?: CameraProtocol | string;
+  vendor?: string;
+  source?: string;
+  mainSource?: string;
+  username?: string;
+};
+
+export type DiscoveredDevice = {
+  ip: string;
+  port: number;
+  service_type: string;
+  name: string;
+  xaddrs: string[];
+  manufacturer: string;
+  model: string;
+};
+
+export type DiscoveryStatus = "idle" | "scanning" | "done" | "error";
+
+export type DiscoveryResults = {
+  status: DiscoveryStatus;
+  devices: DiscoveredDevice[];
+  error?: string;
+  started_at?: string | number;
+};
+
+export type EngineBay = {
+  bay_id?: string;
+  id?: string;
+  name?: string;
+  type?: string;
+  roi?: number[];
+  state?: string;
+};
+
+export type EngineTelemetry = {
+  protocol?: string;
+  resolution?: string;
+  fps?: number;
+  ingest_fps?: number;
+  infer_ms?: number;
+  main_stream?: boolean | string | null;
+  connection?: string;
+  status?: string;
+  error?: string;
+  width?: number;
+  height?: number;
+  bays?: EngineBay[];
 };
 
 export type Detection = {

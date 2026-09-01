@@ -21,5 +21,11 @@ src-tauri/gen/
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
 
+edge/bin/*
+!edge/bin/.gitkeep
+edge/go2rtc.log
+edge/go2rtc.pid
+edge/go2rtc.yaml
+
 .cursor/
 

@@ -93,6 +93,22 @@ def sidecar_name(target: str) -> str:
     return f"inbound-engine-{target}{ext}"
 
 
+def go2rtc_sidecar_name(target: str) -> str:
+    ext = ".exe" if sys.platform == "win32" or target.endswith("windows-msvc") else ""
+    return f"go2rtc-{target}{ext}"
+
+
+def ensure_go2rtc() -> Path:
+    """Download go2rtc into edge/bin/ so PyInstaller and Tauri can bundle it."""
+    sys.path.insert(0, str(EDGE))
+    from media.go2rtc import binary_filename, ensure_binary
+
+    dest = EDGE / "bin" / binary_filename()
+    path = ensure_binary(dest)
+    print(f"go2rtc binary: {path}", flush=True)
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build the inbound-engine Tauri sidecar")
     parser.add_argument(
@@ -111,6 +127,8 @@ def main() -> None:
         ensure_weights()
     elif not WEIGHTS.exists():
         print("WARNING: edge/yolo11n-pose.pt is missing; the sidecar will download at runtime.", flush=True)
+
+    go2rtc_path = ensure_go2rtc()
 
     dist = REPO / "dist-sidecar"
     work = REPO / "build" / "pyinstaller"
@@ -143,6 +161,11 @@ def main() -> None:
     shutil.copy2(built, dest)
     dest.chmod(dest.stat().st_mode | 0o111)
     print(f"Sidecar installed: {dest}", flush=True)
+
+    go2rtc_dest = BINARIES / go2rtc_sidecar_name(target)
+    shutil.copy2(go2rtc_path, go2rtc_dest)
+    go2rtc_dest.chmod(go2rtc_dest.stat().st_mode | 0o111)
+    print(f"go2rtc installed: {go2rtc_dest}", flush=True)
 
 
 if __name__ == "__main__":
