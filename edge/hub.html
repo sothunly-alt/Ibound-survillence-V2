@@ -310,8 +310,14 @@
             </div>
           </div>
 
-          <div class="absolute top-4 left-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
-            <span class="font-mono-data text-mono-data text-on-surface" id="overlay-clock">—</span>
+          <div class="absolute top-4 left-4 glass-panel px-3 py-2 rounded-lg z-20 pointer-events-none flex flex-col gap-1.5 min-w-[210px]" id="overlay-clock-panel">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-mono-data text-mono-data text-on-surface" id="overlay-clock">—</span>
+              <span class="w-2 h-2 rounded-full bg-green-400"></span>
+            </div>
+            <div id="overlay-staff-list" class="flex flex-col gap-1 border-t border-outline-variant/40 pt-1.5 text-xs">
+              <span class="text-on-surface-variant text-[11px]">No active technicians</span>
+            </div>
           </div>
           <div class="absolute bottom-4 left-4 glass-panel px-3 py-1.5 rounded-lg z-20 pointer-events-none">
             <span class="font-body-sm text-body-sm font-semibold text-on-surface" id="overlay-cam">—</span>
@@ -773,7 +779,7 @@
       identityName = name;
       setIdentityChrome(
         name,
-        'Photos of ' + name + ' from every angle. Anyone not enrolled here is labeled Customer.',
+        'Photos of ' + name + ' from every angle. Anyone not enrolled here is labeled Employee.',
         '<button type="button" class="border border-outline-variant text-on-surface py-2 px-4 rounded-lg text-sm" onclick="showIdentityList()">All identities</button>'
           + '<button type="button" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-4 rounded-lg font-medium text-sm flex items-center gap-1" onclick="document.getElementById(\'identity-file-input\').click()"><span class="material-symbols-outlined text-sm">upload</span> Upload photos</button>'
       );
@@ -2227,6 +2233,63 @@
       }
     }
 
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[m]));
+    }
+
+    function updateOverlayStaff(rows) {
+      const listEl = document.getElementById('overlay-staff-list');
+      if (!listEl) return;
+      if (!Array.isArray(rows) || !rows.length) {
+        listEl.innerHTML = '<span class="text-on-surface-variant text-[11px]">No active technicians</span>';
+        return;
+      }
+      const entries = [];
+      rows.forEach((bay) => {
+        if (!bay || bay.state === 'EMPTY') return;
+        const isWorking = bay.state === 'WORKING' || bay.state === 'UNDER_VEHICLE';
+        const colorCls = isWorking ? 'text-green-400 font-semibold' : 'text-amber-400';
+        const statusLabel = isWorking ? '🔧' : '☕';
+
+        if (bay.technicians_times && Object.keys(bay.technicians_times).length > 0) {
+          Object.entries(bay.technicians_times).forEach(([name, sec]) => {
+            const timeStr = formatSecs(sec);
+            entries.push(`
+              <div class="flex items-center justify-between gap-3 text-xs py-0.5">
+                <span class="font-medium text-on-surface flex items-center gap-1 truncate max-w-[130px]">
+                  <span>${statusLabel}</span> ${escapeHtml(name)}
+                </span>
+                <span class="font-mono-data ${colorCls}">${timeStr}</span>
+              </div>
+            `);
+          });
+        } else if (bay.mechanic_name) {
+          const timeStr = formatSecs(bay.wrench_seconds || bay.wrench_time_today || 0);
+          entries.push(`
+            <div class="flex items-center justify-between gap-3 text-xs py-0.5">
+              <span class="font-medium text-on-surface flex items-center gap-1 truncate max-w-[130px]">
+                <span>${statusLabel}</span> ${escapeHtml(bay.mechanic_name)}
+              </span>
+              <span class="font-mono-data ${colorCls}">${timeStr}</span>
+            </div>
+          `);
+        }
+      });
+
+      if (entries.length > 0) {
+        listEl.innerHTML = entries.join('');
+      } else {
+        listEl.innerHTML = '<span class="text-on-surface-variant text-[11px]">No active technicians</span>';
+      }
+    }
+
     function mergeBayTelemetry(rows) {
       rows.forEach((row) => {
         const id = row.bay_id || row.id;
@@ -2238,6 +2301,7 @@
           existing.type = row.type || existing.type;
         }
       });
+      updateOverlayStaff(rows);
       syncBayDom();
     }
 
@@ -2376,8 +2440,15 @@
       const live = bayLive[bay.id] || {};
       const state = live.state || 'EMPTY';
       const name = live.mechanic_name || '';
+      const timeStr = formatSecs(live.wrench_seconds || live.wrench_time_today || 0);
       if (state === 'WORKING') {
-        return '🟢 WORKING' + (name ? ' - ' + name : '') + (live.wrench_time_today ? ' (' + formatSecs(live.wrench_time_today) + ')' : '');
+        return '🟢 WORKING' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
+      }
+      if (state === 'UNDER_VEHICLE') {
+        return '🔵 UNDER VEHICLE' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
+      }
+      if (state === 'ON_BREAK') {
+        return '☕ ON BREAK' + (name ? ' - ' + name : '') + ' (Paused: ' + timeStr + ')';
       }
       if (state === 'IDLE') return '🟡 IDLE' + (name ? ' - ' + name : '');
       return 'EMPTY';
@@ -2387,8 +2458,10 @@
       const total = Math.max(0, Math.floor(Number(seconds) || 0));
       const h = Math.floor(total / 3600);
       const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
       if (h) return h + 'h ' + String(m).padStart(2, '0') + 'm';
-      return m + 'm';
+      if (m) return m + 'm ' + String(s).padStart(2, '0') + 's';
+      return s + 's';
     }
 
     function syncBayDom() {

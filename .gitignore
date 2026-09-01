@@ -6,7 +6,7 @@ build/
 *.local
 
 edge/proofs/
-edge/*.db
+edge/*.db*
 edge/config.yaml
 edge/*.pt
 edge/models/*.onnx

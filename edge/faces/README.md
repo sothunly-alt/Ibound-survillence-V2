@@ -2,7 +2,7 @@
 #
 # Create a subfolder for each person. The folder name is the label shown
 # on the live feed (e.g. faces/Alex/*.jpg). Use a few angles per person.
-# Anyone not in this folder is labeled Customer.
+# Anyone not in this folder is labeled Employee.
 #
 #   faces/
 #     ├── Alex/

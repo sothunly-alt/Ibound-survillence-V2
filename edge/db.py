@@ -61,6 +61,37 @@ def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connect
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vehicle_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT UNIQUE NOT NULL,
+            bay_id TEXT NOT NULL,
+            vehicle_type TEXT NOT NULL DEFAULT 'vehicle',
+            vehicle_label TEXT,
+            primary_technician TEXT,
+            status TEXT NOT NULL DEFAULT 'IN_PROGRESS',
+            total_active_seconds REAL NOT NULL DEFAULT 0,
+            total_break_seconds REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS daily_vehicle_job_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            day TEXT NOT NULL,
+            technician_name TEXT,
+            active_seconds REAL NOT NULL DEFAULT 0,
+            break_seconds REAL NOT NULL DEFAULT 0,
+            UNIQUE(job_id, day, technician_name)
+        )
+        """
+    )
     conn.commit()
     return conn
 
@@ -475,15 +506,197 @@ def get_daily_garage_summary(
     n_bays = max(1, len(bays) if bays else 1)
     shop_util = 0.0 if elapsed <= 0 else 100.0 * used_seconds / (elapsed * n_bays)
     total_shift_hours = sum(t["total_shift_minutes"] for t in technicians) / 60.0
+
+    job_rows = list(
+        conn.execute(
+            """
+            SELECT j.*, l.active_seconds AS active_today, l.break_seconds AS break_today
+            FROM vehicle_jobs j
+            LEFT JOIN daily_vehicle_job_logs l
+                   ON j.job_id = l.job_id AND l.day = ?
+            WHERE j.created_at LIKE ? OR l.day = ? OR j.status != 'COMPLETED'
+            ORDER BY j.updated_at DESC
+            """,
+            (day.isoformat(), f"{prefix}%", day.isoformat()),
+        )
+    )
+    jobs: list[dict[str, Any]] = []
+    for r in job_rows:
+        jobs.append(
+            {
+                "job_id": r["job_id"],
+                "bay_id": r["bay_id"],
+                "vehicle_type": r["vehicle_type"],
+                "vehicle_label": r["vehicle_label"] or r["job_id"],
+                "primary_technician": r["primary_technician"],
+                "status": r["status"],
+                "total_active_seconds": round(float(r["total_active_seconds"] or 0), 2),
+                "total_break_seconds": round(float(r["total_break_seconds"] or 0), 2),
+                "active_today_seconds": round(float(r["active_today"] or 0), 2),
+                "break_today_seconds": round(float(r["break_today"] or 0), 2),
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "completed_at": r["completed_at"],
+            }
+        )
+
     return {
         "date": day.isoformat(),
         "technicians": technicians,
         "bays": bays,
+        "jobs": jobs,
         "shop": {
             "operating_hours": round(operating_hours, 2),
             "total_shift_hours": round(total_shift_hours, 2),
             "utilization_pct": round(shop_util, 1),
             "open_time": open_time,
             "close_time": close_time,
+            "active_jobs_count": sum(1 for j in jobs if j["status"] != "COMPLETED"),
         },
     }
+
+
+def get_or_create_vehicle_job(
+    conn: sqlite3.Connection | None,
+    bay_id: str,
+    vehicle_type: str = "vehicle",
+    vehicle_label: str | None = None,
+    primary_technician: str | None = None,
+    timestamp: datetime | None = None,
+) -> str:
+    """Return active job for bay, or create a new vehicle repair job."""
+    if conn is None:
+        return ""
+    now = timestamp or datetime.now()
+    row = conn.execute(
+        "SELECT job_id FROM vehicle_jobs WHERE bay_id = ? AND status != 'COMPLETED' ORDER BY updated_at DESC LIMIT 1",
+        (bay_id,),
+    ).fetchone()
+    if row:
+        return row["job_id"]
+
+    day_str = now.strftime("%Y%m%d")
+    count_row = conn.execute(
+        "SELECT COUNT(*) AS c FROM vehicle_jobs WHERE job_id LIKE ?",
+        (f"JOB-{bay_id}-{day_str}-%",),
+    ).fetchone()
+    seq = (int(count_row["c"]) if count_row else 0) + 1
+    job_id = f"JOB-{bay_id}-{day_str}-{seq:02d}"
+    label = vehicle_label or f"{vehicle_type.capitalize()} in {bay_id.replace('_', ' ').title()}"
+    iso_now = _iso(now)
+    conn.execute(
+        """
+        INSERT INTO vehicle_jobs (
+            job_id, bay_id, vehicle_type, vehicle_label, primary_technician,
+            status, total_active_seconds, total_break_seconds, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'IN_PROGRESS', 0, 0, ?, ?)
+        """,
+        (job_id, bay_id, vehicle_type, label, primary_technician, iso_now, iso_now),
+    )
+    conn.commit()
+    return job_id
+
+
+def update_vehicle_job_activity(
+    conn: sqlite3.Connection | None,
+    job_id: str,
+    active_dt: float,
+    break_dt: float = 0.0,
+    technician_name: str | None = None,
+    timestamp: datetime | None = None,
+    status: str = "IN_PROGRESS",
+) -> None:
+    if conn is None or not job_id:
+        return
+    now = timestamp or datetime.now()
+    day_str = now.date().isoformat()
+    iso_now = _iso(now)
+
+    conn.execute(
+        """
+        UPDATE vehicle_jobs
+        SET total_active_seconds = total_active_seconds + ?,
+            total_break_seconds = total_break_seconds + ?,
+            primary_technician = COALESCE(?, primary_technician),
+            status = ?,
+            updated_at = ?
+        WHERE job_id = ?
+        """,
+        (max(0.0, active_dt), max(0.0, break_dt), technician_name, status, iso_now, job_id),
+    )
+
+    # Upsert daily log for multi-day reporting
+    tech_key = technician_name or "Unassigned"
+    conn.execute(
+        """
+        INSERT INTO daily_vehicle_job_logs (job_id, day, technician_name, active_seconds, break_seconds)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(job_id, day, technician_name) DO UPDATE SET
+            active_seconds = active_seconds + excluded.active_seconds,
+            break_seconds = break_seconds + excluded.break_seconds
+        """,
+        (job_id, day_str, tech_key, max(0.0, active_dt), max(0.0, break_dt)),
+    )
+    conn.commit()
+
+
+def complete_vehicle_job(
+    conn: sqlite3.Connection | None,
+    job_id: str,
+    timestamp: datetime | None = None,
+) -> bool:
+    if conn is None or not job_id:
+        return False
+    now = timestamp or datetime.now()
+    cur = conn.execute(
+        """
+        UPDATE vehicle_jobs
+        SET status = 'COMPLETED',
+            completed_at = ?,
+            updated_at = ?
+        WHERE job_id = ?
+        """,
+        (_iso(now), _iso(now), job_id),
+    )
+    conn.commit()
+    return bool(cur.rowcount and cur.rowcount > 0)
+
+
+def list_vehicle_jobs(conn: sqlite3.Connection | None, status: str | None = None) -> list[dict[str, Any]]:
+    if conn is None:
+        return []
+    query = "SELECT * FROM vehicle_jobs"
+    params: tuple[Any, ...] = ()
+    if status:
+        query += " WHERE status = ?"
+        params = (status,)
+    query += " ORDER BY updated_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_vehicle_job_history(conn: sqlite3.Connection | None, job_id: str) -> dict[str, Any] | None:
+    if conn is None or not job_id:
+        return None
+    job = conn.execute("SELECT * FROM vehicle_jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if not job:
+        return None
+    daily_rows = conn.execute(
+        "SELECT * FROM daily_vehicle_job_logs WHERE job_id = ? ORDER BY day ASC",
+        (job_id,),
+    ).fetchall()
+    daily_logs = [
+        {
+            "day": r["day"],
+            "technician_name": r["technician_name"],
+            "active_seconds": round(float(r["active_seconds"] or 0), 2),
+            "break_seconds": round(float(r["break_seconds"] or 0), 2),
+            "active_hours": round(float(r["active_seconds"] or 0) / 3600.0, 2),
+        }
+        for r in daily_rows
+    ]
+    res = dict(job)
+    res["daily_logs"] = daily_logs
+    res["total_active_hours"] = round(float(job["total_active_seconds"] or 0) / 3600.0, 2)
+    return res
+

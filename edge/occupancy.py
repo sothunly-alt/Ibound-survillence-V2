@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -150,8 +150,10 @@ DEFAULT_BAYS: list[dict] = [
 ]
 
 BAY_TYPES = ("vehicle_bay", "tool_area")
-BAY_STATES = ("WORKING", "IDLE", "EMPTY")
+BAY_STATES = ("WORKING", "UNDER_VEHICLE", "ON_BREAK", "IDLE", "EMPTY")
 IDLE_STATIONARY_SECONDS = 120.0
+UNDER_CAR_GRACE_SECONDS = 5.0
+BREAK_TIMEOUT_SECONDS = 3600.0
 MAX_ACTIVITY_DT = 2.0
 
 # COCO-pose indices (Ultralytics YOLO-pose).
@@ -164,6 +166,8 @@ L_ANKLE, R_ANKLE = 15, 16
 
 BAY_BGR = {
     "WORKING": (80, 220, 80),
+    "UNDER_VEHICLE": (255, 180, 40),
+    "ON_BREAK": (180, 140, 255),
     "IDLE": (40, 200, 255),
     "EMPTY": (150, 150, 150),
 }
@@ -354,6 +358,55 @@ def is_working_pose(keypoints: list, kpt_conf: float = 0.4) -> bool:
     return False
 
 
+def is_under_vehicle_pose(keypoints: list, kpt_conf: float = 0.35) -> bool:
+    """True when pose indicates worker lying on a creeper or working under a vehicle.
+
+    Cues:
+    - Lower limbs (ankles/knees) visible while upper torso/head are occluded under chassis.
+    - Horizontal body alignment: horizontal distance (dx) between joints significantly exceeds vertical (dy).
+    """
+    ls = _kpt(keypoints, L_SHOULDER, kpt_conf)
+    rs = _kpt(keypoints, R_SHOULDER, kpt_conf)
+    lh = _kpt(keypoints, L_HIP, kpt_conf)
+    rh = _kpt(keypoints, R_HIP, kpt_conf)
+    lk = _kpt(keypoints, L_KNEE, kpt_conf)
+    rk = _kpt(keypoints, R_KNEE, kpt_conf)
+    la = _kpt(keypoints, L_ANKLE, kpt_conf)
+    ra = _kpt(keypoints, R_ANKLE, kpt_conf)
+
+    shoulders = _mid(ls, rs)
+    hips = _mid(lh, rh)
+    knees = _mid(lk, rk)
+    ankles = _mid(la, ra)
+
+    # 1. Lower body limbs visible extending out from chassis (ankles or knees present)
+    lower_pts = sum(1 for p in (lh, rh, lk, rk, la, ra) if p is not None)
+    upper_pts = sum(1 for p in (ls, rs) if p is not None)
+    if lower_pts >= 2 and upper_pts == 0:
+        return True
+
+    # 2. Horizontal creeper alignment (shoulders to hips or hips to ankles horizontal: dx > dy)
+    if shoulders and hips:
+        dx = abs(shoulders[0] - hips[0])
+        dy = abs(shoulders[1] - hips[1])
+        if dx > 1.2 * dy:
+            return True
+
+    if hips and knees:
+        dx = abs(hips[0] - knees[0])
+        dy = abs(hips[1] - knees[1])
+        if dx > 1.2 * dy:
+            return True
+
+    if knees and ankles:
+        dx = abs(knees[0] - ankles[0])
+        dy = abs(knees[1] - ankles[1])
+        if dx > 1.2 * dy:
+            return True
+
+    return False
+
+
 def detection_anchor(det) -> tuple[float, float]:
     box = det.box() if hasattr(det, "box") else (det.x1, det.y1, det.x2, det.y2)
     x1, y1, x2, y2 = box
@@ -396,13 +449,32 @@ def fmt_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
-def bay_badge(state: str, technician: str | None, wrench_seconds: float) -> str:
+def bay_badge(
+    state: str,
+    technician: str | None,
+    wrench_seconds: float,
+    technicians_times: dict[str, float] | None = None,
+) -> str:
     if state == "EMPTY":
         return "EMPTY"
+    if technicians_times and len(technicians_times) > 1:
+        details = ", ".join(f"{name} ({fmt_duration(sec)})" for name, sec in technicians_times.items())
+        if state == "UNDER_VEHICLE":
+            return f"UNDER VEHICLE - {details}"
+        if state == "ON_BREAK":
+            return f"ON BREAK - (Paused: {details})"
+        if state == "WORKING":
+            return f"WORKING - {details}"
+        return f"IDLE - {details}"
+
     name = technician or "Technician"
+    if state == "UNDER_VEHICLE":
+        return f"UNDER VEHICLE - {name} ({fmt_duration(wrench_seconds)})"
+    if state == "ON_BREAK":
+        return f"ON BREAK - {name} (Paused: {fmt_duration(wrench_seconds)})"
     if state == "WORKING":
         return f"WORKING - {name} ({fmt_duration(wrench_seconds)})"
-    return f"IDLE - {name}"
+    return f"IDLE - {name} ({fmt_duration(wrench_seconds)})"
 
 
 def bay_draw_color(bay_id: str, state: str) -> tuple[int, int, int]:
@@ -421,9 +493,16 @@ class BaySnapshot:
     mechanic_name: str | None
     wrench_seconds: float
     idle_seconds: float
+    under_vehicle_seconds: float
+    break_seconds: float
     wrench_time_today: float
     idle_time_today: float
+    under_vehicle_today: float
+    break_time_today: float
     is_working: bool
+    job_id: str | None = None
+    vehicle_present: bool = True
+    technicians_times: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
@@ -435,15 +514,29 @@ class BaySnapshot:
             "mechanic_name": self.mechanic_name,
             "wrench_seconds": round(self.wrench_seconds, 2),
             "idle_seconds": round(self.idle_seconds, 2),
+            "under_vehicle_seconds": round(self.under_vehicle_seconds, 2),
+            "break_seconds": round(self.break_seconds, 2),
             "wrench_time_today": round(self.wrench_time_today, 2),
             "idle_time_today": round(self.idle_time_today, 2),
+            "under_vehicle_today": round(self.under_vehicle_today, 2),
+            "break_time_today": round(self.break_time_today, 2),
             "is_working": self.is_working,
-            "badge": bay_badge(self.state, self.mechanic_name, self.wrench_time_today),
+            "job_id": self.job_id,
+            "vehicle_present": self.vehicle_present,
+            "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
+            "badge": bay_badge(self.state, self.mechanic_name, self.wrench_time_today, self.technicians_times),
         }
 
 
 class _BayRuntime:
-    def __init__(self, cfg: dict, confirm: float, clear: float) -> None:
+    def __init__(
+        self,
+        cfg: dict,
+        confirm: float,
+        clear: float,
+        under_car_grace_seconds: float = UNDER_CAR_GRACE_SECONDS,
+        break_timeout_seconds: float = BREAK_TIMEOUT_SECONDS,
+    ) -> None:
         self.id = cfg["id"]
         self.name = cfg["name"]
         self.type = cfg["type"]
@@ -452,19 +545,33 @@ class _BayRuntime:
         self.gate = OccupancyGate(confirm, clear)
         self.state = "EMPTY"
         self.technician: str | None = None
+        self.last_working_technician: str | None = None
+        self.technicians_times: dict[str, float] = {}
         self.wrench_seconds = 0.0
         self.idle_seconds = 0.0
+        self.under_vehicle_seconds = 0.0
+        self.break_seconds = 0.0
         self.today_wrench = 0.0
         self.today_idle = 0.0
+        self.today_under_vehicle = 0.0
+        self.today_break = 0.0
         self.last_anchor: tuple[float, float] | None = None
         self.stationary_since: float | None = None
         self.last_t: float | None = None
+        self.last_active_t: float | None = None
         self.session_open = False
+        self.under_car_grace_seconds = float(under_car_grace_seconds)
+        self.break_timeout_seconds = float(break_timeout_seconds)
+        self.job_id: str | None = cfg.get("job_id")
+        self.vehicle_type: str = cfg.get("vehicle_type") or ("vehicle" if cfg["type"] == "vehicle_bay" else "station")
+        self.vehicle_present: bool = cfg["type"] == "vehicle_bay"
 
     def as_config(self) -> dict:
         out = {"id": self.id, "name": self.name, "roi": list(self.roi), "type": self.type}
         if self.polygon:
             out["polygon"] = self.polygon
+        if self.job_id:
+            out["job_id"] = self.job_id
         return out
 
     def snapshot(self) -> BaySnapshot:
@@ -477,9 +584,16 @@ class _BayRuntime:
             mechanic_name=self.technician,
             wrench_seconds=self.wrench_seconds,
             idle_seconds=self.idle_seconds,
+            under_vehicle_seconds=self.under_vehicle_seconds,
+            break_seconds=self.break_seconds,
             wrench_time_today=self.today_wrench,
             idle_time_today=self.today_idle,
-            is_working=self.state == "WORKING",
+            under_vehicle_today=self.today_under_vehicle,
+            break_time_today=self.today_break,
+            is_working=self.state in ("WORKING", "UNDER_VEHICLE"),
+            job_id=self.job_id,
+            vehicle_present=self.vehicle_present,
+            technicians_times=dict(self.technicians_times),
         )
 
 
@@ -497,16 +611,20 @@ class BayZoneManager:
         idle_stationary_seconds: float = IDLE_STATIONARY_SECONDS,
         occupy_confirm_seconds: float = 1.0,
         occupy_clear_seconds: float = 1.0,
+        under_car_grace_seconds: float = UNDER_CAR_GRACE_SECONDS,
+        break_timeout_seconds: float = BREAK_TIMEOUT_SECONDS,
         motion_px: float = 14.0,
         fallback_roi: list[float] | None = None,
     ) -> None:
         self.idle_stationary_seconds = max(1.0, float(idle_stationary_seconds))
         self.confirm = occupy_confirm_seconds
         self.clear = occupy_clear_seconds
+        self.under_car_grace_seconds = float(under_car_grace_seconds)
+        self.break_timeout_seconds = float(break_timeout_seconds)
         self.motion_px = motion_px
         self._bays: list[_BayRuntime] = []
         self.set_bays(bays, fallback_roi=fallback_roi)
-        self._last_ticks: list[tuple[str, str | None, bool, float]] = []
+        self._last_ticks: list[tuple[str, str | None, bool, float, str, str | None]] = []
 
     def set_bays(self, bays: object | None, fallback_roi: list[float] | None = None) -> None:
         prev = {b.id: b for b in self._bays}
@@ -515,11 +633,19 @@ class BayZoneManager:
         # when the caller omitted bays entirely so existing metrics stay put.
         seed = not isinstance(bays, list)
         for cfg in normalize_bays(bays, fallback_roi=fallback_roi, seed_if_empty=seed):
-            runtime = prev.get(cfg["id"]) or _BayRuntime(cfg, self.confirm, self.clear)
+            runtime = prev.get(cfg["id"]) or _BayRuntime(
+                cfg,
+                self.confirm,
+                self.clear,
+                self.under_car_grace_seconds,
+                self.break_timeout_seconds,
+            )
             runtime.name = cfg["name"]
             runtime.type = cfg["type"]
             runtime.roi = list(cfg["roi"])
             runtime.polygon = cfg.get("polygon")
+            if cfg.get("job_id"):
+                runtime.job_id = cfg["job_id"]
             rebuilt.append(runtime)
         self._bays = rebuilt
 
@@ -540,6 +666,8 @@ class BayZoneManager:
                 continue
             bay.today_wrench = float(row.get("active_seconds") or row.get("active_duration") or 0)
             bay.today_idle = float(row.get("idle_seconds") or row.get("idle_duration") or 0)
+            bay.today_under_vehicle = float(row.get("under_vehicle_seconds") or 0)
+            bay.today_break = float(row.get("break_seconds") or 0)
 
     def update(
         self,
@@ -549,7 +677,7 @@ class BayZoneManager:
         now: float,
         kpt_conf: float = 0.4,
     ) -> list[BaySnapshot]:
-        ticks: list[tuple[str, str | None, bool, float]] = []
+        ticks: list[tuple[str, str | None, bool, float, str, str | None]] = []
         for bay in self._bays:
             inside = [
                 det for det in detections if detection_in_bay(det, bay.as_config(), frame_w, frame_h, kpt_conf)
@@ -561,40 +689,74 @@ class BayZoneManager:
             bay.last_t = now
 
             technician = _pick_technician(inside)
-            working_pose = any(is_working_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside)
+            if technician:
+                bay.last_working_technician = technician
+            else:
+                technician = bay.last_working_technician
+
+            under_vehicle = any(
+                is_under_vehicle_pose(getattr(det, "keypoints", []), kpt_conf * 0.85) for det in inside
+            )
+            working_pose = under_vehicle or any(
+                is_working_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside
+            )
             moving = _is_moving(bay, inside, self.motion_px)
 
-            if not occupied or not inside:
-                bay.state = "EMPTY"
-                bay.technician = None
-                bay.stationary_since = None
-                bay.last_anchor = None
-                bay.session_open = False
-                continue
+            if inside:
+                bay.session_open = True
+                bay.last_active_t = now
 
-            bay.technician = technician
-            if working_pose:
-                bay.state = "WORKING"
-                bay.stationary_since = None
-            else:
-                if moving or bay.stationary_since is None:
-                    bay.stationary_since = now
-                idle_for = now - bay.stationary_since
-                bay.state = "IDLE" if idle_for >= self.idle_stationary_seconds else "WORKING"
+                # Track each employee in the bay individually
+                active_names: list[str] = []
+                for det in inside:
+                    name = getattr(det, "identity", None) or ("Staff" if getattr(det, "is_staff", False) else "Employee")
+                    if dt > 0:
+                        bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
+                    det.active_time_str = fmt_duration(bay.technicians_times.get(name, bay.wrench_seconds + dt))
+                    det.bay_name = bay.name
+                    if name not in active_names:
+                        active_names.append(name)
 
-            if dt > 0:
-                if working_pose:
+                technician = ", ".join(active_names) if active_names else (technician or bay.last_working_technician)
+                if technician:
+                    bay.last_working_technician = technician
+                bay.technician = technician
+
+                if under_vehicle:
+                    bay.state = "UNDER_VEHICLE"
+                    bay.under_vehicle_seconds += dt
+                    bay.today_under_vehicle += dt
+                else:
+                    bay.state = "WORKING"
+
+                if dt > 0:
                     bay.wrench_seconds += dt
                     bay.today_wrench += dt
+
+            else:
+                # Person is OUT of the bay -> Stop/pause work timer immediately
+                time_since_active = (now - bay.last_active_t) if bay.last_active_t is not None else 999999.0
+                if bay.session_open and time_since_active <= bay.break_timeout_seconds:
+                    bay.state = "ON_BREAK"
+                    bay.technician = technician
+                    if dt > 0:
+                        bay.break_seconds += dt
+                        bay.today_break += dt
                 else:
-                    bay.idle_seconds += dt
-                    bay.today_idle += dt
-            bay.session_open = True
-            ticks.append((bay.id, technician, working_pose, dt))
+                    bay.state = "EMPTY"
+                    bay.technician = None
+                    bay.stationary_since = None
+                    bay.last_anchor = None
+                    bay.session_open = False
+                    bay.last_working_technician = None
+
+            is_work_state = bay.state in ("WORKING", "UNDER_VEHICLE")
+            ticks.append((bay.id, bay.technician, is_work_state, dt, bay.state, bay.job_id))
+
         self._last_ticks = ticks
         return self.snapshots()
 
-    def activity_ticks(self) -> list[tuple[str, str | None, bool, float]]:
+    def activity_ticks(self) -> list[tuple[str, str | None, bool, float, str, str | None]]:
         return list(getattr(self, "_last_ticks", []))
 
 
@@ -675,3 +837,32 @@ def idle_standing_keypoints() -> list[tuple[float, float, float]]:
     pts[13] = (82.0, 210.0, 0.8)
     pts[14] = (118.0, 210.0, 0.8)
     return pts
+
+
+def under_vehicle_pose_keypoints() -> list[tuple[float, float, float]]:
+    """Synthetic: worker lying horizontally on a creeper / under vehicle."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[5] = (60.0, 100.0, 0.9)
+    pts[6] = (60.0, 120.0, 0.9)
+    pts[7] = (90.0, 100.0, 0.85)
+    pts[8] = (90.0, 120.0, 0.85)
+    pts[11] = (140.0, 105.0, 0.9)
+    pts[12] = (140.0, 115.0, 0.9)
+    pts[13] = (190.0, 105.0, 0.85)
+    pts[14] = (190.0, 115.0, 0.85)
+    pts[15] = (240.0, 105.0, 0.85)
+    pts[16] = (240.0, 115.0, 0.85)
+    return pts
+
+
+def partial_legs_pose_keypoints() -> list[tuple[float, float, float]]:
+    """Synthetic: only lower legs visible sticking out from under vehicle."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[11] = (140.0, 105.0, 0.85)
+    pts[12] = (140.0, 115.0, 0.85)
+    pts[13] = (190.0, 105.0, 0.85)
+    pts[14] = (190.0, 115.0, 0.85)
+    pts[15] = (240.0, 105.0, 0.85)
+    pts[16] = (240.0, 115.0, 0.85)
+    return pts
+

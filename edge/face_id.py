@@ -22,7 +22,7 @@ SFACE_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recogniti
 YUNET_FILENAME = "face_detection_yunet_2023mar.onnx"
 SFACE_FILENAME = "face_recognition_sface_2021dec.onnx"
 
-UNKNOWN_LABEL = "Customer"
+UNKNOWN_LABEL = "Employee"
 PHOTO_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 IDENTITY_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 .'_-]{0,62}$")
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
@@ -126,7 +126,7 @@ def till_status_label(
         shown = ", ".join(dict.fromkeys(staff))
         return f"STAFF [{shown}] IN ROI"
     if any(getattr(det, "identity", None) for det in detections):
-        return "CUSTOMER IN ROI"
+        return "EMPLOYEE IN ROI"
     return "PERSON IN ROI"
 
 

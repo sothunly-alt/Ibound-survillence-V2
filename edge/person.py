@@ -54,6 +54,8 @@ class Detection:
     identity: str | None = None
     identity_conf: float = 0.0
     is_staff: bool = False
+    active_time_str: str | None = None
+    bay_name: str | None = None
 
     def box(self) -> tuple[float, float, float, float]:
         return self.x1, self.y1, self.x2, self.y2
@@ -105,6 +107,33 @@ def is_face_closeup(keypoints: list[Keypoint], kpt_conf: float) -> bool:
     ) >= 2
 
 
+def is_creeper_or_underbody_pose(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    keypoints: list[Keypoint],
+    frame_h: int,
+    min_dim_frac: float = 0.08,
+    kpt_conf: float = 0.35,
+) -> bool:
+    """Worker lying horizontally on a creeper or under a chassis."""
+    width = max(x2 - x1, 1e-6)
+    height = max(y2 - y1, 1e-6)
+    max_dim = max(width, height)
+    if max_dim < min_dim_frac * max(frame_h, 1):
+        return False
+    # Lower limb / leg keypoints (ankles, knees, hips)
+    legs_visible = _count_visible(keypoints, (11, 12, 13, 14, 15, 16), kpt_conf)
+    if legs_visible >= 2:
+        return True
+    # Horizontal torso (shoulders + hips)
+    torso_visible = _count_visible(keypoints, (L_SHOULDER, R_SHOULDER, 11, 12), kpt_conf)
+    if torso_visible >= 3:
+        return True
+    return False
+
+
 def is_human_pose(
     x1: float,
     y1: float,
@@ -119,6 +148,11 @@ def is_human_pose(
 ) -> bool:
     height = y2 - y1
     width = max(x2 - x1, 1e-6)
+
+    # Allow horizontal creeper or under-vehicle posture
+    if is_creeper_or_underbody_pose(x1, y1, x2, y2, keypoints, frame_h, min_height_frac * 0.7, kpt_conf):
+        return True
+
     if height < min_height_frac * max(frame_h, 1):
         return False
 
@@ -200,16 +234,17 @@ def draw_detection(
     kpt_conf: float = 0.4,
 ) -> None:
     x1, y1, x2, y2 = (int(det.x1), int(det.y1), int(det.x2), int(det.y2))
+    time_badge = f" ({det.active_time_str})" if getattr(det, "active_time_str", None) else ""
     if det.accepted:
         color = (80, 220, 80) if in_roi else (170, 170, 170)
         if det.identity and det.is_staff:
-            label = f"[Staff: {det.identity}] {det.conf:.2f}"
+            label = f"[Staff: {det.identity}]{time_badge} {det.conf:.2f}"
             color = (50, 240, 50) if in_roi else (100, 200, 100)
         elif det.identity:
-            label = f"[{det.identity}] {det.conf:.2f}"
+            label = f"[{det.identity}]{time_badge} {det.conf:.2f}"
             color = (0, 165, 255) if in_roi else (170, 170, 170)
         else:
-            label = f"person {det.conf:.2f}"
+            label = f"person{time_badge} {det.conf:.2f}"
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
         draw_skeleton(frame, det.keypoints, kpt_conf, color)
     else:

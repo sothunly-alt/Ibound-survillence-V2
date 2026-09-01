@@ -56,13 +56,18 @@ from db import (
     add_wifi_minutes,
     close_bay_sessions,
     close_empty_bays,
+    complete_vehicle_job,
     connect,
     get_daily_garage_summary,
+    get_or_create_vehicle_job,
+    get_vehicle_job_history,
     has_opened_today,
     insert_event,
+    list_vehicle_jobs,
     record_face_clock_in,
     record_face_clock_out,
     update_technician_activity,
+    update_vehicle_job_activity,
     upsert_minute,
 )
 from face_id import (
@@ -1351,7 +1356,7 @@ class LiveStreamEngine:
                 x1, y1, x2, y2 = roi_to_pixels(w, h, snap.roi)
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
                 draw_roi_handles(annotated, (x1, y1, x2, y2), color)
-                label = bay_badge(snap.state, snap.mechanic_name, snap.wrench_time_today)
+                label = bay_badge(snap.state, snap.mechanic_name, snap.wrench_time_today, snap.technicians_times)
                 cv2.putText(
                     annotated,
                     f"{snap.name}: {label}",
@@ -1390,11 +1395,29 @@ class LiveStreamEngine:
                 record_face_clock_in(self.conn, det.identity, stamp)
 
         occupied_ids: set[str] = set()
-        for bay_id, technician, is_working, dt in self.bay_manager.activity_ticks():
+        for tick in self.bay_manager.activity_ticks():
+            bay_id = tick[0]
+            technician = tick[1]
+            is_working = tick[2]
+            dt = tick[3]
+            state = tick[4] if len(tick) > 4 else ("WORKING" if is_working else "IDLE")
+            job_id = tick[5] if len(tick) > 5 else None
+
             if dt <= 0:
                 continue
-            occupied_ids.add(bay_id)
+            if state != "EMPTY":
+                occupied_ids.add(bay_id)
             update_technician_activity(self.conn, technician, bay_id, is_working, dt, stamp)
+
+            if bay_id:
+                active_job = job_id or get_or_create_vehicle_job(
+                    self.conn, bay_id, primary_technician=technician, timestamp=stamp
+                )
+                active_dt = dt if state in ("WORKING", "UNDER_VEHICLE") else 0.0
+                break_dt = dt if state == "ON_BREAK" else 0.0
+                update_vehicle_job_activity(
+                    self.conn, active_job, active_dt, break_dt, technician, stamp, status=state
+                )
         close_empty_bays(self.conn, occupied_ids, stamp)
 
         wifi_dt = 0.0
@@ -1703,6 +1726,18 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             except (ConnectionResetError, BrokenPipeError):
                 pass
 
+        elif parsed.path == "/api/garage/jobs":
+            self._send_json(list_vehicle_jobs(GLOBAL_ENGINE.conn))
+
+        elif parsed.path.startswith("/api/garage/jobs/") and parsed.path.endswith("/history"):
+            parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
+            job_id = parts[3] if len(parts) >= 4 else ""
+            res = get_vehicle_job_history(GLOBAL_ENGINE.conn, job_id)
+            if res:
+                self._send_json(res)
+            else:
+                self._send_json({"error": "Job not found"}, 404)
+
         elif self._handle_identities_get(
             [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
         ):
@@ -1734,6 +1769,12 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             payload = raw_json if isinstance(raw_json, dict) else {}
 
         if self._handle_identities_write(parts, "POST", payload, files):
+            return
+
+        if parsed.path == "/api/garage/jobs/complete":
+            job_id = str(payload.get("job_id") or "").strip()
+            ok = complete_vehicle_job(GLOBAL_ENGINE.conn, job_id)
+            self._send_json({"ok": ok, "job_id": job_id})
             return
 
         if parsed.path in ("/api/connect-stream", "/api/save"):

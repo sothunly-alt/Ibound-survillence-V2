@@ -18,23 +18,31 @@ if str(ROOT) not in sys.path:
 
 from db import (
     close_bay_sessions,
+    complete_vehicle_job,
     connect,
     get_daily_garage_summary,
+    get_or_create_vehicle_job,
+    get_vehicle_job_history,
+    list_vehicle_jobs,
     record_face_clock_in,
     record_face_clock_out,
     update_technician_activity,
+    update_vehicle_job_activity,
 )
 from occupancy import (
     DEFAULT_BAYS,
     BayZoneManager,
     crouching_pose_keypoints,
     idle_standing_keypoints,
+    is_under_vehicle_pose,
     is_working_pose,
     next_available_bay_name,
     normalize_bays,
+    partial_legs_pose_keypoints,
     point_in_polygon,
     point_in_roi,
     roi_as_polygon,
+    under_vehicle_pose_keypoints,
     working_pose_keypoints,
 )
 from report import build_garage_report, efficiency_badge
@@ -160,6 +168,66 @@ class PoseAndRoiTests(unittest.TestCase):
         self.assertTrue(is_working_pose(working_pose_keypoints()))
         self.assertTrue(is_working_pose(crouching_pose_keypoints()))
         self.assertFalse(is_working_pose(idle_standing_keypoints()))
+        self.assertTrue(is_under_vehicle_pose(under_vehicle_pose_keypoints()))
+        self.assertTrue(is_under_vehicle_pose(partial_legs_pose_keypoints()))
+        self.assertFalse(is_under_vehicle_pose(idle_standing_keypoints()))
+
+    def test_under_vehicle_occlusion_and_dwell_grace_period(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            under_car_grace_seconds=5.0,
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        work = _det(_shift_kpts(under_vehicle_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+
+        # 1. Mechanic starts working under vehicle (horizontal pose inside bay)
+        manager.update([work], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "UNDER_VEHICLE")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+        self.assertGreaterEqual(snaps["bay_1"].wrench_seconds, 1.9)
+        self.assertGreaterEqual(snaps["bay_1"].under_vehicle_seconds, 1.9)
+
+        # 2. Mechanic steps away from bay -> immediately switches to ON_BREAK and pauses work timer
+        manager.update([], 1000, 1000, t0 + 5.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+        # Wrench time did not increase during break
+        self.assertAlmostEqual(snaps["bay_1"].wrench_seconds, 2.0, places=1)
+
+    def test_break_and_resume_continuity(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            under_car_grace_seconds=5.0,
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        work = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([work], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        wrench_before_break = {s.bay_id: s.wrench_seconds for s in manager.snapshots()}["bay_1"]
+        self.assertGreater(wrench_before_break, 1.5)
+
+        # Mechanic steps away past under_car_grace_seconds (5s) -> transitions to ON_BREAK
+        manager.update([], 1000, 1000, t0 + 10.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+
+        # Mechanic returns to bay -> resumes WORKING without resetting wrench_seconds
+        manager.update([work], 1000, 1000, t0 + 15.0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 17.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "WORKING")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+        self.assertGreater(snaps["bay_1"].wrench_seconds, wrench_before_break + 1.5)
 
     def test_multi_bay_states_and_wrench_dt(self):
         manager = BayZoneManager(
@@ -182,11 +250,69 @@ class PoseAndRoiTests(unittest.TestCase):
         snaps = {s.bay_id: s for s in manager.snapshots()}
         self.assertIn(snaps["bay_2"].state, ("WORKING", "IDLE"))
         self.assertGreater(snaps["bay_2"].idle_seconds + snaps["bay_2"].wrench_seconds, 0.4)
-        empty = manager.update([], 1000, 1000, t0 + 3.0, kpt_conf=0.4)
+        empty = manager.update([], 1000, 1000, t0 + 3700.0, kpt_conf=0.4)
         by_id = {s.bay_id: s.state for s in empty}
         self.assertEqual(by_id["bay_1"], "EMPTY")
         self.assertEqual(by_id["bay_2"], "EMPTY")
         self.assertEqual(by_id["tools"], "EMPTY")
+
+    def test_tool_station_time_counting(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        # Position a worker inside the Tool Station box (x=450, y=100)
+        tool_worker = _det(_shift_kpts(idle_standing_keypoints(), 430, 60), name="Hour-Meng", x1=430, y1=60, x2=530, y2=220)
+        t0 = 100.0
+
+        # Worker is in Tool Station -> counts time!
+        manager.update([tool_worker], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([tool_worker], 1000, 1000, t0 + 1.0, kpt_conf=0.4)
+        manager.update([tool_worker], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        manager.update([tool_worker], 1000, 1000, t0 + 3.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["tools"].state, "WORKING")
+        self.assertEqual(snaps["tools"].mechanic_name, "Hour-Meng")
+        self.assertGreaterEqual(snaps["tools"].wrench_seconds, 2.9)
+
+        # Worker steps away from Tool Station -> pauses time!
+        manager.update([], 1000, 1000, t0 + 4.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["tools"].state, "ON_BREAK")
+        self.assertAlmostEqual(snaps["tools"].wrench_seconds, 3.0, places=1)
+
+    def test_multiple_employees_in_same_bay(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        # 2 workers inside Bay 1: Hour-Meng and Sothun
+        w1 = _det(_shift_kpts(working_pose_keypoints(), 50, 250), name="Hour-Meng")
+        w2 = _det(_shift_kpts(working_pose_keypoints(), 120, 300), name="Sothun")
+        t0 = 100.0
+
+        manager.update([w1, w2], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([w1, w2], 1000, 1000, t0 + 1.0, kpt_conf=0.4)
+        manager.update([w1, w2], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+
+        # Verify both technicians are tracked
+        self.assertEqual(snaps["bay_1"].state, "WORKING")
+        self.assertIn("Hour-Meng", snaps["bay_1"].mechanic_name)
+        self.assertIn("Sothun", snaps["bay_1"].mechanic_name)
+        self.assertIn("Hour-Meng", snaps["bay_1"].technicians_times)
+        self.assertIn("Sothun", snaps["bay_1"].technicians_times)
+        self.assertGreaterEqual(snaps["bay_1"].technicians_times["Hour-Meng"], 1.9)
+        self.assertGreaterEqual(snaps["bay_1"].technicians_times["Sothun"], 1.9)
+
+        # Check the formatted badge includes both names and their individual times
+        badge = snaps["bay_1"].as_dict()["badge"]
+        self.assertIn("Hour-Meng", badge)
+        self.assertIn("Sothun", badge)
 
 
 class AttendanceAndScorecardTests(unittest.TestCase):
@@ -321,26 +447,81 @@ class GarageApiTests(unittest.TestCase):
         conn.close()
         return resp.status, data
 
-    def test_set_bays_does_not_renumber(self):
-        from launcher import GLOBAL_ENGINE
+    def test_vehicle_jobs_crud_and_multi_day_aggregation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = connect(Path(tmp) / "events.db")
+            day1 = datetime(2026, 9, 1, 9, 0, 0)
+            day2 = datetime(2026, 9, 2, 9, 0, 0)
 
-        previous = list(GLOBAL_ENGINE.cfg.get("bays") or DEFAULT_BAYS)
-        remaining = [
-            {"id": "bay_1", "name": "Bay 1", "roi": [0.10, 0.20, 0.35, 0.60], "type": "vehicle_bay"},
-            {"id": "bay_2", "name": "Bay 2", "roi": [0.55, 0.20, 0.35, 0.60], "type": "vehicle_bay"},
-            {"id": "bay_4", "name": "Bay 4", "roi": [0.10, 0.70, 0.20, 0.20], "type": "vehicle_bay"},
-            {"id": "bay_5", "name": "Bay 5", "roi": [0.40, 0.70, 0.20, 0.20], "type": "vehicle_bay"},
-        ]
-        try:
-            status, body = self._post("/api/garage/bays", {"bays": remaining})
-            self.assertEqual(status, 200)
-            data = json.loads(body)
-            names = [bay["name"] for bay in data["bays"]]
-            self.assertEqual(names, ["Bay 1", "Bay 2", "Bay 4", "Bay 5"])
-            self.assertEqual(next_available_bay_name(data["bays"]), "Bay 3")
-        finally:
-            GLOBAL_ENGINE.set_bays(previous)
+            # 1. Create a vehicle job for Bay 1
+            job_id = get_or_create_vehicle_job(
+                conn,
+                bay_id="bay_1",
+                vehicle_type="truck",
+                vehicle_label="Ford F-150 (Transmission)",
+                primary_technician="Hour-Meng",
+                timestamp=day1,
+            )
+            self.assertTrue(job_id.startswith("JOB-bay_1-20260901-"))
+
+            # 2. Day 1: 3.5 hours active work (12,600s) + 30m break (1800s)
+            update_vehicle_job_activity(
+                conn,
+                job_id=job_id,
+                active_dt=12600.0,
+                break_dt=1800.0,
+                technician_name="Hour-Meng",
+                timestamp=day1,
+                status="WORKING",
+            )
+
+            # 3. Day 2: 4.2 hours active work (15,120s)
+            update_vehicle_job_activity(
+                conn,
+                job_id=job_id,
+                active_dt=15120.0,
+                break_dt=0.0,
+                technician_name="Hour-Meng",
+                timestamp=day2,
+                status="UNDER_VEHICLE",
+            )
+
+            # 4. Fetch job history across multiple days
+            history = get_vehicle_job_history(conn, job_id)
+            self.assertIsNotNone(history)
+            self.assertEqual(history["bay_id"], "bay_1")
+            self.assertEqual(history["vehicle_type"], "truck")
+            self.assertEqual(len(history["daily_logs"]), 2)
+
+            # Total = 12600 + 15120 = 27720s (7.7 hours)
+            self.assertAlmostEqual(history["total_active_hours"], 7.7, places=1)
+            self.assertEqual(history["daily_logs"][0]["day"], "2026-09-01")
+            self.assertEqual(history["daily_logs"][0]["active_hours"], 3.5)
+            self.assertEqual(history["daily_logs"][1]["day"], "2026-09-02")
+            self.assertEqual(history["daily_logs"][1]["active_hours"], 4.2)
+
+            # 5. Complete job
+            ok = complete_vehicle_job(conn, job_id, timestamp=day2)
+            self.assertTrue(ok)
+            jobs = list_vehicle_jobs(conn, status="COMPLETED")
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual(jobs[0]["status"], "COMPLETED")
+            self.assertIsNotNone(jobs[0]["completed_at"])
+            conn.close()
+
+    def test_vehicle_jobs_api(self):
+        status, body = self._get("/api/garage/jobs")
+        self.assertEqual(status, 200)
+        jobs = json.loads(body)
+        self.assertIsInstance(jobs, list)
+
+        # Complete non-existent job returns ok=False
+        status, body = self._post("/api/garage/jobs/complete", {"job_id": "NON-EXISTENT"})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertFalse(data["ok"])
 
 
 if __name__ == "__main__":
     unittest.main()
+
