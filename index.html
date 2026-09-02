@@ -1,279 +1,484 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inbound Surveillance — Agentic Vision Platform for Commercial Venues</title>
-  <meta name="description" content="An Agentic Vision Platform that turns legacy CCTV cameras into proactive safety and operations agents for commercial venues in emerging markets." />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <a class="skip-link" href="#main">Skip to content</a>
-
-  <canvas id="page-bg" class="page-bg" aria-hidden="true"></canvas>
-
-  <header class="topbar" id="nav">
-    <a class="brand" href="#home">
-      <span class="brand__mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="12.5" stroke="currentColor" stroke-width="1.6"/>
-          <circle cx="16" cy="16" r="5" stroke="currentColor" stroke-width="1.6"/>
-          <circle cx="16" cy="16" r="1.8" fill="currentColor"/>
-        </svg>
-      </span>
-      <span>Inbound Surveillance</span>
-    </a>
-
-    <div class="topbar__cluster">
-      <nav class="glass-nav" aria-label="Primary">
-        <div class="glass-nav__sheen" aria-hidden="true"></div>
-        <a href="#home">Home</a>
-        <a href="#solutions">Solutions</a>
-        <a href="#about">About</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#contact">Contact</a>
-        <a href="/dashboard.html">Console</a>
-      </nav>
-      <a class="btn btn--glass btn--sm" href="#contact">Book a Demo</a>
-      <button class="nav__toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
-        <span></span><span></span>
-      </button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages</title>
+    <meta
+      name="description"
+      content="Hands-free edge-AI cameras that automatically clock active wrench-time per bay and send timestamped invoice proof to your phone. Built for motorsport and performance garages."
+    />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="assets/hero-garage.png" fetchpriority="high" />
+    <link rel="preload" as="image" href="assets/demo-mechanic.png" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Righteous&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <style>
+      html,
+      body {
+        background: #000;
+        margin: 0;
+      }
+      .boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body class="is-booting">
+    <div class="boot-loader" id="boot-loader" role="status" aria-live="polite" aria-busy="true">
+      <p class="boot-brand">Inbound Surveillance</p>
+      <div class="boot-stage">
+        <div class="boot-radar" aria-hidden="true">
+          <div class="boot-sweep"></div>
+          <div class="boot-cross"></div>
+          <div class="boot-ring"></div>
+          <div class="boot-ring inner"></div>
+          <div class="boot-box boot-box-a"></div>
+          <div class="boot-box boot-box-b"></div>
+          <div class="boot-box boot-box-c"></div>
+          <span class="boot-blip"></span>
+          <span class="boot-scan"></span>
+        </div>
+        <p class="boot-kicker">Edge node · local</p>
+        <p class="boot-status" data-boot-status>Calibrating optics</p>
+        <div class="boot-track" aria-hidden="true">
+          <span class="boot-bar" data-boot-bar></span>
+        </div>
+        <span class="boot-pct" data-boot-pct>00%</span>
+      </div>
     </div>
-  </header>
 
-  <div class="mobile-menu" id="mobile-menu" hidden>
-    <nav aria-label="Mobile">
-      <a href="#home">Home</a>
-      <a href="#solutions">Solutions</a>
-      <a href="#about">About</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#contact">Contact</a>
-      <a href="/dashboard.html">Operator console</a>
-    </nav>
-    <a class="btn btn--glass btn--block" href="#contact">Book a Demo</a>
-  </div>
+    <div class="grain" aria-hidden="true"></div>
 
-  <main id="main">
-    <section class="hero" id="home">
-      <div class="hero__art" id="hero-art" aria-hidden="true"></div>
-      <div class="container hero__grid">
-        <div class="hero__copy">
-          <p class="badge badge--glass">
-            <span class="badge__dot" aria-hidden="true"></span>
-            Zero-CapEx intelligence for cameras you already own
+    <header class="site-header" id="header">
+      <div class="scroll-progress" aria-hidden="true"></div>
+      <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="Inbound Surveillance home">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="assets/brand-mark.png" alt="" width="34" height="34" />
+          </span>
+          <span class="brand-text">
+            <span class="brand-name">INBOUND</span>
+            <span class="brand-sub">SURVEILLANCE</span>
+          </span>
+        </a>
+
+        <nav class="nav-desktop" aria-label="Primary">
+          <a href="#demo">System</a>
+          <a href="#roi">The Math</a>
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+        </nav>
+
+        <div class="header-actions">
+          <button class="btn btn-neon btn-sm" data-open-demo type="button">Request Demo</button>
+          <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+        </div>
+      </div>
+      <nav class="nav-mobile" id="mobile-nav" hidden>
+        <a href="#demo">System</a>
+        <a href="#roi">The Math</a>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <button class="btn btn-neon" data-open-demo type="button">Request Demo</button>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-media" aria-hidden="true">
+          <img src="assets/hero-garage.png" alt="" fetchpriority="high" />
+          <div class="hero-veil"></div>
+        </div>
+        <div class="container hero-content">
+          <p class="eyebrow">
+            <span class="pulse"></span>
+            Edge-AI · Local compute · Motorsport garages
           </p>
-          <h1>
-            Your cameras already see everything.
-            <span>Now make them act.</span>
-          </h1>
-          <p class="lede">An Agentic Vision Platform that turns legacy CCTV cameras into proactive safety and operations agents for commercial venues in emerging markets.</p>
-          <div class="hero__cta">
-            <a class="btn btn--primary" href="#contact">Book a Demo</a>
-            <a class="btn btn--ghost" href="#how">See How It Works</a>
+          <h1>Stop Losing Profit on Untracked Garage Labor.</h1>
+          <p class="lede">
+            The hands-free camera system that automatically clocks active wrench-time per bay
+            and sends timestamped invoice proof to your phone.
+          </p>
+          <div class="hero-cta">
+            <button class="btn btn-neon btn-lg" data-open-demo type="button">Book a Free Bay Demo</button>
+            <p class="social-inline">Trusted by Phnom Penh’s premier tuning shops.</p>
+          </div>
+          <div class="telemetry" aria-hidden="true">
+            <div class="tel-chip">
+              <span class="tel-label">BAY 01</span>
+              <span class="tel-value" data-hero-timer>02:14:33</span>
+              <span class="tel-state">ACTIVE</span>
+            </div>
+            <div class="tel-chip">
+              <span class="tel-label">BAY 02</span>
+              <span class="tel-value">00:00:00</span>
+              <span class="tel-state idle">STANDBY</span>
+            </div>
+            <div class="tel-chip">
+              <span class="tel-label">EDGE</span>
+              <span class="tel-value">LOCAL</span>
+              <span class="tel-state">$0 CLOUD</span>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="strip" id="trust">
-      <div class="container strip__inner">
-        <p>Mid-market commercial real estate, supermarket chains, and private venues across <strong>Cambodia, Vietnam, and the Philippines</strong> still run fragmented legacy CCTV — with no intelligence layer. We add one, without replacing the cameras.</p>
-      </div>
-    </section>
+      <section class="section demo-section" id="demo">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 01 ] System</p>
+            <h2>Watch the bay clock itself.</h2>
+            <p class="section-copy">
+              No tablets. No punch cards. The camera sees active wrench-time, stamps the session,
+              and drops a scorecard on Telegram.
+            </p>
+          </header>
 
-    <section class="section" id="solutions">
-      <div class="container">
-        <header class="section__head">
-          <p class="eyebrow">Solutions</p>
-          <h2>One engine. Three ways to act.</h2>
-        </header>
-
-        <div class="cards">
-          <article class="card" id="safety">
-            <div class="card__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.5"/><path d="M5 19c1.2-3 3.6-4.5 7-4.5s5.8 1.5 7 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <div class="hud-frame">
+            <div class="hud-chrome">
+              <span class="hud-cam">CAM-01 · BAY 02</span>
+              <span class="hud-live"><i></i> REC LIVE</span>
+              <span class="hud-clock" data-hud-clock>14:32:08</span>
             </div>
-            <h3>Safety Wedge</h3>
-            <p>Ephemeral facial search for missing-person response. Search connected feeds when an incident is reported, then expire the temporary search data once it is resolved. Potential matches always require human verification.</p>
-            <a class="card__more" href="#about">See More →</a>
-          </article>
 
-          <article class="card" id="loss">
-            <div class="card__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="7" width="16" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 7V6a4 4 0 0 1 8 0v1" stroke="currentColor" stroke-width="1.5"/></svg>
-            </div>
-            <h3>Loss Prevention</h3>
-            <p>Authorized loss-prevention intelligence for retail, including possible shoplifter alerts and a private threat exchange across participating locations. Turns camera infrastructure into a profit center.</p>
-            <a class="card__more" href="#pricing">See More →</a>
-          </article>
+            <div class="hud-stage">
+              <img class="hud-feed" src="assets/demo-mechanic.png" alt="Overhead bay camera feed of a mechanic working under a performance car hood" />
+              <div class="scanlines" aria-hidden="true"></div>
 
-          <article class="card" id="ops">
-            <div class="card__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.5"/><path d="M12 8.5v4l2.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <div class="bbox" data-bbox>
+                <span class="bbox-tag">
+                  MECHANIC · ACTIVE
+                  <strong data-bbox-timer>04:11:55</strong>
+                </span>
+              </div>
+
+              <aside class="phone" data-phone aria-label="Telegram scorecard preview">
+                <div class="phone-notch"></div>
+                <div class="phone-app">
+                  <p class="phone-app-name">Telegram</p>
+                  <div class="tg-card">
+                    <p class="tg-from">Inbound Surveillance</p>
+                    <p class="tg-meta">Bay 02 · Shift complete · 18:04</p>
+                    <p class="tg-title">Daily wrench scorecard</p>
+                    <p class="tg-stat">Total Wrench Time: <em>4 hrs 12 mins</em></p>
+                    <p class="tg-note">Timestamped photo audit attached.</p>
+                  </div>
+                </div>
+              </aside>
             </div>
-            <h3>Operational Insights</h3>
-            <p>Automate everyday operational awareness. Monitor conditions such as cashier absence, restricted backroom access, and idle staff presence — then dispatch an alert for human action.</p>
-            <a class="card__more" href="#how">See More →</a>
-          </article>
+
+            <div class="hud-footer">
+              <span>EDGE AI · ON-PREM</span>
+              <span>4MP PoE WDR</span>
+              <span class="hud-fps">60 FPS</span>
+            </div>
+          </div>
+
+          <ol class="flow-steps">
+            <li class="is-active" data-flow-step="0"><span>01</span> Mechanic under the hood</li>
+            <li data-flow-step="1"><span>02</span> Bounding box locks · timer ticks</li>
+            <li data-flow-step="2"><span>03</span> Telegram scorecard on your phone</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section roi-section" id="roi">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 02 ] The Math</p>
+            <h2>The leak is already on your floor.</h2>
+          </header>
+
+          <div class="roi-grid">
+            <article class="roi-card leak">
+              <p class="roi-kicker">The Leak</p>
+              <p class="roi-equation">
+                <span class="mono" data-count="45" data-prefix="~" data-unit="min">~45<small>min</small></span>
+                <span class="op">×</span>
+                <span class="mono" data-count="25" data-prefix="$" data-unit="/hr">$25<small>/hr</small></span>
+                <span class="op">=</span>
+                <span class="mono loss" data-count="450" data-prefix="$" data-unit="/bay">$450<small>/bay</small></span>
+              </p>
+              <p>
+                Mechanics lose ~45 mins of untracked time a day. At $25/hr, that’s
+                <strong>$450 lost per bay, every month.</strong>
+              </p>
+            </article>
+            <article class="roi-card fix">
+              <p class="roi-kicker">The Fix</p>
+              <p class="roi-equation">
+                <span class="mono neon" data-count="39" data-prefix="$" data-unit="/mo">$39<small>/mo</small></span>
+                <span class="op">→</span>
+                <span class="mono neon" data-count="3" data-prefix="DAY " data-pad="2">DAY 03</span>
+              </p>
+              <p>
+                Our system costs <strong>$39/month</strong>. It pays for itself by day three.
+                The rest is <strong>pure recovered profit.</strong>
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section features-section" id="features">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 03 ] Capability</p>
+            <h2>Built for the bay, not the boardroom.</h2>
+          </header>
+
+          <div class="feature-grid">
+            <article class="feature-card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <rect x="4" y="7" width="24" height="16" stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="16" cy="15" r="4" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M12 7V5h8v2" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </div>
+              <h3>Automated Wrench-Time Tracking</h3>
+              <p>Hands-free bay monitoring. Mechanics never have to touch a tablet or punch a paper card.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <rect x="8" y="4" width="16" height="24" rx="3" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M12 10h8M12 14h8M12 18h5" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </div>
+              <h3>Instant Telegram Scorecards</h3>
+              <p>Automated daily shift summaries delivered straight to your phone.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <path d="M8 26V8h12l4 4v14H8z" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M12 16h8M12 20h6" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </div>
+              <h3>Dispute-Proof Invoices</h3>
+              <p>Timestamped photo audit trails to justify high-hour custom builds to skeptical clients.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 32 32" fill="none">
+                  <rect x="6" y="8" width="20" height="14" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M10 26h12M16 22v4" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M12 13h8" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+              </div>
+              <h3>Zero Cloud Processing Fees</h3>
+              <p>100% local edge-compute on your shop’s PC. Fast, private, and zero subscription bloat.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section pricing-section" id="pricing">
+        <div class="container">
+          <header class="section-head pricing-head">
+            <p class="section-index">[ 04 ] Pricing</p>
+            <h2>Simple, transparent pricing. <span>No cloud tax.</span></h2>
+            <p class="section-copy">Start on the software you already have, or take the turnkey bay. Pay per bay. Nothing else.</p>
+          </header>
+
+          <div class="pricing-grid">
+            <article class="price-card">
+              <div class="price-top">
+                <p class="price-plan">Software Only</p>
+                <p class="price-for">For shops with existing IP cameras.</p>
+              </div>
+              <p class="price-amount">
+                <span class="mono" data-count="39" data-prefix="$">$39</span>
+                <small>/ month per bay</small>
+              </p>
+              <button class="btn btn-ghost" data-open-demo data-plan="Software Only" type="button">Start with software</button>
+              <div class="price-rule"></div>
+              <ul>
+                <li>Bring your own RTSP camera</li>
+                <li>Local Edge AI software</li>
+                <li>Unlimited Telegram reports</li>
+                <li>Zero cloud processing fees</li>
+                <li>Per-bay wrench-time tracking</li>
+              </ul>
+            </article>
+
+            <article class="price-card featured">
+              <div class="price-accent"></div>
+              <div class="price-top">
+                <div>
+                  <p class="price-plan">Turnkey Hardware</p>
+                  <p class="price-for">Camera, cabling, calibration — done.</p>
+                </div>
+                <p class="popular">Most Popular</p>
+              </div>
+              <p class="price-amount">
+                <span class="mono" data-count="250" data-prefix="$">$250</span>
+                <small>upfront install</small>
+                <span class="plus">+</span>
+                <span class="mono" data-count="39" data-prefix="$">$39</span>
+                <small>/ month per bay</small>
+              </p>
+              <button class="btn btn-neon" data-open-demo data-plan="Turnkey Hardware Install" type="button">
+                Book turnkey install
+                <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
+                </svg>
+              </button>
+              <div class="price-rule"></div>
+              <ul>
+                <li>Everything in Software Only</li>
+                <li>Local on-site installation</li>
+                <li>4MP PoE WDR camera</li>
+                <li>Networking cables</li>
+                <li>Physical zone calibration</li>
+                <li>Bay walkthrough and Telegram setup</li>
+              </ul>
+            </article>
+          </div>
+
+          <p class="pricing-note">
+            <span></span>
+            Extra bays stay at the same per-bay rate. No overage tax.
+          </p>
+        </div>
+      </section>
+
+      <section class="section proof-section" id="proof">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 05 ] Validation</p>
+            <h2>Already on the floor in Phnom Penh.</h2>
+          </header>
+
+          <p class="partners-label">Partner Garage</p>
+          <ul class="partners">
+            <li>
+              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">APEX DYNAMICS</text></svg>
+              <span>Partner Garage</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">NIGHTSHIFT</text></svg>
+              <span>Partner Garage</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">VELOCITY PP</text></svg>
+              <span>Partner Garage</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">MEKONG TUNE</text></svg>
+              <span>Partner Garage</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">GRIDLOCK</text></svg>
+              <span>Partner Garage</span>
+            </li>
+          </ul>
+
+          <blockquote class="testimonial">
+            <p>
+              “We recovered over 15 billable hours across three bays in our first week. Mechanics just work,
+              and the camera does the admin.”
+            </p>
+            <footer>— Validated Performance Shop Owner</footer>
+          </blockquote>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <div class="final-media" aria-hidden="true">
+          <img src="assets/cta-workshop.png" alt="" />
+          <div class="hero-veil dense"></div>
+        </div>
+        <div class="container final-content">
+          <p class="section-index">[ 06 ] Deploy</p>
+          <h2>Start billing for the hours you actually work.</h2>
+          <button class="btn btn-neon btn-lg" data-open-demo type="button">Recover Your Lost Revenue Today.</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <a class="brand" href="#top" aria-label="Inbound Surveillance home">
+            <span class="brand-mark" aria-hidden="true">
+              <img src="assets/brand-mark.png" alt="" width="34" height="34" />
+            </span>
+            <span class="brand-text">
+              <span class="brand-name">INBOUND</span>
+              <span class="brand-sub">SURVEILLANCE</span>
+            </span>
+          </a>
+          <p class="footer-tag">Edge-AI wrench-time for performance garages.</p>
+        </div>
+        <div>
+          <p class="footer-label">Contact</p>
+          <p>Phnom Penh, Cambodia</p>
+          <p><a href="mailto:demo@inboundsurveillance.com">demo@inboundsurveillance.com</a></p>
+          <p><a href="https://t.me/inboundsurveillance" rel="noopener">Telegram: @inboundsurveillance</a></p>
+        </div>
+        <div>
+          <p class="footer-label">Legal</p>
+          <p><a href="privacy.html">Privacy Policy</a></p>
+          <p>© 2026 Inbound Surveillance</p>
         </div>
       </div>
-    </section>
+    </footer>
 
-    <section class="section section--about" id="about">
-      <div class="container about">
-        <div class="about__copy">
-          <p class="badge">About Us</p>
-          <h2>A software layer for the cameras already in place.</h2>
-          <p>We build an Agentic Vision Platform that turns existing, legacy CCTV into proactive safety and operations agents. No hardware bundles. No rip-and-replace. Connect RTSP streams, run inference at the edge, and dispatch action through Telegram.</p>
-        </div>
-
-        <div class="about__grid">
-          <article class="mini">
-            <div class="mini__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h16M12 4v16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.5"/></svg>
-            </div>
-            <h3>Zero-CapEx</h3>
-            <p>Hook into existing RTSP streams. No camera replacement required.</p>
-          </article>
-          <article class="mini">
-            <div class="mini__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="4" width="14" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M8 9h8M8 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-            </div>
-            <h3>Edge AI</h3>
-            <p>Local 128D/512D vector embeddings. Payload under 1 KB. Raw video stays on site unless a match is triggered.</p>
-          </article>
-          <article class="mini">
-            <div class="mini__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h6l2-3 3 6 2-3h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.5"/></svg>
-            </div>
-            <h3>Instant Alerts</h3>
-            <p>Detection is not the end of the loop. Events go to humans over Telegram for verification and action.</p>
-          </article>
-          <article class="mini">
-            <div class="mini__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M5 16l5-5 3 3 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 8h4v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <h3>Scalable Margin</h3>
-            <p>Land with a free or subsidized safety wedge, then expand into recurring intelligence.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="how">
-      <div class="container">
-        <header class="section__head">
-          <p class="eyebrow">How it works</p>
-          <h2>From existing CCTV to human action.</h2>
-        </header>
-
-        <ol class="steps">
-          <li>
-            <span>01</span>
-            <h3>RTSP Ingestion</h3>
-            <p>Connect existing CCTV camera streams. No hardware upgrade.</p>
-          </li>
-          <li>
-            <span>02</span>
-            <h3>Edge Inference</h3>
-            <p>Process video locally and extract lightweight 128D/512D vector embeddings.</p>
-          </li>
-          <li>
-            <span>03</span>
-            <h3>Vector / Rule Match</h3>
-            <p>Match embeddings or operational rules against configured intelligence.</p>
-          </li>
-          <li>
-            <span>04</span>
-            <h3>Telegram Dispatch</h3>
-            <p>Send actionable alerts through Telegram for human response.</p>
-          </li>
-        </ol>
-
-        <p class="note">90%+ potential cloud infrastructure cost reduction compared with traditional cloud-streaming video analytics. Auto-calibration is designed to reduce venue onboarding toward under 60 minutes — a design target, not a guarantee.</p>
-      </div>
-    </section>
-
-    <section class="section section--pricing" id="pricing">
-      <div class="container">
-        <header class="section__head">
-          <p class="eyebrow">Pricing</p>
-          <h2>Land with safety. Expand with intelligence.</h2>
-        </header>
-
-        <div class="pricing">
-          <article class="price-card">
-            <p class="price-card__tier">Tier 1</p>
-            <h3>Emergency / Amber Alert</h3>
-            <p class="price-card__amount">Free or subsidized</p>
-            <p>Eliminate sales friction and secure institutional integration. Safety is the entry point.</p>
-          </article>
-          <article class="price-card price-card--featured">
-            <p class="price-card__tier">Tier 2</p>
-            <h3>Loss Prevention &amp; Operations</h3>
-            <p class="price-card__amount">$15–$25 <small>/ camera / month</small></p>
-            <p>Recurring software intelligence on cameras already in place, including possible threat alerts and operational rules.</p>
-          </article>
-        </div>
-
-        <p class="note">Projected gross margins of 75–80%. Under 6 months projected CAC payback for mid-market retail accounts. These figures are projected, not current results.</p>
-      </div>
-    </section>
-
-    <section class="section section--contact" id="contact">
-      <div class="container contact">
-        <div class="contact__copy">
-          <p class="badge">Contact Us</p>
-          <h2>Tell us your goals.</h2>
-          <p>Connect existing CCTV infrastructure to proactive safety and operations intelligence. Book a demo or request a pilot integration.</p>
-        </div>
-
-        <form class="form" id="contact-form">
+    <div class="modal" id="demo-modal" hidden>
+      <div class="modal-backdrop" data-close-demo></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="demo-title">
+        <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
+        <p class="section-index">Bay Demo</p>
+        <h2 id="demo-title">Book a free bay walkthrough.</h2>
+        <p class="modal-copy">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</p>
+        <form class="demo-form" id="demo-form">
           <label>
             Name
             <input type="text" name="name" required autocomplete="name" />
           </label>
           <label>
-            Email
-            <input type="email" name="email" required autocomplete="email" />
+            Shop name
+            <input type="text" name="shop" required />
           </label>
           <label>
-            Phone
-            <input type="tel" name="phone" autocomplete="tel" />
+            Telegram or phone
+            <input type="text" name="contact" required autocomplete="tel" />
           </label>
           <label>
-            Message
-            <textarea name="message" rows="4" required></textarea>
+            Number of bays
+            <input type="number" name="bays" min="1" max="40" value="2" required />
           </label>
-          <button class="btn btn--primary btn--block" type="submit">Submit</button>
-          <p class="form__done" id="form-done" hidden>Request recorded.</p>
+          <label class="full">
+            Plan interest
+            <select name="plan" id="plan-select">
+              <option value="Software Only">Software Only — $39 / bay / month</option>
+              <option value="Turnkey Hardware Install">Turnkey Hardware Install — $250 + $39 / bay</option>
+            </select>
+          </label>
+          <button class="btn btn-neon full-btn" type="submit">Request Demo</button>
         </form>
+        <p class="form-success" id="form-success" hidden>Request received. We’ll confirm on Telegram within one business day.</p>
       </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <div class="container footer__inner">
-      <div>
-        <strong>Inbound Surveillance</strong>
-        <p>Agentic Vision Platform for Commercial Venues</p>
-      </div>
-      <nav aria-label="Footer">
-        <a href="#home">Home</a>
-        <a href="#solutions">Solutions</a>
-        <a href="#about">About</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#contact">Contact</a>
-        <a href="/dashboard.html">Operator console</a>
-      </nav>
     </div>
-  </footer>
 
-  <script type="module" src="/src/main.tsx"></script>
-  <script src="/script.js"></script>
-</body>
+    <script src="js/main.js"></script>
+  </body>
 </html>

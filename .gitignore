@@ -1,13 +1,1 @@
-node_modules
-dist
-.DS_Store
-*.local
-
-edge/proofs/
-edge/*.db
-edge/config.yaml
-edge/*.pt
-edge/__pycache__/
-__pycache__/
-.venv/
-venv/
+.vercel
