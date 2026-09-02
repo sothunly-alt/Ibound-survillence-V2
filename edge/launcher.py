@@ -104,10 +104,12 @@ from vehicle import VehicleDetection, extract_vehicle_detections
 def find_free_port(default_port: int = 8765) -> int:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("127.0.0.1", default_port))
             return default_port
     except OSError:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("127.0.0.1", 0))
             return s.getsockname()[1]
 
@@ -450,6 +452,7 @@ class LiveStreamEngine:
         self.is_streaming = False
         self.thread: threading.Thread | None = None
         self.current_frame_jpeg: bytes | None = None
+        self.frame_seq = 0
         self.new_frame_event = threading.Event()
         self.grabber = AsyncFrameGrabber()
         self.media = Go2RtcManager()
@@ -1404,6 +1407,7 @@ class LiveStreamEngine:
             if success:
                 with self.lock:
                     self.current_frame_jpeg = buffer.tobytes()
+                    self.frame_seq += 1
                 self.new_frame_event.set()
 
         if self.conn is not None:
@@ -1775,22 +1779,25 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             # MJPEG stream response
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
-            self.send_header("Cache-Control", "no-cache, private")
+            self.send_header("Cache-Control", "no-cache, private, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.end_headers()
 
+            last_seq = -1
             try:
                 while True:
-                    GLOBAL_ENGINE.new_frame_event.wait(timeout=1.0)
-                    GLOBAL_ENGINE.new_frame_event.clear()
                     with GLOBAL_ENGINE.lock:
+                        cur_seq = GLOBAL_ENGINE.frame_seq
                         frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
 
-                    if frame_bytes is not None:
+                    if cur_seq != last_seq and frame_bytes is not None:
+                        last_seq = cur_seq
                         self.wfile.write(b"--frame\r\n")
                         self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
                         self.wfile.write(frame_bytes)
                         self.wfile.write(b"\r\n")
+                        self.wfile.flush()
+                    time.sleep(0.02)
             except (ConnectionResetError, BrokenPipeError):
                 pass
 
@@ -1992,6 +1999,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
 def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
     actual_port = find_free_port(port)
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("127.0.0.1", actual_port), DashboardRequestHandler)
     server.daemon_threads = True
 

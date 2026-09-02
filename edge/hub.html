@@ -992,9 +992,26 @@
     function showAnnotatedMjpeg() {
       stopGo2rtcPlayer();
       const img = document.getElementById('live-camera-feed');
+      const video = document.getElementById('live-webrtc');
+      if (video) {
+        video.style.display = 'none';
+        video.srcObject = null;
+      }
       if (!img) return;
       img.style.display = 'block';
-      img.src = '/api/stream?t=' + Date.now();
+      const targetSrc = '/api/stream?t=' + Date.now();
+      img.src = targetSrc;
+      img.onload = function () {
+        layoutVideoStage();
+      };
+      img.onerror = function () {
+        if (isStreamActive) {
+          setTimeout(function () {
+            if (isStreamActive && img) img.src = '/api/stream?t=' + Date.now();
+          }, 1000);
+        }
+      };
+      requestAnimationFrame(layoutVideoStage);
     }
 
     function showGo2rtcMjpeg(url) {
@@ -1004,39 +1021,14 @@
       if (!img) return;
       img.style.display = 'block';
       img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+      img.onload = function () { layoutVideoStage(); };
+      requestAnimationFrame(layoutVideoStage);
     }
 
     function startLivePlayer(streamId, media) {
-      const img = document.getElementById('live-camera-feed');
       lastLiveStreamId = streamId || lastLiveStreamId;
       lastLiveMedia = media || lastLiveMedia;
-      // Rotated streams use server-side MJPEG so YOLO boxes stay pixel-aligned.
-      if (rotateDeg !== 0 && rotateDeg !== 'auto') {
-        showAnnotatedMjpeg();
-        return;
-      }
-      const ready = media && media.ready && (media.ws || streamId);
-      if (!ready) {
-        showAnnotatedMjpeg();
-        return;
-      }
-      const wsUrl = media.ws || ('ws://127.0.0.1:1984/api/ws?src=' + encodeURIComponent(streamId));
-      const started = startGo2rtcPlayer(wsUrl, media);
-      if (!started) {
-        if (media.mjpeg) showGo2rtcMjpeg(media.mjpeg);
-        else showAnnotatedMjpeg();
-      }
-      go2rtcFallbackTimer = setTimeout(function () {
-        go2rtcFallbackTimer = 0;
-        const video = document.getElementById('live-webrtc');
-        const hasRtc = video && video.style.display !== 'none' && (video.videoWidth > 1 || video.srcObject);
-        if (hasRtc) return;
-        if (media && media.mjpeg && img && !img.src) {
-          showGo2rtcMjpeg(media.mjpeg);
-          return;
-        }
-        if (!img || !img.getAttribute('src')) showAnnotatedMjpeg();
-      }, 3500);
+      showAnnotatedMjpeg();
     }
 
     function startGo2rtcPlayer(wsUrl, media) {
@@ -2851,8 +2843,25 @@
       roiHandle = null;
       const bay = selectedBay();
       if (bay && wasDraw) {
+        const [x, y, w, h] = bay.roi;
+        if (w < 0.035 || h < 0.035) {
+          liveBays = liveBays.filter((b) => b.id !== bay.id);
+          selectedBayId = liveBays[0] ? liveBays[0].id : '';
+          syncBayDom();
+          layoutRoiOverlay();
+          await persistLiveBays();
+          return;
+        }
         const label = prompt('Name this service bay', bay.name);
-        if (label) bay.name = label.trim() || bay.name;
+        if (label === null) {
+          liveBays = liveBays.filter((b) => b.id !== bay.id);
+          selectedBayId = liveBays[0] ? liveBays[0].id : '';
+          syncBayDom();
+          layoutRoiOverlay();
+          await persistLiveBays();
+          return;
+        }
+        if (label.trim()) bay.name = label.trim();
         if (/tool/i.test(bay.name)) bay.type = 'tool_area';
       }
       layoutRoiOverlay();
