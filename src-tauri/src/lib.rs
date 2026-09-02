@@ -129,6 +129,10 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            if let Some(window) = app.get_webview_window("main") {
+                let icon = tauri::include_image!("icons/128x128.png");
+                let _ = window.set_icon(icon);
+            }
             spawn_engine(app.handle().clone());
             Ok(())
         })

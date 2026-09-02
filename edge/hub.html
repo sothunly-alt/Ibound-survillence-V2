@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-  <title>Inbound Garage</title>
+  <title>Inbound Surveillance</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
@@ -125,14 +128,14 @@
       position: relative;
       max-width: 100%;
       max-height: 100%;
-      background: #000;
+      background: #000000;
     }
     #live-camera-feed, #live-webrtc {
       display: block; width: 100%; height: 100%; max-width: 100%; max-height: 100%;
-      object-fit: contain; background: #000;
+      object-fit: contain; background: #000000;
     }
     #live-webrtc { display: none; }
-    .glass-panel { background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px); }
+    .glass-panel { background: rgba(18, 18, 18, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(11, 131, 58, 0.25); }
     .roi-overlay { position: absolute; z-index: 8; user-select: none; touch-action: none; }
     .roi-box { position: absolute; box-sizing: border-box; }
     .roi-box.selected { z-index: 10; }
@@ -140,12 +143,22 @@
       position: absolute; top: -22px; left: 0;
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 10px; line-height: 16px; padding: 1px 6px;
-      color: #0c1322; font-weight: 700; white-space: nowrap; max-width: 240px;
+      color: #000000; background: #00FF66; font-weight: 700; white-space: nowrap; max-width: min(480px, 90vw);
       overflow: hidden; text-overflow: ellipsis;
+      border-radius: 2px;
+      pointer-events: auto;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    }
+    .roi-box.chip-inside-top .bay-chip {
+      top: 2px;
+    }
+    .roi-box.chip-align-right .bay-chip {
+      left: auto;
+      right: 0;
     }
     .roi-handle {
       position: absolute; width: 8px; height: 8px;
-      background: #fabd34; z-index: 9;
+      background: #00FF66; z-index: 9;
     }
     .roi-handle.nw { left: -4px; top: -4px; cursor: nwse-resize; }
     .roi-handle.n  { left: 50%; top: -4px; transform: translateX(-50%); cursor: ns-resize; }
@@ -157,25 +170,25 @@
     .roi-handle.w  { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
     #bay-context-menu { min-width: 220px; }
     #bay-context-menu button { background: transparent; border: 0; color: inherit; cursor: pointer; }
-    input[type=range] { accent-color: #60a5fa; }
-    .orient-on { background: #60a5fa; color: #00315d; border-color: #60a5fa; }
-    .tab-on { color: #a4c9ff; border-bottom: 2px solid #a4c9ff; }
-    .tab-off { color: #c1c7d3; border-bottom: 2px solid transparent; }
-    .nav-on { color: #a4c9ff; background: rgba(63, 70, 92, 0.45); border-left: 2px solid #a4c9ff; }
-    .nav-off { color: #c1c7d3; border-left: 2px solid transparent; }
+    input[type=range] { accent-color: #00FF66; }
+    .orient-on { background: #00FF66; color: #000000; border-color: #00FF66; font-weight: 700; }
+    .tab-on { color: #00FF66; border-bottom: 2px solid #00FF66; }
+    .tab-off { color: #8E9297; border-bottom: 2px solid transparent; }
+    .nav-on { color: #00FF66; background: rgba(0, 255, 102, 0.12); border-left: 2px solid #00FF66; }
+    .nav-off { color: #8E9297; border-left: 2px solid transparent; }
     #identity-workspace {
       display: flex;
       flex-direction: column;
       gap: 1rem;
     }
     .identity-card { transition: border-color 0.15s ease, background 0.15s ease; }
-    .identity-card:hover { border-color: #a4c9ff; background: #232a3a; }
+    .identity-card:hover { border-color: #00FF66; background: #1C1C1C; box-shadow: 0 0 12px rgba(11, 131, 58, 0.35); }
     .identity-thumb, .identity-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .identity-photo { position: relative; aspect-ratio: 1; overflow: hidden; }
     .identity-photo button {
       position: absolute; top: 6px; right: 6px;
       width: 28px; height: 28px; border-radius: 9999px;
-      background: rgba(12, 19, 34, 0.82); color: #ffb4ab;
+      background: rgba(18, 18, 18, 0.85); color: #ffb4ab;
       display: none; align-items: center; justify-content: center;
     }
     .identity-photo:hover button { display: flex; }
@@ -185,8 +198,8 @@
       gap: 1rem;
       overflow-y: auto;
     }
-    .wrench-bar { height: 8px; background: #2e3545; border-radius: 9999px; overflow: hidden; }
-    .wrench-bar > span { display: block; height: 100%; background: #34d399; }
+    .wrench-bar { height: 8px; background: #222222; border-radius: 9999px; overflow: hidden; }
+    .wrench-bar > span { display: block; height: 100%; background: #00FF66; }
     #discovery-results { max-height: 11rem; overflow-y: auto; }
     #discover-cred-modal.hidden { display: none; }
     @media (prefers-reduced-motion: reduce) {
@@ -194,10 +207,14 @@
     }
   </style>
 </head>
-<body class="font-body-md text-body-md antialiased h-screen flex bg-[#111827]">
+<body class="font-body-md text-body-md antialiased h-screen flex bg-[#000000] text-[#FAFAFA]">
   <nav class="sidebar fixed left-0 top-0 h-full w-[288px] flex flex-col py-edge-margin border-r border-outline-variant z-20 max-lg:static max-lg:w-full max-lg:h-auto max-lg:relative">
-    <div class="px-container-padding mb-6">
-      <p id="greeting" class="text-on-surface font-bold text-lg leading-snug">Good Afternoon, Operator</p>
+    <div class="px-container-padding mb-6 flex items-center gap-3">
+      <img src="/inb_surveillance.png" alt="Inbound Surveillance" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)]" />
+      <div class="min-w-0">
+        <p id="greeting" class="text-on-surface font-bold text-base leading-snug truncate">Operator Hub</p>
+        <p class="text-on-surface-variant text-xs truncate">Inbound Surveillance</p>
+      </div>
     </div>
     <ul class="flex-1 overflow-y-auto px-4 space-y-1">
       <li>
@@ -256,8 +273,9 @@
 
   <main class="ml-[288px] flex-1 flex flex-col h-full bg-black relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
-      <div class="flex items-center gap-4 min-w-0">
-        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Garage</h1>
+      <div class="flex items-center gap-3 min-w-0">
+        <img src="/inb_surveillance.png" alt="Inbound Surveillance" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0" />
+        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Surveillance</h1>
         <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
           <span class="text-outline">/</span>
           <span class="text-primary border-b border-primary pb-0.5" id="crumb-venue">Garage</span>
@@ -2625,7 +2643,9 @@
         const chip = el.querySelector('.bay-chip');
         if (chip) {
           chip.style.background = color;
-          chip.textContent = bay.name + ' · ' + stateBadge(bay);
+          const fullLabel = bay.name + ' · ' + stateBadge(bay);
+          chip.textContent = fullLabel;
+          chip.title = fullLabel;
         }
       });
       overlay.querySelectorAll('.roi-box').forEach((el) => {
@@ -2718,12 +2738,17 @@
 
     function layoutRoiOverlay() {
       const overlay = document.getElementById('roi-overlay');
+      const stage = document.getElementById('video-stage');
       if (!overlay || !isStreamActive) return;
       overlay.style.left = '0';
       overlay.style.top = '0';
       overlay.style.width = '100%';
       overlay.style.height = '100%';
       syncBayDom();
+
+      const stageW = (stage && stage.clientWidth) || overlay.clientWidth || 640;
+      const stageH = (stage && stage.clientHeight) || overlay.clientHeight || 480;
+
       liveBays.forEach((bay) => {
         const box = document.getElementById('bay-box-' + bay.id);
         if (!box) return;
@@ -2732,6 +2757,24 @@
         box.style.top = (y * 100) + '%';
         box.style.width = (w * 100) + '%';
         box.style.height = (h * 100) + '%';
+
+        const boxTopPx = y * stageH;
+        box.classList.toggle('chip-inside-top', boxTopPx < 24);
+
+        const boxRightFrac = x + w;
+        const shouldAlignRight = boxRightFrac > 0.70 || x > 0.55;
+        box.classList.toggle('chip-align-right', shouldAlignRight);
+
+        const chip = box.querySelector('.bay-chip');
+        if (chip) {
+          let maxAvailPx;
+          if (shouldAlignRight) {
+            maxAvailPx = Math.max(120, (x + w) * stageW - 8);
+          } else {
+            maxAvailPx = Math.max(120, stageW - (x * stageW) - 8);
+          }
+          chip.style.maxWidth = Math.min(480, Math.floor(maxAvailPx)) + 'px';
+        }
       });
     }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ScanAndGoLoader } from "../../components/ui/scan-and-go-loader";
 import type {
   CameraProtocol,
   DiscoveredDevice,
@@ -296,6 +297,11 @@ export function DiscoveryModal({ open, engineBase, onClose, onConnected }: Disco
             Close
           </button>
         </header>
+        {status === "scanning" && (
+          <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
+            <ScanAndGoLoader size="sm" showTelemetry={false} statusLabel="SCANNING NETWORK FOR CAMERAS..." />
+          </div>
+        )}
         <p className={`discover-status${status === "error" ? " is-err" : ""}`}>{statusText}</p>
         {pending ? (
           <form

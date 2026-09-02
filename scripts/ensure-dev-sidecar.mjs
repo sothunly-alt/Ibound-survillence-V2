@@ -8,7 +8,7 @@
  * works after Tauri copies the file into target/debug/.
  */
 import { execSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +17,90 @@ const binaries = path.join(repo, "src-tauri", "binaries");
 const launcher = path.join(repo, "edge", "launcher.py");
 const venvPython = path.join(repo, "edge", ".venv", "bin", "python");
 const python = existsSync(venvPython) ? venvPython : "python3";
+
+function syncLinuxDesktopIcons() {
+  if (process.platform !== "linux") return;
+  const home = process.env.HOME;
+  if (!home) return;
+  const iconsHicolor = path.join(home, ".local", "share", "icons", "hicolor");
+  const appsDir = path.join(home, ".local", "share", "applications");
+  const iconSrc = path.join(repo, "src-tauri", "icons");
+
+  const sizeMap = {
+    "32x32": "32x32.png",
+    "64x64": "64x64.png",
+    "128x128": "128x128.png",
+    "256x256": "128x128@2x.png",
+    "512x512": "icon.png",
+  };
+
+  try {
+    for (const [dirName, srcFile] of Object.entries(sizeMap)) {
+      const srcPath = path.join(iconSrc, srcFile);
+      if (!existsSync(srcPath)) continue;
+      const targetDir = path.join(iconsHicolor, dirName, "apps");
+      mkdirSync(targetDir, { recursive: true });
+      copyFileSync(srcPath, path.join(targetDir, "inbound-surveillance.png"));
+    }
+
+    mkdirSync(appsDir, { recursive: true });
+    const desktopFileContent = `[Desktop Entry]
+Categories=Utility;Development;
+Comment=Inbound Surveillance desktop application
+Exec=npm run desktop:dev
+StartupWMClass=inbound-surveillance
+Icon=inbound-surveillance
+Name=Inbound Surveillance
+Terminal=false
+Type=Application
+`;
+    writeFileSync(path.join(appsDir, "inbound-surveillance.desktop"), desktopFileContent);
+    writeFileSync(path.join(appsDir, "Inbound Surveillance.desktop"), desktopFileContent);
+
+    try { execSync(`gtk-update-icon-cache -f -t ${JSON.stringify(iconsHicolor)}`, { stdio: "ignore" }); } catch (_) {}
+    try { execSync(`update-desktop-database ${JSON.stringify(appsDir)}`, { stdio: "ignore" }); } catch (_) {}
+  } catch (_) {}
+}
+
+function ensureIcons() {
+  const possibleSources = [
+    path.join(repo, "inb_surveillance.jpg"),
+    path.join(repo, "INB Surveillance.jpg"),
+    path.join(repo, "inb_surveillance.png"),
+    path.join(repo, "INB Surveillance.png"),
+    path.join(repo, "app-icon.png"),
+  ];
+  const source = possibleSources.find((p) => existsSync(p));
+  if (!source) return;
+
+  const inbSurveillance = path.join(repo, "INB Surveillance.jpg");
+  const inbSurveillanceLower = path.join(repo, "inb_surveillance.jpg");
+  if (existsSync(inbSurveillance) && !existsSync(inbSurveillanceLower)) {
+    try { copyFileSync(inbSurveillance, inbSurveillanceLower); } catch (_) {}
+  } else if (existsSync(inbSurveillanceLower) && !existsSync(inbSurveillance)) {
+    try { copyFileSync(inbSurveillanceLower, inbSurveillance); } catch (_) {}
+  }
+
+  const iconPng = path.join(repo, "src-tauri", "icons", "icon.png");
+  const sourceMtime = statSync(source).mtimeMs;
+  const iconMtime = existsSync(iconPng) ? statSync(iconPng).mtimeMs : 0;
+
+  if (!existsSync(iconPng) || sourceMtime > iconMtime) {
+    console.log(`[icons] Detected launcher image: ${path.basename(source)}`);
+    console.log(`[icons] Compiling Tauri icon bundle...`);
+    try {
+      execSync(`npx tauri icon ${JSON.stringify(source)}`, {
+        cwd: repo,
+        stdio: "inherit",
+      });
+      console.log(`[icons] Successfully compiled Tauri icons.`);
+    } catch (err) {
+      console.warn(`[icons] Warning: failed to run tauri icon: ${err.message}`);
+    }
+  }
+
+  syncLinuxDesktopIcons();
+}
 
 function hostTriple() {
   const fromEnv = process.env.TAURI_ENV_TARGET_TRIPLE?.trim();
@@ -32,6 +116,8 @@ function isFrozenBinary(file) {
   const macho = header[0] === 0xcf && header[1] === 0xfa;
   return elf || pe || macho;
 }
+
+ensureIcons();
 
 const triple = hostTriple();
 const ext = process.platform === "win32" || triple.includes("windows") ? ".exe" : "";

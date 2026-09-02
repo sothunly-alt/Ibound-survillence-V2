@@ -3,6 +3,7 @@ import { AlertsView } from "./components/AlertsView";
 import { CasesView } from "./components/CasesView";
 import { LiveView } from "./components/LiveView";
 import { RulesView } from "./components/RulesView";
+import { ScanAndGoView } from "./components/ScanAndGoView";
 import { TelegramPanel } from "./components/TelegramPanel";
 import { useOps } from "./store";
 import type { ViewId } from "./types";
@@ -12,6 +13,7 @@ const tabs: { id: ViewId; label: string }[] = [
   { id: "rules", label: "Rules" },
   { id: "cases", label: "Cases" },
   { id: "alerts", label: "Alerts" },
+  { id: "scan-and-go", label: "Scan & Go" },
   { id: "bot", label: "Telegram" },
 ];
 
@@ -65,11 +67,11 @@ function Shell() {
       <header className="ops__top">
         <a className="brand" href="/">
           <span className="brand__mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32" fill="none">
-              <circle cx="16" cy="16" r="12.5" stroke="currentColor" strokeWidth="1.6" />
-              <circle cx="16" cy="16" r="5" stroke="currentColor" strokeWidth="1.6" />
-              <circle cx="16" cy="16" r="1.8" fill="currentColor" />
-            </svg>
+            <img
+              src="/inb_surveillance.png"
+              alt="Inbound Surveillance"
+              style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: "1px solid #00FF66" }}
+            />
           </span>
           <span className="brand__copy">
             <strong>Inbound Surveillance</strong>
@@ -97,6 +99,7 @@ function Shell() {
           {mainView === "rules" && <RulesView />}
           {mainView === "cases" && <CasesView />}
           {mainView === "alerts" && <AlertsView />}
+          {mainView === "scan-and-go" && <ScanAndGoView />}
         </div>
         <TelegramPanel />
       </div>

@@ -86,18 +86,18 @@ from occupancy import (
     BayZoneManager,
     GhostCounter,
     GhostState,
-    bay_badge,
-    bay_draw_color,
     normalize_bays,
     roi_to_pixels,
 )
 from person import Detection, draw_detection, person_detections
 from proof import save_proof, scale_roi_px
+from reid import try_create_body_reid
 from report import build_report
-from roi_edit import draw_roi_handles
+from runtime import resolve_runtime, resolve_weights_file
 from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
 from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
 from telegram_out import TelegramOut
+from tracker import PersonTracker, run_identity_pipeline
 from vehicle import VehicleDetection, extract_vehicle_detections
 
 
@@ -461,6 +461,9 @@ class LiveStreamEngine:
         self._gateway_main_stream_id: str | None = None
         self.model = None
         self.face_rec = None
+        self.tracker: PersonTracker | None = None
+        self.reid = None
+        self.runtime_profile = None
         self.staff_names: list[str] = []
         self.identities: list[str] = []
 
@@ -1112,17 +1115,26 @@ class LiveStreamEngine:
 
         print("[LiveStreamEngine] Loading YOLO pose model...")
         self.conn = connect(DATA_DIR / "events.db")
-        weights_path = get_resource_path("yolo11n-pose.pt")
-        if not weights_path.exists():
-            weights_path = DATA_DIR / "yolo11n-pose.pt"
+        self.runtime_profile = resolve_runtime(self.cfg)
+        weights_path = resolve_weights_file(self.cfg, get_resource_path, DATA_DIR)
         veh_weights_path = get_resource_path("yolo11n.pt")
         if not veh_weights_path.exists():
             veh_weights_path = DATA_DIR / "yolo11n.pt"
         try:
-            self.model = YOLO(str(weights_path) if weights_path.exists() else "yolo11n-pose.pt")
+            self.model = YOLO(str(weights_path))
             self.vehicle_model = YOLO(str(veh_weights_path) if veh_weights_path.exists() else "yolo11n.pt")
-            print("[LiveStreamEngine] Models ready (pose + vehicle)")
+            print(
+                f"[LiveStreamEngine] Models ready ({self.runtime_profile.name}, "
+                f"device={self.runtime_profile.yolo_device}, weights={weights_path})"
+            )
             self.face_rec = try_create_face_recognizer(self.cfg)
+            self.reid = try_create_body_reid(self.cfg)
+            self.tracker = PersonTracker(
+                max_age=self.runtime_profile.track_max_age,
+                min_hits=self.runtime_profile.track_min_hits,
+                iou_threshold=self.runtime_profile.track_iou_threshold,
+                reid_threshold=self.runtime_profile.reid_match_threshold,
+            )
         except Exception as e:
             self.error_message = f"Failed to load YOLO model: {e}"
             with self.lock:
@@ -1223,6 +1235,8 @@ class LiveStreamEngine:
                 last_infer = 0.0
                 frame_count = 0
                 t_fps = time.time()
+                if self.tracker is not None:
+                    self.tracker.reset()
                 rotate_deg, flip = resolve_orient(cfg.get("rotate"), source, packet.frame, cfg.get("flip"))
                 first_oriented = orient_frame(packet.frame, rotate_deg, flip)
                 h0, w0 = first_oriented.shape[:2]
@@ -1261,7 +1275,7 @@ class LiveStreamEngine:
                         frame,
                         imgsz=imgsz,
                         conf=person_conf,
-                        device=None,
+                        device=self.runtime_profile.yolo_device if self.runtime_profile else None,
                         verbose=False,
                     )[0]
                     vehicles = []
@@ -1300,7 +1314,15 @@ class LiveStreamEngine:
                         min_keypoints=min_keypoints,
                         kpt_conf=kpt_conf,
                     )
-                    if self.face_rec is not None:
+                    if self.tracker is not None:
+                        last_accepted = run_identity_pipeline(
+                            frame,
+                            last_accepted,
+                            self.tracker,
+                            face_rec=self.face_rec,
+                            reid=self.reid,
+                        )
+                    elif self.face_rec is not None:
                         self.face_rec.annotate_detections(frame, last_accepted)
                     snapshots = self.bay_manager.update(
                         last_accepted, w, h, now, kpt_conf=kpt_conf
@@ -1386,22 +1408,9 @@ class LiveStreamEngine:
                     kpt_conf=kpt_conf,
                 )
 
-            for snap in snapshots:
-                color = bay_draw_color(snap.bay_id, snap.state)
-                x1, y1, x2, y2 = roi_to_pixels(w, h, snap.roi)
-                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-                draw_roi_handles(annotated, (x1, y1, x2, y2), color)
-                label = bay_badge(snap.state, snap.mechanic_name, snap.wrench_time_today, snap.technicians_times)
-                cv2.putText(
-                    annotated,
-                    f"{snap.name}: {label}",
-                    (x1, max(24, y1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5,
-                    color,
-                    2,
-                    cv2.LINE_AA,
-                )
+            # ROI geometry is rendered as an interactive DOM overlay in hub.html.
+            # Do not burn boxes, handles, or labels into the JPEG — that duplicates
+            # the overlay and leaves a lagging ghost box when the user drags.
 
             success, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if success:
@@ -1659,6 +1668,47 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(load_hub_html())
+
+        elif parsed.path in (
+            "/favicon.ico",
+            "/favicon.png",
+            "/favicon.svg",
+            "/inb_surveillance.png",
+            "/inb_surveillance.jpg",
+            "/INB Surveillance.jpg",
+        ):
+            filename = parsed.path.lstrip("/")
+            candidates = [
+                ROOT / "public" / filename,
+                ROOT.parent / "public" / filename,
+                ROOT / filename,
+                ROOT.parent / filename,
+                Path(filename),
+            ]
+            content = None
+            for cand in candidates:
+                if cand.exists() and cand.is_file():
+                    try:
+                        content = cand.read_bytes()
+                        break
+                    except Exception:
+                        pass
+            if content:
+                content_type = "image/png"
+                if filename.endswith(".ico"):
+                    content_type = "image/x-icon"
+                elif filename.endswith(".svg"):
+                    content_type = "image/svg+xml"
+                elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
+                    content_type = "image/jpeg"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.end_headers()
+                self.wfile.write(content)
+            else:
+                self.send_response(404)
+                self.end_headers()
 
         elif parsed.path == "/api/config":
             cfg = read_config()

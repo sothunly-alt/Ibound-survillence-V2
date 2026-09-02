@@ -23,7 +23,7 @@ export type TelegramDirection = "in" | "out";
 
 export type TelegramMethod = "sendMessage" | "getUpdates" | "getMe" | "ticket" | "status";
 
-export type ViewId = "live" | "rules" | "cases" | "alerts" | "bot";
+export type ViewId = "live" | "rules" | "cases" | "alerts" | "bot" | "scan-and-go";
 
 export type CameraProtocol = "webcam" | "rtsp" | "phone" | "onvif" | "tapo" | "webrtc";
 

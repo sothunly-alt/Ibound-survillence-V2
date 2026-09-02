@@ -406,6 +406,28 @@ class PoseAndRoiTests(unittest.TestCase):
             self.assertIn("12mm socket & ratchet", brake_tmpl["tools_required"])
             conn.close()
 
+    def test_head_turn_keeps_locked_technician_timer(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        work = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="George")
+        t0 = 20.0
+        manager.update([work], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 1.0, kpt_conf=0.4)
+        turned = _det(
+            _shift_kpts(working_pose_keypoints(), 80, 280),
+            name="Employee",
+            staff=False,
+        )
+        manager.update([turned], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "WORKING")
+        self.assertEqual(snap.mechanic_name, "George")
+        self.assertIn("George", snap.technicians_times)
+        self.assertNotIn("Employee", snap.technicians_times)
+
 
 class AttendanceAndScorecardTests(unittest.TestCase):
     def setUp(self):

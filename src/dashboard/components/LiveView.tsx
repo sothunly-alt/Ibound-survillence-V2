@@ -247,6 +247,7 @@ export function LiveView() {
                       setMenu({ x: event.clientX, y: event.clientY });
                     }}
                     aria-label={bay.name}
+                    title={bay.name}
                   />
                 );
               })}

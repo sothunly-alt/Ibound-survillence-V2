@@ -1,16 +1,15 @@
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 */
 :root {
-  --bg: #0a0a0a;
-  --bg-2: #111111;
-  --bg-3: #161616;
-  --bg-4: #1c1c1c;
+  --bg: #000000;
+  --bg-2: #121212;
+  --bg-3: #1a1a1a;
+  --bg-4: #222222;
   --line: rgba(255, 255, 255, 0.08);
   --line-2: rgba(255, 255, 255, 0.14);
-  --text: #ffffff;
-  --muted: #a1a1aa;
-  --green: #4ade80;
-  --green-2: #22c55e;
-  --green-soft: rgba(74, 222, 128, 0.12);
+  --text: #FAFAFA;
+  --muted: #8E9297;
+  --green: #00FF66;
+  --green-2: #0B833A;
+  --green-soft: rgba(0, 255, 102, 0.12);
   --warn: #fbbf24;
   --warn-soft: rgba(251, 191, 36, 0.12);
   --danger: #f87171;

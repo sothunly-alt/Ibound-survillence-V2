@@ -4,71 +4,123 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Inbound Surveillance</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       color-scheme: dark;
+      --color-bg-base: #000000;
+      --color-surface-charcoal: #121212;
+      --color-surveillance-green: #00FF66;
+      --color-stealth-green: #0B833A;
+      --color-crisp-white: #FAFAFA;
+      --color-text-muted: #8E9297;
     }
     html, body {
       margin: 0;
       height: 100%;
-      background: #0c1322;
-      color: #dce2f7;
-      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      background: var(--color-bg-base);
+      color: var(--color-crisp-white);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      overflow: hidden;
     }
     .boot {
       min-height: 100%;
       display: grid;
       place-items: center;
       padding: 24px;
+      background: radial-gradient(circle at center, #0a1810 0%, #000000 75%);
     }
     .card {
-      width: min(420px, 100%);
+      width: min(440px, 100%);
       text-align: center;
-    }
-    .mark {
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 20px;
-      color: #a4c9ff;
+      background: var(--color-surface-charcoal);
+      border: 1px solid rgba(11, 131, 58, 0.35);
+      border-radius: 20px;
+      padding: 32px 24px;
+      box-shadow: 0 0 24px rgba(11, 131, 58, 0.25), inset 0 0 30px rgba(0, 0, 0, 0.9);
     }
     h1 {
-      margin: 0 0 8px;
-      font-size: 22px;
-      letter-spacing: -0.03em;
-      font-weight: 600;
+      margin: 16px 0 6px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+      color: var(--color-crisp-white);
     }
     p {
       margin: 0;
-      color: #c1c7d3;
-      font-size: 14px;
+      color: var(--color-surveillance-green);
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
       line-height: 1.5;
+      letter-spacing: 0.04em;
     }
-    .pulse {
+    .status-sub {
+      color: var(--color-text-muted);
+      font-size: 11px;
+      margin-top: 4px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .pulse-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #60a5fa;
-      margin: 20px auto 0;
-      animation: pulse 1.2s ease-in-out infinite;
+      background: var(--color-surveillance-green);
+      margin: 16px auto 0;
+      box-shadow: 0 0 12px rgba(0, 255, 102, 0.8);
+      animation: pulse-glow 1.4s ease-in-out infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.35; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.25); }
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.35; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.3); }
+    }
+    @keyframes scan-laser-sweep {
+      0% { transform: translateY(0px); opacity: 0.2; }
+      15% { opacity: 1; }
+      85% { opacity: 1; }
+      100% { transform: translateY(56px); opacity: 0.2; }
+    }
+    @keyframes iris-rotate-cw {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes iris-rotate-ccw {
+      0% { transform: rotate(360deg); }
+      100% { transform: rotate(0deg); }
+    }
+    @keyframes iris-pulse-glow {
+      0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 255, 102, 0.5)); }
+      50% { filter: drop-shadow(0 0 12px rgba(0, 255, 102, 0.95)) drop-shadow(0 0 20px rgba(11, 131, 58, 0.6)); }
+    }
+    @keyframes hud-bracket-pulse {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.05); opacity: 1; }
     }
   </style>
 </head>
 <body>
   <main class="boot">
     <div class="card">
-      <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <circle cx="16" cy="16" r="12.5" stroke="currentColor" stroke-width="1.6"/>
-        <circle cx="16" cy="16" r="5" stroke="currentColor" stroke-width="1.6"/>
-        <circle cx="16" cy="16" r="1.8" fill="currentColor"/>
-      </svg>
-      <h1>Inbound Surveillance</h1>
+      <!-- Launcher Mascot Image with Overwatch Glow -->
+      <div class="mascot-container" style="position: relative; width: 140px; height: 140px; margin: 0 auto 20px;">
+        <div style="position: absolute; inset: -6px; border-radius: 50%; border: 2px dashed #00FF66; animation: iris-rotate-cw 12s linear infinite; opacity: 0.8;"></div>
+        <div style="position: absolute; inset: -14px; border-radius: 50%; border: 1px solid rgba(11, 131, 58, 0.5); animation: iris-rotate-ccw 8s linear infinite;"></div>
+        <img
+          src="/inb_surveillance.png"
+          alt="Inbound Surveillance Mascot"
+          style="width: 140px; height: 140px; border-radius: 50%; object-fit: cover; border: 2px solid #00FF66; box-shadow: 0 0 24px rgba(0, 255, 102, 0.45); display: block;"
+        />
+      </div>
+
+      <h1>INBOUND SURVEILLANCE</h1>
       <p id="status">Starting local camera engine…</p>
-      <div class="pulse" aria-hidden="true"></div>
+      <div class="status-sub">Digital Overwatch • Agentic Vision</div>
+      <div class="pulse-dot" aria-hidden="true"></div>
     </div>
   </main>
   <script type="module" src="/src/desktop.tsx"></script>

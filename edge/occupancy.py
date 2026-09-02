@@ -157,6 +157,7 @@ IDLE_STATIONARY_SECONDS = 120.0
 UNDER_CAR_GRACE_SECONDS = 5.0
 BREAK_TIMEOUT_SECONDS = 3600.0
 MAX_ACTIVITY_DT = 2.0
+UNKNOWN_WORKER = "Employee"
 
 # COCO-pose indices (Ultralytics YOLO-pose).
 L_SHOULDER, R_SHOULDER = 5, 6
@@ -548,6 +549,7 @@ class _BayRuntime:
         self.state = "EMPTY"
         self.technician: str | None = None
         self.last_working_technician: str | None = None
+        self.locked_tracks: dict[int, str] = {}
         self.technicians_times: dict[str, float] = {}
         self.wrench_seconds = 0.0
         self.idle_seconds = 0.0
@@ -742,11 +744,7 @@ class BayZoneManager:
                 dt = max(0.0, min(now - bay.last_t, MAX_ACTIVITY_DT))
             bay.last_t = now
 
-            technician = _pick_technician(inside)
-            if technician:
-                bay.last_working_technician = technician
-            else:
-                technician = bay.last_working_technician
+            technician = _pick_technician(inside) or bay.last_working_technician
 
             under_vehicle = any(
                 is_under_vehicle_pose(getattr(det, "keypoints", []), kpt_conf * 0.85) for det in inside
@@ -760,10 +758,15 @@ class BayZoneManager:
                 bay.session_open = True
                 bay.last_active_t = now
 
-                # Track each employee in the bay individually
+                # Track each employee in the bay individually. Head turns that
+                # drop face-ID to "Employee" keep the locked staff name so the
+                # session timer does not fragment.
                 active_names: list[str] = []
                 for det in inside:
-                    name = getattr(det, "identity", None) or ("Staff" if getattr(det, "is_staff", False) else "Employee")
+                    name = _resolve_occupant_name(det, inside, bay)
+                    track_id = getattr(det, "track_id", None)
+                    if track_id is not None and name != UNKNOWN_WORKER:
+                        bay.locked_tracks[int(track_id)] = name
                     if dt > 0:
                         bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
                     det.active_time_str = fmt_duration(bay.technicians_times.get(name, bay.wrench_seconds + dt))
@@ -771,10 +774,13 @@ class BayZoneManager:
                     if name not in active_names:
                         active_names.append(name)
 
-                technician = ", ".join(active_names) if active_names else (technician or bay.last_working_technician)
-                if technician:
-                    bay.last_working_technician = technician
-                bay.technician = technician
+                named_staff = [n for n in active_names if n != UNKNOWN_WORKER]
+                if len(named_staff) == 1:
+                    bay.last_working_technician = named_staff[0]
+                elif len(named_staff) > 1 and bay.last_working_technician not in named_staff:
+                    bay.last_working_technician = named_staff[0]
+                display = named_staff or active_names
+                bay.technician = ", ".join(display) if display else (technician or UNKNOWN_WORKER)
 
                 if under_vehicle:
                     bay.state = "UNDER_VEHICLE"
@@ -803,6 +809,7 @@ class BayZoneManager:
                     bay.last_anchor = None
                     bay.session_open = False
                     bay.last_working_technician = None
+                    bay.locked_tracks.clear()
 
             is_work_state = bay.state in ("WORKING", "UNDER_VEHICLE")
             ticks.append((bay.id, bay.technician, is_work_state, dt, bay.state, bay.job_id))
@@ -814,16 +821,54 @@ class BayZoneManager:
         return list(getattr(self, "_last_ticks", []))
 
 
+def _is_named_staff(det) -> bool:
+    name = getattr(det, "identity", None)
+    return bool(getattr(det, "is_staff", False) and name and name != UNKNOWN_WORKER)
+
+
+def _single_locked_staff(bay: _BayRuntime) -> str | None:
+    name = bay.last_working_technician
+    if not name or name == UNKNOWN_WORKER or "," in name:
+        return None
+    return name
+
+
+def _resolve_occupant_name(det, inside: list, bay: _BayRuntime) -> str:
+    """Keep a verified staff name across face misses; never invent a second worker."""
+    raw = getattr(det, "identity", None)
+    if _is_named_staff(det) and raw:
+        det.identity = str(raw)
+        return str(raw)
+
+    track_id = getattr(det, "track_id", None)
+    if track_id is not None and int(track_id) in bay.locked_tracks:
+        name = bay.locked_tracks[int(track_id)]
+        det.identity = name
+        det.is_staff = True
+        return name
+
+    locked = _single_locked_staff(bay)
+    staff_present = [d for d in inside if _is_named_staff(d)]
+    if locked and len(inside) == 1 and not staff_present:
+        det.identity = locked
+        det.is_staff = True
+        return locked
+
+    if raw and raw != UNKNOWN_WORKER:
+        return str(raw)
+    return UNKNOWN_WORKER
+
+
 def _pick_technician(detections: list) -> str | None:
-    staff = [
-        det
-        for det in detections
-        if getattr(det, "is_staff", False) and getattr(det, "identity", None)
-    ]
+    staff = [det for det in detections if _is_named_staff(det)]
     if staff:
         staff.sort(key=lambda d: float(getattr(d, "identity_conf", 0) or 0), reverse=True)
         return str(staff[0].identity)
-    named = [det for det in detections if getattr(det, "identity", None)]
+    named = [
+        det
+        for det in detections
+        if getattr(det, "identity", None) and getattr(det, "identity") != UNKNOWN_WORKER
+    ]
     if named:
         return str(named[0].identity)
     return None

@@ -55,9 +55,12 @@ from face_id import till_status_label, try_create_face_recognizer
 from occupancy import GhostCounter, GhostState, OccupancyGate
 from person import Detection, draw_detection, person_detections
 from proof import save_proof
+from reid import try_create_body_reid
 from report import build_report
 from roi_edit import RoiEditor, draw_roi_handles
+from runtime import resolve_runtime, resolve_weights_file
 from telegram_out import TelegramOut
+from tracker import PersonTracker, run_identity_pipeline
 
 WIN = "Inbound Garage Floor"
 ROTATES = (0, 90, 180, 270)
@@ -153,12 +156,7 @@ def parse_source(value) -> int | str:
 
 
 def resolve_weights(cfg: dict) -> str:
-    name = str(cfg.get("weights") or "yolo11n-pose.pt").strip() or "yolo11n-pose.pt"
-    bundled = get_resource_path(Path(name).name)
-    if bundled.exists():
-        return str(bundled)
-    local = DATA_DIR / Path(name).name
-    return str(local) if local.exists() else name
+    return resolve_weights_file(cfg, get_resource_path, DATA_DIR)
 
 
 def resolve_detect_fps(cfg: dict, sample_fps: float) -> float:
@@ -286,10 +284,18 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     open_preview_window(WIN, editor.on_mouse)
 
     weights = resolve_weights(cfg)
+    profile = resolve_runtime(cfg)
     model = YOLO(weights)
     ghost = GhostCounter(absent, cooldown)
     gate = OccupancyGate(confirm, clear)
     face_rec = try_create_face_recognizer(cfg)
+    reid = try_create_body_reid(cfg)
+    tracker = PersonTracker(
+        max_age=profile.track_max_age,
+        min_hits=profile.track_min_hits,
+        iou_threshold=profile.track_iou_threshold,
+        reid_threshold=profile.reid_match_threshold,
+    )
     last_accepted: list[Detection] = []
     last_rejected: list[Detection] = []
     last_state = GhostState(False, 0.0, False)
@@ -300,7 +306,8 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     print(f"Ingest {source}  ROI {roi}  absent>={absent}s  Telegram={'on' if bot.enabled else 'off'}")
     print(f"Orient rotate={rotate_deg} flip={flip}")
     print(
-        f"Pose {weights} conf>={person_conf} kpt>={kpt_conf} n>={min_keypoints} "
+        f"Pose {weights} runtime={profile.name} device={profile.yolo_device} "
+        f"conf>={person_conf} kpt>={kpt_conf} n>={min_keypoints} "
         f"aspect>={min_aspect} detect={detect_fps:.1f}fps imgsz={imgsz} "
         f"gate {confirm}s/{clear}s"
     )
@@ -332,7 +339,7 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 frame,
                 imgsz=imgsz,
                 conf=person_conf,
-                device=None,
+                device=profile.yolo_device,
                 verbose=False,
             )[0]
             last_accepted, last_rejected = person_detections(
@@ -344,8 +351,13 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 min_keypoints=min_keypoints,
                 kpt_conf=kpt_conf,
             )
-            if face_rec is not None:
-                face_rec.annotate_detections(frame, last_accepted)
+            last_accepted = run_identity_pipeline(
+                frame,
+                last_accepted,
+                tracker,
+                face_rec=face_rec,
+                reid=reid,
+            )
             detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
             occupied = gate.update(detected, now)
             last_state = ghost.update(occupied, now)
