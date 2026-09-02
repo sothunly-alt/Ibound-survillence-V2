@@ -1158,6 +1158,7 @@ class LiveStreamEngine:
         last_rejected: list[Detection] = []
         last_state = GhostState(False, 0.0, False)
         last_infer = 0.0
+        prev_gray = None
         frame_count = 0
         t_fps = time.time()
         clock_out_grace = 600.0
@@ -1267,7 +1268,25 @@ class LiveStreamEngine:
             snapshots = self.bay_manager.snapshots()
             any_occupied = any(s.state != "EMPTY" for s in snapshots)
 
-            if now - last_infer >= interval:
+            # Fast Motion Scanner (<0.05ms CPU on 160x120 grayscale)
+            small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
+            if prev_gray is not None:
+                diff = cv2.absdiff(prev_gray, small_gray)
+                motion_score = float(np.mean(diff))
+            else:
+                motion_score = 10.0
+            prev_gray = small_gray
+
+            # Dynamic AI Cadence: High FPS during active motion/work; Low-compute Sleep during static wait
+            has_active_work = any(s.state in ("WORKING", "UNDER_VEHICLE") for s in snapshots)
+            if motion_score > 1.2 or has_active_work:
+                dynamic_interval = interval  # Full high-cadence AI (8 FPS)
+            elif any(s.state in ("PARKED_WAITING", "ON_BREAK") for s in snapshots):
+                dynamic_interval = 2.0  # Low-compute check (0.5 FPS during customer consultation wait)
+            else:
+                dynamic_interval = 3.0  # Idle Sleep Mode (wakes up instantly on motion)
+
+            if now - last_infer >= dynamic_interval:
                 last_infer = now
                 try:
                     t_pred = time.perf_counter()

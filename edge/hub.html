@@ -86,6 +86,29 @@
     .sidebar { background-color: #0c0c0c; border-right: 1px solid #1c1c1c; }
     .cam-selected { box-shadow: 0 0 16px rgba(0, 255, 102, 0.4); border-color: #00FF66 !important; }
     .glass-panel { background: rgba(18, 18, 18, 0.82); backdrop-filter: blur(12px); border: 1px solid rgba(11, 131, 58, 0.3); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7); }
+    .grid-cam-tile {
+      position: relative;
+      background: #000000;
+      border: 1px solid #1c1c1c;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+    }
+    .grid-cam-tile:hover {
+      border-color: #00FF66;
+      box-shadow: 0 0 16px rgba(0, 255, 102, 0.25);
+    }
+    .grid-cam-tile.active-focus {
+      border-color: #00FF66 !important;
+      box-shadow: 0 0 20px rgba(0, 255, 102, 0.4);
+    }
+    .grid-cam-tile img, .grid-cam-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
     .video-stage { min-height: 180px; height: 100%; }
     #workspace {
       display: flex;
@@ -310,13 +333,25 @@
 
     <div class="flex-1 min-h-0 p-edge-margin" id="workspace">
       <div class="flex-1 min-h-0" id="feed-column">
-        <div class="flex items-center gap-3">
-          <h2 class="font-headline-md text-headline-md text-on-surface">Shop Floor Feed</h2>
-          <div id="live-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant">
-            <span id="live-dot" class="w-2 h-2 rounded-full bg-outline"></span>
-            <span id="live-label" class="font-label-upper text-label-upper text-on-surface-variant">STANDBY</span>
+        <div class="flex items-center justify-between gap-3 mb-1">
+          <div class="flex items-center gap-3">
+            <h2 class="font-headline-md text-headline-md text-on-surface">Shop Floor Feed</h2>
+            <div id="live-badge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant">
+              <span id="live-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+              <span id="live-label" class="font-label-upper text-label-upper text-on-surface-variant">STANDBY</span>
+            </div>
+            <span id="live-protocol-pill" class="hidden font-label-upper text-label-upper px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant text-primary"></span>
           </div>
-          <span id="live-protocol-pill" class="hidden font-label-upper text-label-upper px-2 py-0.5 rounded-full bg-surface-container-high border border-outline-variant text-primary"></span>
+          <div class="flex items-center gap-1 bg-surface-container-high p-1 rounded-lg border border-outline-variant">
+            <button id="btn-layout-single" type="button" class="px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors" title="Full Single View (100% Screen)" onclick="setLayoutMode('single')">
+              <span class="material-symbols-outlined text-[15px]">crop_square</span>
+              <span>1x1 Full</span>
+            </button>
+            <button id="btn-layout-grid" type="button" class="px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors" title="Auto Edge-to-Edge Grid Split" onclick="setLayoutMode('grid')">
+              <span class="material-symbols-outlined text-[15px]">grid_view</span>
+              <span id="btn-grid-label">Split Grid</span>
+            </button>
+          </div>
         </div>
 
         <div class="video-stage w-full flex-1 min-h-0 bg-black rounded-xl border border-outline-variant relative overflow-hidden shadow-2xl flex items-center justify-center" id="video-viewport">
@@ -325,6 +360,8 @@
             <h3 class="text-on-surface font-medium mb-1">No camera connected</h3>
             <p class="text-body-sm text-on-surface-variant text-center max-w-sm px-4">Select a source in Source Configuration to begin monitoring.</p>
           </div>
+
+          <div id="multi-cam-grid" class="w-full h-full p-1.5 gap-2" style="display: none;"></div>
 
           <div id="video-stage" style="display: none;">
             <video id="live-webrtc" autoplay playsinline muted></video>
@@ -1469,6 +1506,133 @@
         row.appendChild(del);
         root.appendChild(row);
       });
+
+      const gridLbl = document.getElementById('btn-grid-label');
+      if (gridLbl) {
+        gridLbl.textContent = cameras.length > 1 ? `Split Grid (${cameras.length})` : 'Split Grid';
+      }
+      if (currentLayoutMode === 'grid') {
+        renderMultiCamGrid();
+      }
+    }
+
+    let currentLayoutMode = 'single'; // 'single' | 'grid'
+
+    function setLayoutMode(mode) {
+      currentLayoutMode = mode;
+      const btnSingle = document.getElementById('btn-layout-single');
+      const btnGrid = document.getElementById('btn-layout-grid');
+      const singleStage = document.getElementById('video-stage');
+      const gridStage = document.getElementById('multi-cam-grid');
+      const placeholder = document.getElementById('stream-placeholder');
+      const clockPanel = document.getElementById('overlay-clock-panel');
+
+      if (mode === 'grid' && cameras.length > 1) {
+        if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors';
+        if (btnGrid) btnGrid.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors';
+        if (singleStage) singleStage.style.display = 'none';
+        if (placeholder) placeholder.style.display = 'none';
+        if (gridStage) {
+          gridStage.style.display = 'grid';
+          renderMultiCamGrid();
+        }
+      } else {
+        currentLayoutMode = 'single';
+        if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors';
+        if (btnGrid) btnGrid.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors';
+        if (gridStage) gridStage.style.display = 'none';
+        if (isStreamActive) {
+          if (singleStage) singleStage.style.display = 'block';
+          if (placeholder) placeholder.style.display = 'none';
+        } else {
+          if (singleStage) singleStage.style.display = 'none';
+          if (placeholder) placeholder.style.display = 'flex';
+        }
+      }
+    }
+
+    function renderMultiCamGrid() {
+      const grid = document.getElementById('multi-cam-grid');
+      if (!grid) return;
+      const count = cameras.length;
+      
+      // Auto-fit grid dimensions with zero wasted black space:
+      if (count <= 1) {
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-1 grid-rows-1 gap-2';
+      } else if (count === 2) {
+        // 2 Cameras: 50 / 50 side-by-side full height
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-1 gap-2';
+      } else if (count === 3) {
+        // 3 Cameras: 1 Top Wide (100% width, 50% height) + 2 Bottom Split (50% each)
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-2 gap-2';
+      } else {
+        // 4+ Cameras: 2x2 Matrix
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-2 gap-2';
+      }
+
+      grid.innerHTML = '';
+      cameras.slice(0, 4).forEach((cam, idx) => {
+        const isFocus = cam.id === activeCameraId;
+        const tile = document.createElement('div');
+        let spanCls = '';
+        if (count === 3 && idx === 0) {
+          spanCls = 'col-span-2 row-span-1';
+        } else {
+          spanCls = 'col-span-1 row-span-1';
+        }
+        tile.className = `grid-cam-tile ${spanCls} ${isFocus ? 'active-focus' : ''} flex items-center justify-center relative w-full h-full rounded-lg border border-outline-variant bg-black overflow-hidden group`;
+        
+        // Active stream feed
+        const img = document.createElement('img');
+        img.src = isFocus && isStreamActive ? '/api/stream' : '';
+        img.alt = cam.name;
+        img.className = 'w-full h-full object-cover';
+        if (!isFocus || !isStreamActive) {
+          img.style.display = 'none';
+        }
+
+        const fallback = document.createElement('div');
+        fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
+        fallback.innerHTML = `
+          <span class="material-symbols-outlined text-2xl mb-1">${isFocus ? 'videocam' : 'videocam_off'}</span>
+          <span class="text-xs font-medium text-on-surface">${escapeHtml(cam.name)}</span>
+          <span class="text-[10px] font-mono-data text-outline mt-0.5">${isFocus && isStreamActive ? 'ACTIVE STREAM' : 'CLICK TO VIEW'}</span>
+        `;
+        if (isFocus && isStreamActive) {
+          fallback.style.display = 'none';
+        }
+
+        // Top-left camera badge
+        const badge = document.createElement('div');
+        badge.className = 'absolute top-2 left-2 glass-panel px-2.5 py-1 rounded-full z-10 flex items-center gap-1.5 pointer-events-none';
+        badge.innerHTML = `
+          <span class="w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-outline'}"></span>
+          <span class="text-[11px] font-semibold text-on-surface truncate max-w-[140px]">${escapeHtml(cam.name)}</span>
+        `;
+
+        // Top-right maximize button
+        const maxBtn = document.createElement('button');
+        maxBtn.type = 'button';
+        maxBtn.className = 'absolute top-2 right-2 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary text-on-surface';
+        maxBtn.title = 'Make Full Screen (1x1)';
+        maxBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">fullscreen</span>';
+        maxBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          selectCamera(cam.id);
+          setLayoutMode('single');
+        });
+
+        tile.appendChild(img);
+        tile.appendChild(fallback);
+        tile.appendChild(badge);
+        tile.appendChild(maxBtn);
+
+        tile.addEventListener('click', () => {
+          selectCamera(cam.id);
+        });
+
+        grid.appendChild(tile);
+      });
     }
 
     function fillCameraForm(cam) {
@@ -2597,6 +2761,10 @@
       }
       if (state === 'ON_BREAK') {
         return '☕ ON BREAK' + (name ? ' - ' + name : '') + ' (Paused: ' + timeStr + ')';
+      }
+      if (state === 'PARKED_WAITING') {
+        const queueStr = formatSecs(live.queue_seconds || 0);
+        return '⏳ PARKED (QUEUE: ' + queueStr + ')';
       }
       if (state === 'IDLE') return '🟡 IDLE' + (name ? ' - ' + name : '');
       return 'EMPTY';

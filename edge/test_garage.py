@@ -406,6 +406,33 @@ class PoseAndRoiTests(unittest.TestCase):
             self.assertIn("12mm socket & ratchet", brake_tmpl["tools_required"])
             conn.close()
 
+    def test_parked_waiting_queue_time_and_work_transition(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        t0 = 100.0
+        # 1. Car is in Bay 1 (vehicle_present=True), but no mechanic is inside (customer check-in)
+        manager._bays[0].vehicle_present = True
+        manager.update([], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([], 1000, 1000, t0 + 10.0, kpt_conf=0.4)
+        
+        bay1 = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(bay1.state, "PARKED_WAITING")
+        self.assertAlmostEqual(bay1.queue_seconds, 2.0, places=1)
+        self.assertEqual(bay1.wrench_seconds, 0.0) # Work timer stays frozen at 0!
+
+        # 2. Mechanic enters and starts wrenching
+        work_det = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Hour-Meng")
+        manager.update([work_det], 1000, 1000, t0 + 11.0, kpt_conf=0.4)
+        manager.update([work_det], 1000, 1000, t0 + 12.0, kpt_conf=0.4)
+
+        bay1_active = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(bay1_active.state, "WORKING")
+        self.assertGreater(bay1_active.wrench_seconds, 0.0)
+        self.assertIn("Hour-Meng", bay1_active.mechanic_name)
+
     def test_head_turn_keeps_locked_technician_timer(self):
         manager = BayZoneManager(
             DEFAULT_BAYS,

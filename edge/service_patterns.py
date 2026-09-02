@@ -43,6 +43,8 @@ class ServicePerformanceReport:
     summary_notes: str
     started_at: str
     completed_at: str
+    queue_seconds: float = 0.0
+    total_bay_time_seconds: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -51,9 +53,14 @@ class ServicePerformanceReport:
             "vehicle_type": self.vehicle_type,
             "primary_technician": self.primary_technician,
             "technicians": self.technicians_breakdown,
+            "queue_seconds": round(self.queue_seconds, 1),
+            "queue_minutes": round(self.queue_seconds / 60.0, 1),
             "total_wrench_seconds": round(self.total_wrench_seconds, 1),
+            "total_wrench_minutes": round(self.total_wrench_seconds / 60.0, 1),
             "total_break_seconds": round(self.total_break_seconds, 1),
+            "total_break_minutes": round(self.total_break_seconds / 60.0, 1),
             "total_dwell_seconds": round(self.total_dwell_seconds, 1),
+            "total_bay_time_seconds": round(self.total_bay_time_seconds or (self.queue_seconds + self.total_dwell_seconds), 1),
             "efficiency_pct": round(self.efficiency_pct, 1),
             "performance_grade": self.performance_grade,
             "performance_score": self.performance_score,
@@ -173,6 +180,8 @@ def evaluate_completed_vehicle_job(
         summary_notes=notes,
         started_at=created_at,
         completed_at=completed_at,
+        queue_seconds=0.0,
+        total_bay_time_seconds=total_dwell,
     )
 
     # Store evaluation scorecard in DB

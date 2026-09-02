@@ -152,7 +152,7 @@ DEFAULT_BAYS: list[dict] = [
 ]
 
 BAY_TYPES = ("vehicle_bay", "tool_area")
-BAY_STATES = ("WORKING", "UNDER_VEHICLE", "ON_BREAK", "IDLE", "EMPTY")
+BAY_STATES = ("WORKING", "UNDER_VEHICLE", "ON_BREAK", "PARKED_WAITING", "IDLE", "EMPTY")
 IDLE_STATIONARY_SECONDS = 120.0
 UNDER_CAR_GRACE_SECONDS = 5.0
 BREAK_TIMEOUT_SECONDS = 3600.0
@@ -171,6 +171,7 @@ BAY_BGR = {
     "WORKING": (102, 255, 0),  # Surveillance Green #00FF66
     "UNDER_VEHICLE": (102, 255, 0),  # Surveillance Green #00FF66
     "ON_BREAK": (58, 131, 11),  # Stealth Green #0B833A
+    "PARKED_WAITING": (0, 200, 255),  # Amber / Queue
     "IDLE": (0, 200, 255),  # Amber
     "EMPTY": (90, 90, 90),  # Charcoal
 }
@@ -457,9 +458,12 @@ def bay_badge(
     technician: str | None,
     wrench_seconds: float,
     technicians_times: dict[str, float] | None = None,
+    queue_seconds: float = 0.0,
 ) -> str:
     if state == "EMPTY":
         return "EMPTY"
+    if state == "PARKED_WAITING":
+        return f"PARKED (AWAITING TECH) - Queue: {fmt_duration(queue_seconds)}"
     if technicians_times and len(technicians_times) > 1:
         details = ", ".join(f"{name} ({fmt_duration(sec)})" for name, sec in technicians_times.items())
         if state == "UNDER_VEHICLE":
@@ -505,6 +509,8 @@ class BaySnapshot:
     is_working: bool
     job_id: str | None = None
     vehicle_present: bool = True
+    queue_seconds: float = 0.0
+    queue_time_today: float = 0.0
     technicians_times: dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
@@ -519,15 +525,17 @@ class BaySnapshot:
             "idle_seconds": round(self.idle_seconds, 2),
             "under_vehicle_seconds": round(self.under_vehicle_seconds, 2),
             "break_seconds": round(self.break_seconds, 2),
+            "queue_seconds": round(self.queue_seconds, 2),
             "wrench_time_today": round(self.wrench_time_today, 2),
             "idle_time_today": round(self.idle_time_today, 2),
             "under_vehicle_today": round(self.under_vehicle_today, 2),
             "break_time_today": round(self.break_time_today, 2),
+            "queue_time_today": round(self.queue_time_today, 2),
             "is_working": self.is_working,
             "job_id": self.job_id,
             "vehicle_present": self.vehicle_present,
             "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
-            "badge": bay_badge(self.state, self.mechanic_name, self.wrench_time_today, self.technicians_times),
+            "badge": bay_badge(self.state, self.mechanic_name, self.wrench_time_today, self.technicians_times, self.queue_seconds),
         }
 
 
@@ -555,20 +563,23 @@ class _BayRuntime:
         self.idle_seconds = 0.0
         self.under_vehicle_seconds = 0.0
         self.break_seconds = 0.0
+        self.queue_seconds = 0.0
         self.today_wrench = 0.0
         self.today_idle = 0.0
         self.today_under_vehicle = 0.0
         self.today_break = 0.0
+        self.today_queue = 0.0
         self.last_anchor: tuple[float, float] | None = None
         self.stationary_since: float | None = None
         self.last_t: float | None = None
         self.last_active_t: float | None = None
         self.session_open = False
+        self.labor_started = False
         self.under_car_grace_seconds = float(under_car_grace_seconds)
         self.break_timeout_seconds = float(break_timeout_seconds)
         self.job_id: str | None = cfg.get("job_id")
         self.vehicle_type: str = cfg.get("vehicle_type") or ("vehicle" if cfg["type"] == "vehicle_bay" else "station")
-        self.vehicle_present: bool = cfg["type"] == "vehicle_bay"
+        self.vehicle_present: bool = bool(cfg.get("vehicle_present", False))
 
     def as_config(self) -> dict:
         out = {"id": self.id, "name": self.name, "roi": list(self.roi), "type": self.type}
@@ -590,10 +601,12 @@ class _BayRuntime:
             idle_seconds=self.idle_seconds,
             under_vehicle_seconds=self.under_vehicle_seconds,
             break_seconds=self.break_seconds,
+            queue_seconds=self.queue_seconds,
             wrench_time_today=self.today_wrench,
             idle_time_today=self.today_idle,
             under_vehicle_today=self.today_under_vehicle,
             break_time_today=self.today_break,
+            queue_time_today=self.today_queue,
             is_working=self.state in ("WORKING", "UNDER_VEHICLE"),
             job_id=self.job_id,
             vehicle_present=self.vehicle_present,
@@ -802,12 +815,20 @@ class BayZoneManager:
                     if dt > 0:
                         bay.break_seconds += dt
                         bay.today_break += dt
+                elif bay.vehicle_present:
+                    # Car is parked in bay, but no mechanic has started labor yet (e.g. customer consultation / paperwork wait)
+                    bay.state = "PARKED_WAITING"
+                    bay.technician = None
+                    if dt > 0:
+                        bay.queue_seconds += dt
+                        bay.today_queue += dt
                 else:
                     bay.state = "EMPTY"
                     bay.technician = None
                     bay.stationary_since = None
                     bay.last_anchor = None
                     bay.session_open = False
+                    bay.labor_started = False
                     bay.last_working_technician = None
                     bay.locked_tracks.clear()
 
