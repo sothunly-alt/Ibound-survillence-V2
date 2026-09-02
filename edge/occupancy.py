@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from vehicle import VehicleTracker
+
 
 @dataclass
 class GhostState:
@@ -165,16 +167,16 @@ L_KNEE, R_KNEE = 13, 14
 L_ANKLE, R_ANKLE = 15, 16
 
 BAY_BGR = {
-    "WORKING": (80, 220, 80),
-    "UNDER_VEHICLE": (255, 180, 40),
-    "ON_BREAK": (180, 140, 255),
-    "IDLE": (40, 200, 255),
-    "EMPTY": (150, 150, 150),
+    "WORKING": (102, 255, 0),  # Surveillance Green #00FF66
+    "UNDER_VEHICLE": (102, 255, 0),  # Surveillance Green #00FF66
+    "ON_BREAK": (58, 131, 11),  # Stealth Green #0B833A
+    "IDLE": (0, 200, 255),  # Amber
+    "EMPTY": (90, 90, 90),  # Charcoal
 }
 BAY_ID_BGR = {
-    "bay_1": (80, 220, 80),
-    "bay_2": (40, 180, 255),
-    "tools": (220, 90, 220),
+    "bay_1": (102, 255, 0),
+    "bay_2": (102, 255, 0),
+    "tools": (58, 131, 11),
 }
 
 
@@ -613,6 +615,7 @@ class BayZoneManager:
         occupy_clear_seconds: float = 1.0,
         under_car_grace_seconds: float = UNDER_CAR_GRACE_SECONDS,
         break_timeout_seconds: float = BREAK_TIMEOUT_SECONDS,
+        departure_grace_seconds: float = 15.0,
         motion_px: float = 14.0,
         fallback_roi: list[float] | None = None,
     ) -> None:
@@ -621,10 +624,12 @@ class BayZoneManager:
         self.clear = occupy_clear_seconds
         self.under_car_grace_seconds = float(under_car_grace_seconds)
         self.break_timeout_seconds = float(break_timeout_seconds)
+        self.departure_grace_seconds = float(departure_grace_seconds)
         self.motion_px = motion_px
         self._bays: list[_BayRuntime] = []
         self.set_bays(bays, fallback_roi=fallback_roi)
         self._last_ticks: list[tuple[str, str | None, bool, float, str, str | None]] = []
+        self.vehicle_tracker = VehicleTracker(departure_grace_seconds=departure_grace_seconds)
 
     def set_bays(self, bays: object | None, fallback_roi: list[float] | None = None) -> None:
         prev = {b.id: b for b in self._bays}
@@ -657,6 +662,55 @@ class BayZoneManager:
 
     def telemetry(self) -> list[dict]:
         return [s.as_dict() for s in self.snapshots()]
+
+    def sync_auto_vehicles(
+        self,
+        vehicles: list,
+        frame_w: int,
+        frame_h: int,
+        now: float = 0.0,
+    ) -> list[str]:
+        """Dynamically create/update bays around auto-detected vehicles and return departed vehicle bay IDs."""
+        active_tracks, departed_ids = self.vehicle_tracker.update(vehicles, now, frame_w, frame_h)
+        existing_ids = {b.id for b in self._bays}
+        for v in vehicles:
+            b_id = getattr(v, "vehicle_id", None) or f"auto_{getattr(v, 'vehicle_type', 'car')}"
+            roi = v.roi(frame_w, frame_h) if hasattr(v, "roi") else [0.2, 0.2, 0.6, 0.6]
+            x_min = max(0.0, roi[0] - 0.05)
+            y_min = max(0.0, roi[1] - 0.05)
+            w_val = min(1.0 - x_min, roi[2] + 0.10)
+            h_val = min(1.0 - y_min, roi[3] + 0.10)
+            padded_roi = [round(x_min, 4), round(y_min, 4), round(w_val, 4), round(h_val, 4)]
+            if b_id in existing_ids:
+                for b in self._bays:
+                    if b.id == b_id:
+                        b.roi = padded_roi
+                        b.vehicle_present = True
+            else:
+                vtype = getattr(v, "vehicle_type", "vehicle")
+                vnum = b_id.split("_")[-1] if "_" in b_id else "1"
+                cfg = {
+                    "id": b_id,
+                    "name": f"Auto: {vtype.capitalize()} #{vnum}",
+                    "type": "vehicle_bay",
+                    "roi": padded_roi,
+                }
+                runtime = _BayRuntime(
+                    cfg,
+                    self.confirm,
+                    self.clear,
+                    self.under_car_grace_seconds,
+                    self.break_timeout_seconds,
+                )
+                runtime.vehicle_present = True
+                self._bays.append(runtime)
+
+        for dep_id in departed_ids:
+            for b in self._bays:
+                if b.id == dep_id:
+                    b.vehicle_present = False
+                    b.state = "EMPTY"
+        return departed_ids
 
     def hydrate_today(self, bay_rows: list[dict]) -> None:
         by_id = {str(row.get("bay_id") or ""): row for row in bay_rows}

@@ -8,6 +8,7 @@ build/
 edge/proofs/
 edge/*.db*
 edge/config.yaml
+*.pt
 edge/*.pt
 edge/models/*.onnx
 edge/__pycache__/

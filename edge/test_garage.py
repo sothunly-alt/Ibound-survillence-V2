@@ -45,8 +45,15 @@ from occupancy import (
     under_vehicle_pose_keypoints,
     working_pose_keypoints,
 )
+from person import Detection
 from report import build_garage_report, efficiency_badge
 from sensors.wifi_tracker import WifiTracker, parse_arp_table, presence_status
+from service_patterns import (
+    KNOWLEDGE_BASE,
+    calculate_performance_grade,
+    evaluate_completed_vehicle_job,
+)
+from vehicle import VehicleDetection, extract_vehicle_detections
 
 
 class _Det:
@@ -313,6 +320,91 @@ class PoseAndRoiTests(unittest.TestCase):
         badge = snaps["bay_1"].as_dict()["badge"]
         self.assertIn("Hour-Meng", badge)
         self.assertIn("Sothun", badge)
+
+    def test_auto_vehicle_detection_and_dynamic_bay_sync(self):
+        manager = BayZoneManager(
+            [],  # Empty initial manual bays
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        # Simulate auto-detected vehicle at x=200..700, y=300..800
+        car = VehicleDetection(
+            x1=200.0,
+            y1=300.0,
+            x2=700.0,
+            y2=800.0,
+            conf=0.88,
+            vehicle_type="car",
+            vehicle_id="auto_car_1",
+        )
+        manager.sync_auto_vehicles([car], frame_w=1000, frame_h=1000)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertIn("auto_car_1", snaps)
+        self.assertEqual(snaps["auto_car_1"].name, "Auto: Car #1")
+        self.assertEqual(snaps["auto_car_1"].type, "vehicle_bay")
+
+        # Now simulate a technician working near/under that auto-detected car
+        tech = _det(_shift_kpts(working_pose_keypoints(), 350, 450), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([tech], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([tech], 1000, 1000, t0 + 1.0, kpt_conf=0.4)
+        manager.update([tech], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["auto_car_1"].state, "WORKING")
+        self.assertEqual(snaps["auto_car_1"].mechanic_name, "Hour-Meng")
+        self.assertGreaterEqual(snaps["auto_car_1"].wrench_seconds, 1.9)
+
+        # Now simulate the car driving away / departing after work is done
+        departed = manager.sync_auto_vehicles([], 1000, 1000, now=t0 + 20.0)
+        self.assertIn("auto_car_1", departed)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["auto_car_1"].state, "EMPTY")
+
+    def test_vehicle_service_performance_evaluation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = connect(Path(tmp) / "test_eval.db")
+            job_id = "JOB-auto_car_1-20260902-01"
+            now_str = datetime.now().isoformat(timespec="seconds")
+
+            # Create a completed vehicle job with 1200s active, 200s break
+            conn.execute(
+                """
+                INSERT INTO vehicle_jobs (
+                    job_id, bay_id, vehicle_type, primary_technician,
+                    status, total_active_seconds, total_break_seconds,
+                    created_at, updated_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (job_id, "auto_car_1", "car", "Hour-Meng", "COMPLETED", 1200.0, 200.0, now_str, now_str, now_str),
+            )
+            # Add daily technician log
+            conn.execute(
+                """
+                INSERT INTO daily_vehicle_job_logs (job_id, day, technician_name, active_seconds, break_seconds)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (job_id, "2026-09-02", "Hour-Meng", 1200.0, 200.0),
+            )
+            conn.commit()
+
+            report = evaluate_completed_vehicle_job(conn, job_id)
+            self.assertIsNotNone(report)
+            self.assertEqual(report.job_id, job_id)
+            self.assertEqual(report.primary_technician, "Hour-Meng")
+            self.assertEqual(report.performance_grade, "A+")
+            self.assertGreaterEqual(report.performance_score, 90)
+            self.assertAlmostEqual(report.efficiency_pct, (1200.0 / 1400.0) * 100.0, places=1)
+            self.assertIn("Hour-Meng", report.technicians_breakdown)
+
+            # Test Knowledge Base
+            self.assertIsNotNone(KNOWLEDGE_BASE.get_template("oil_change"))
+            brake_tmpl = KNOWLEDGE_BASE.get_template("brake_rotor_and_pad_replacement")
+            self.assertIsNotNone(brake_tmpl)
+            self.assertEqual(len(brake_tmpl["stages"]), 7)
+            self.assertEqual(brake_tmpl["target_minutes"], 35.0)
+            self.assertIn("12mm socket & ratchet", brake_tmpl["tools_required"])
+            conn.close()
 
 
 class AttendanceAndScorecardTests(unittest.TestCase):

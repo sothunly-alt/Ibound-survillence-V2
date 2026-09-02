@@ -96,7 +96,9 @@ from proof import save_proof, scale_roi_px
 from report import build_report
 from roi_edit import draw_roi_handles
 from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
+from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
 from telegram_out import TelegramOut
+from vehicle import VehicleDetection, extract_vehicle_detections
 
 
 def find_free_port(default_port: int = 8765) -> int:
@@ -1110,9 +1112,13 @@ class LiveStreamEngine:
         weights_path = get_resource_path("yolo11n-pose.pt")
         if not weights_path.exists():
             weights_path = DATA_DIR / "yolo11n-pose.pt"
+        veh_weights_path = get_resource_path("yolo11n.pt")
+        if not veh_weights_path.exists():
+            veh_weights_path = DATA_DIR / "yolo11n.pt"
         try:
             self.model = YOLO(str(weights_path) if weights_path.exists() else "yolo11n-pose.pt")
-            print("[LiveStreamEngine] Model ready")
+            self.vehicle_model = YOLO(str(veh_weights_path) if veh_weights_path.exists() else "yolo11n.pt")
+            print("[LiveStreamEngine] Models ready (pose + vehicle)")
             self.face_rec = try_create_face_recognizer(self.cfg)
         except Exception as e:
             self.error_message = f"Failed to load YOLO model: {e}"
@@ -1255,7 +1261,33 @@ class LiveStreamEngine:
                         device=None,
                         verbose=False,
                     )[0]
-                    self.infer_ms = (time.perf_counter() - t_pred) * 1000.0
+                    vehicles = []
+                    if getattr(self, "vehicle_model", None) is not None:
+                        try:
+                            veh_res = self.vehicle_model.predict(
+                                frame,
+                                imgsz=imgsz,
+                                classes=[2, 3, 5, 7],
+                                conf=0.18,
+                                device=None,
+                                verbose=False,
+                            )[0]
+                            vehicles = extract_vehicle_detections(veh_res, w, h, conf_min=0.18)
+                        except Exception as ex:
+                            print(f"[VehicleInfer] Prediction error: {ex}")
+
+                    departed_bays = self.bay_manager.sync_auto_vehicles(vehicles, w, h, now=now)
+                    if departed_bays and self.conn is not None:
+                        for dep_id in departed_bays:
+                            for bay_cfg in self.bay_manager.configs():
+                                if bay_cfg.get("id") == dep_id and bay_cfg.get("job_id"):
+                                    try:
+                                        complete_vehicle_job(self.conn, bay_cfg["job_id"])
+                                        eval_report = evaluate_completed_vehicle_job(self.conn, bay_cfg["job_id"])
+                                        if eval_report:
+                                            print(f"[Performance Evaluation] Job {eval_report.job_id}: Grade={eval_report.performance_grade}, Score={eval_report.performance_score}, Efficiency={eval_report.efficiency_pct:.1f}% by {eval_report.primary_technician}")
+                                    except Exception as ex:
+                                        print(f"[Vehicle Departure] Error completing/evaluating job {bay_cfg.get('job_id')}: {ex}")
                     last_accepted, last_rejected = person_detections(
                         result,
                         h,
@@ -1699,6 +1731,42 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/garage/scorecard":
             self._send_json(GLOBAL_ENGINE.garage_scorecard())
+
+        elif parsed.path == "/api/garage/evaluations":
+            evals = []
+            if GLOBAL_ENGINE.conn is not None:
+                try:
+                    rows = GLOBAL_ENGINE.conn.execute(
+                        """
+                        SELECT job_id, vehicle_type, primary_technician, technicians_json,
+                               total_wrench_seconds, total_break_seconds, efficiency_pct,
+                               performance_grade, performance_score, summary_notes,
+                               started_at, completed_at
+                        FROM vehicle_job_evaluations
+                        ORDER BY id DESC LIMIT 50
+                        """
+                    ).fetchall()
+                    for r in rows:
+                        evals.append({
+                            "job_id": r[0],
+                            "vehicle_type": r[1],
+                            "primary_technician": r[2],
+                            "technicians": json.loads(r[3]) if r[3] else {},
+                            "total_wrench_seconds": r[4],
+                            "total_break_seconds": r[5],
+                            "efficiency_pct": r[6],
+                            "performance_grade": r[7],
+                            "performance_score": r[8],
+                            "summary_notes": r[9],
+                            "started_at": r[10],
+                            "completed_at": r[11],
+                        })
+                except Exception as ex:
+                    print(f"[API] Error loading evaluations: {ex}")
+            self._send_json({"evaluations": evals})
+
+        elif parsed.path == "/api/garage/templates":
+            self._send_json({"templates": KNOWLEDGE_BASE.service_templates})
 
         elif parsed.path == "/api/discovery/results":
             self._send_json(GLOBAL_ENGINE.discovery.results())

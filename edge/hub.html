@@ -15,36 +15,38 @@
       theme: {
         extend: {
           colors: {
-            "on-surface": "#dce2f7",
-            "surface": "#0c1322",
-            "surface-dim": "#0c1322",
-            "surface-tint": "#a4c9ff",
-            "primary-fixed-dim": "#a4c9ff",
-            "surface-container-highest": "#2e3545",
-            "surface-bright": "#323949",
-            "background": "#0c1322",
-            "on-surface-variant": "#c1c7d3",
-            "primary-container": "#60a5fa",
-            "inverse-surface": "#dce2f7",
+            "on-surface": "#FAFAFA",                     // Crisp White
+            "surface": "#121212",                        // Surface Charcoal
+            "surface-dim": "#0a0a0a",
+            "surface-tint": "#00FF66",                   // Surveillance Green
+            "primary-fixed-dim": "#00FF66",
+            "surface-container-highest": "#242424",
+            "surface-bright": "#2c2c2c",
+            "background": "#000000",                     // Absolute Black
+            "on-surface-variant": "#A5A5A5",
+            "primary-container": "#00FF66",              // Surveillance Green
+            "inverse-surface": "#FAFAFA",
             "tertiary": "#fabd34",
-            "on-primary": "#00315d",
-            "primary": "#a4c9ff",
-            "on-error": "#690005",
-            "surface-variant": "#2e3545",
-            "surface-container-low": "#141b2b",
-            "on-background": "#dce2f7",
+            "on-primary": "#000000",                     // Absolute Black
+            "primary": "#00FF66",                        // Surveillance Green
+            "on-error": "#ffffff",
+            "surface-variant": "#1e1e1e",
+            "surface-container-low": "#121212",          // Surface Charcoal
+            "on-background": "#FAFAFA",                  // Crisp White
             "error-container": "#93000a",
-            "secondary-container": "#3f465c",
-            "outline": "#8b919d",
-            "on-secondary": "#283044",
-            "surface-container-lowest": "#070e1d",
-            "surface-container-high": "#232a3a",
-            "on-primary-container": "#003a6b",
-            "secondary": "#bec6e0",
-            "outline-variant": "#414751",
-            "error": "#ffb4ab",
-            "surface-container": "#191f2f",
-            "on-secondary-container": "#adb4ce"
+            "secondary-container": "#0B833A",            // Stealth Green
+            "outline": "#2b2b2b",
+            "on-secondary": "#FAFAFA",
+            "surface-container-lowest": "#000000",       // Absolute Black
+            "surface-container-high": "#1a1a1a",
+            "on-primary-container": "#000000",
+            "secondary": "#0B833A",                      // Stealth Green
+            "outline-variant": "#222222",
+            "error": "#ff5555",
+            "surface-container": "#161616",
+            "on-secondary-container": "#00FF66",
+            "brand-green": "#00FF66",
+            "stealth-green": "#0B833A"
           },
           borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
           spacing: {
@@ -77,9 +79,10 @@
   </script>
   <style>
     html, body { overflow-x: clip; }
-    body { background-color: #111827; color: #dce2f7; }
-    .sidebar { background-color: #0f172a; }
-    .cam-selected { box-shadow: 0 0 12px rgba(96, 165, 250, 0.35); }
+    body { background-color: #000000; color: #FAFAFA; }
+    .sidebar { background-color: #0c0c0c; border-right: 1px solid #1c1c1c; }
+    .cam-selected { box-shadow: 0 0 16px rgba(0, 255, 102, 0.4); border-color: #00FF66 !important; }
+    .glass-panel { background: rgba(18, 18, 18, 0.82); backdrop-filter: blur(12px); border: 1px solid rgba(11, 131, 58, 0.3); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7); }
     .video-stage { min-height: 180px; height: 100%; }
     #workspace {
       display: flex;
@@ -251,7 +254,7 @@
     </div>
   </nav>
 
-  <main class="ml-[288px] flex-1 flex flex-col h-full bg-[#111827] relative min-w-0 max-lg:ml-0">
+  <main class="ml-[288px] flex-1 flex flex-col h-full bg-black relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
       <div class="flex items-center gap-4 min-w-0">
         <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Garage</h1>
@@ -263,6 +266,10 @@
         </div>
       </div>
       <div class="flex items-center gap-3 shrink-0">
+        <button id="btn-audio-alert" type="button" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container border border-primary text-primary hover:bg-primary/10 transition-colors" title="Vehicle Audio Chimes" onclick="toggleAudioAlerts()">
+          <span id="audio-alert-icon" class="material-symbols-outlined text-[16px]">volume_up</span>
+          <span id="audio-alert-label" class="font-mono-data text-[11px] font-semibold">SOUND ON</span>
+        </button>
         <div id="shop-status-pill" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high border border-outline-variant">
           <span id="shop-status-dot" class="w-2 h-2 rounded-full bg-outline"></span>
           <span id="shop-status-label" class="font-label-upper text-label-upper text-on-surface-variant">SHOP</span>
@@ -2290,6 +2297,136 @@
       }
     }
 
+    // --- Digital Overwatch Web Audio Sound Chimes ---
+    let audioAlertsEnabled = true;
+    let audioCtx = null;
+    const previousBayStates = {};
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+      return audioCtx;
+    }
+
+    // Unlock audio context on first user interaction
+    document.addEventListener('click', () => { getAudioContext(); }, { once: true });
+
+    function toggleAudioAlerts() {
+      audioAlertsEnabled = !audioAlertsEnabled;
+      getAudioContext();
+      const label = document.getElementById('audio-alert-label');
+      const icon = document.getElementById('audio-alert-icon');
+      const btn = document.getElementById('btn-audio-alert');
+      if (label && icon && btn) {
+        if (audioAlertsEnabled) {
+          label.textContent = 'SOUND ON';
+          icon.textContent = 'volume_up';
+          btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container border border-primary text-primary hover:bg-primary/10 transition-colors';
+          playSoundArrival(); // Quick sample beep
+        } else {
+          label.textContent = 'MUTED';
+          icon.textContent = 'volume_off';
+          btn.className = 'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container border border-outline text-on-surface-variant hover:text-on-surface transition-colors';
+        }
+      }
+    }
+
+    function playSoundArrival() {
+      if (!audioAlertsEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        
+        // Pleasant rising double-beep chime for vehicle work start
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, now); // D5
+        osc1.frequency.exponentialRampToValueAtTime(880, now + 0.10); // A5
+        gain1.gain.setValueAtTime(0.2, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.18);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880, now + 0.12); // A5
+        osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.28); // D6
+        gain2.gain.setValueAtTime(0.25, now + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.12);
+        osc2.stop(now + 0.38);
+      } catch (e) {
+        console.warn('Audio chime error:', e);
+      }
+    }
+
+    function playSoundDeparture() {
+      if (!audioAlertsEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        // Harmonic descending completion chime for car departure / job done
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(1046.50, now); // C6
+        osc1.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+        gain1.gain.setValueAtTime(0.25, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.22);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(659.25, now + 0.15); // E5
+        osc2.frequency.exponentialRampToValueAtTime(523.25, now + 0.40); // C5
+        gain2.gain.setValueAtTime(0.3, now + 0.15);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.50);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.15);
+        osc2.stop(now + 0.50);
+      } catch (e) {
+        console.warn('Audio chime error:', e);
+      }
+    }
+
+    function checkBayStateAudioAlerts(rows) {
+      rows.forEach((row) => {
+        const id = row.bay_id || row.id;
+        const prevState = previousBayStates[id];
+        const currState = row.state;
+        if (prevState !== undefined && prevState !== currState) {
+          // Vehicle enters bay / work starts
+          if ((prevState === 'EMPTY' || prevState === 'IDLE') && (currState === 'WORKING' || currState === 'UNDER_VEHICLE')) {
+            playSoundArrival();
+          }
+          // Vehicle work completes / departs
+          else if ((prevState === 'WORKING' || prevState === 'UNDER_VEHICLE' || prevState === 'ON_BREAK') && currState === 'EMPTY') {
+            playSoundDeparture();
+          }
+        }
+        previousBayStates[id] = currState;
+      });
+    }
+
     function mergeBayTelemetry(rows) {
       rows.forEach((row) => {
         const id = row.bay_id || row.id;
@@ -2301,6 +2438,7 @@
           existing.type = row.type || existing.type;
         }
       });
+      checkBayStateAudioAlerts(rows);
       updateOverlayStaff(rows);
       syncBayDom();
     }

@@ -92,6 +92,25 @@ def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connect
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vehicle_job_evaluations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT UNIQUE NOT NULL,
+            vehicle_type TEXT NOT NULL,
+            primary_technician TEXT,
+            technicians_json TEXT,
+            total_wrench_seconds REAL NOT NULL DEFAULT 0,
+            total_break_seconds REAL NOT NULL DEFAULT 0,
+            efficiency_pct REAL NOT NULL DEFAULT 100.0,
+            performance_grade TEXT NOT NULL,
+            performance_score INTEGER NOT NULL DEFAULT 100,
+            summary_notes TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
     return conn
 
