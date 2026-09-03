@@ -2602,19 +2602,36 @@
     }
 
     function mergeBayTelemetry(rows) {
+      const incomingIds = new Set();
       rows.forEach((row) => {
         const id = row.bay_id || row.id;
+        if (!id) return;
+        incomingIds.add(id);
         bayLive[id] = row;
         const existing = liveBays.find((b) => b.id === id);
         if (existing && Array.isArray(row.roi) && row.roi.length === 4) {
           existing.roi = row.roi.map(Number);
           existing.name = row.name || existing.name;
           existing.type = row.type || existing.type;
+        } else if (!existing && Array.isArray(row.roi) && row.roi.length === 4) {
+          liveBays.push({
+            id: id,
+            name: row.name || id,
+            type: row.type || 'vehicle_bay',
+            roi: row.roi.map(Number),
+            is_auto: Boolean(id.startsWith('auto_') || (row.id && String(row.id).startsWith('auto_')))
+          });
         }
       });
+      for (let i = liveBays.length - 1; i >= 0; i--) {
+        if (liveBays[i].is_auto && !incomingIds.has(liveBays[i].id)) {
+          liveBays.splice(i, 1);
+        }
+      }
       checkBayStateAudioAlerts(rows);
       updateOverlayStaff(rows);
       syncBayDom();
+      layoutRoiOverlay();
     }
 
     function cloneBay(bay) {
@@ -2739,8 +2756,21 @@
       await persistLiveBays();
     }
 
+    const STATE_COLORS = {
+      WORKING: '#22c55e',
+      UNDER_VEHICLE: '#3b82f6',
+      ON_BREAK: '#10b981',
+      PARKED_WAITING: '#f59e0b',
+      IDLE: '#eab308',
+      EMPTY: '#64748b',
+    };
+
     function bayColor(id, index) {
       if (id === 'tools') return '#c084fc';
+      const live = bayLive[id];
+      if (live && live.state && STATE_COLORS[live.state]) {
+        return STATE_COLORS[live.state];
+      }
       return BAY_COLORS[index % BAY_COLORS.length];
     }
 
@@ -2811,7 +2841,19 @@
         const chip = el.querySelector('.bay-chip');
         if (chip) {
           chip.style.background = color;
-          const fullLabel = bay.name + ' · ' + stateBadge(bay);
+          const live = bayLive[bay.id] || {};
+          const state = live.state || 'EMPTY';
+          let fullLabel = '';
+          if (live.badge) {
+            const icon = state === 'WORKING' ? '🟢 ' :
+                         state === 'UNDER_VEHICLE' ? '🔵 ' :
+                         state === 'ON_BREAK' ? '☕ ' :
+                         state === 'PARKED_WAITING' ? '⏳ ' :
+                         state === 'IDLE' ? '🟡 ' : '';
+            fullLabel = bay.name + ' · ' + icon + live.badge;
+          } else {
+            fullLabel = bay.name + ' · ' + stateBadge(bay);
+          }
           chip.textContent = fullLabel;
           chip.title = fullLabel;
         }

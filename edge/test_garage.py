@@ -45,7 +45,8 @@ from occupancy import (
     under_vehicle_pose_keypoints,
     working_pose_keypoints,
 )
-from person import Detection
+from person import Detection, draw_detection, draw_skeleton
+import numpy as np
 from report import build_garage_report, efficiency_badge
 from sensors.wifi_tracker import WifiTracker, parse_arp_table, presence_status
 from service_patterns import (
@@ -454,6 +455,56 @@ class PoseAndRoiTests(unittest.TestCase):
         self.assertEqual(snap.mechanic_name, "George")
         self.assertIn("George", snap.technicians_times)
         self.assertNotIn("Employee", snap.technicians_times)
+
+    def test_idle_state_and_idle_seconds_accumulation(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            idle_stationary_seconds=0.5,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        idle_worker = _det(_shift_kpts(idle_standing_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 50.0
+
+        # 1. Worker enters and stands idle in Bay 1
+        manager.update([idle_worker], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([idle_worker], 1000, 1000, t0 + 1.0, kpt_conf=0.4)
+        manager.update([idle_worker], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "IDLE")
+        self.assertGreaterEqual(snap.idle_seconds, 1.0)
+        wrench_at_idle = snap.wrench_seconds
+
+        # 2. Worker begins active wrenching
+        work_worker = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Hour-Meng")
+        manager.update([work_worker], 1000, 1000, t0 + 3.0, kpt_conf=0.4)
+        manager.update([work_worker], 1000, 1000, t0 + 4.0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "WORKING")
+        self.assertGreater(snap.wrench_seconds, wrench_at_idle)
+
+    def test_detection_and_skeleton_rendering(self):
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        kpts = working_pose_keypoints()
+        det = Detection(
+            x1=100.0,
+            y1=100.0,
+            x2=200.0,
+            y2=300.0,
+            conf=0.88,
+            keypoints=kpts,
+            accepted=True,
+            identity="Hour-Meng",
+            is_staff=True,
+            active_time_str="12m 30s",
+        )
+        draw_detection(frame, det, in_roi=True, kpt_conf=0.30)
+        self.assertGreater(int(frame.sum()), 0)
+
+        # Draw rejected blob
+        det_rej = Detection(x1=50.0, y1=50.0, x2=80.0, y2=80.0, conf=0.20, accepted=False)
+        draw_detection(frame, det_rej, in_roi=False)
+
 
 
 class AttendanceAndScorecardTests(unittest.TestCase):

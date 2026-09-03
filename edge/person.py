@@ -335,7 +335,7 @@ def person_detections(
     return accepted, rejected
 
 
-def draw_skeleton(frame, keypoints: list[Keypoint], kpt_conf: float, color) -> None:
+def draw_skeleton(frame, keypoints: list[Keypoint], kpt_conf: float = 0.30, color=(100, 240, 100)) -> None:
     for a, b in SKELETON:
         if a >= len(keypoints) or b >= len(keypoints):
             continue
@@ -362,7 +362,7 @@ def draw_detection(
     det: Detection,
     *,
     in_roi: bool,
-    kpt_conf: float = 0.4,
+    kpt_conf: float = 0.30,
 ) -> None:
     x1, y1, x2, y2 = (int(det.x1), int(det.y1), int(det.x2), int(det.y2))
     time_badge = f" ({det.active_time_str})" if getattr(det, "active_time_str", None) else ""
@@ -382,14 +382,28 @@ def draw_detection(
         color = (120, 120, 120)
         label = f"blob {det.conf:.2f}"
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
+
+    # Render dark contrasting backdrop for label legibility
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.5
+    thickness = 1
+    (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+    text_y = max(text_h + 4, y1 - 6)
+    cv2.rectangle(
+        frame,
+        (x1, text_y - text_h - 4),
+        (x1 + text_w + 6, text_y + baseline),
+        (15, 15, 15),
+        -1,
+    )
     cv2.putText(
         frame,
         label,
-        (x1, max(16, y1 - 6)),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
+        (x1 + 3, text_y - 2),
+        font,
+        font_scale,
         color,
-        1,
+        thickness,
         cv2.LINE_AA,
     )
 

@@ -766,10 +766,19 @@ class BayZoneManager:
                 is_working_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside
             )
             moving = _is_moving(bay, inside, self.motion_px)
+            is_actively_working = (bay.type == "tool_area") or under_vehicle or working_pose or moving
 
             if inside:
                 bay.session_open = True
                 bay.last_active_t = now
+
+                if is_actively_working:
+                    bay.stationary_since = None
+                elif bay.stationary_since is None:
+                    bay.stationary_since = now
+
+                stationary_elapsed = (now - bay.stationary_since) if bay.stationary_since is not None else 0.0
+                is_idle = (not is_actively_working) and (stationary_elapsed >= self.idle_stationary_seconds)
 
                 # Track each employee in the bay individually. Head turns that
                 # drop face-ID to "Employee" keep the locked staff name so the
@@ -780,7 +789,7 @@ class BayZoneManager:
                     track_id = getattr(det, "track_id", None)
                     if track_id is not None and name != UNKNOWN_WORKER:
                         bay.locked_tracks[int(track_id)] = name
-                    if dt > 0:
+                    if dt > 0 and not is_idle:
                         bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
                     det.active_time_str = fmt_duration(bay.technicians_times.get(name, bay.wrench_seconds + dt))
                     det.bay_name = bay.name
@@ -797,14 +806,21 @@ class BayZoneManager:
 
                 if under_vehicle:
                     bay.state = "UNDER_VEHICLE"
-                    bay.under_vehicle_seconds += dt
-                    bay.today_under_vehicle += dt
+                    if dt > 0:
+                        bay.under_vehicle_seconds += dt
+                        bay.today_under_vehicle += dt
+                        bay.wrench_seconds += dt
+                        bay.today_wrench += dt
+                elif is_idle:
+                    bay.state = "IDLE"
+                    if dt > 0:
+                        bay.idle_seconds += dt
+                        bay.today_idle += dt
                 else:
                     bay.state = "WORKING"
-
-                if dt > 0:
-                    bay.wrench_seconds += dt
-                    bay.today_wrench += dt
+                    if dt > 0:
+                        bay.wrench_seconds += dt
+                        bay.today_wrench += dt
 
             else:
                 # Person is OUT of the bay -> Stop/pause work timer immediately

@@ -37,6 +37,7 @@ if sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 import cv2
+import numpy as np
 import requests
 import yaml
 
@@ -86,6 +87,7 @@ from occupancy import (
     BayZoneManager,
     GhostCounter,
     GhostState,
+    detection_in_bay,
     normalize_bays,
     roi_to_pixels,
 )
@@ -1269,13 +1271,16 @@ class LiveStreamEngine:
             any_occupied = any(s.state != "EMPTY" for s in snapshots)
 
             # Fast Motion Scanner (<0.05ms CPU on 160x120 grayscale)
-            small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
-            if prev_gray is not None:
-                diff = cv2.absdiff(prev_gray, small_gray)
-                motion_score = float(np.mean(diff))
-            else:
+            try:
+                small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
+                if prev_gray is not None:
+                    diff = cv2.absdiff(prev_gray, small_gray)
+                    motion_score = float(cv2.mean(diff)[0])
+                else:
+                    motion_score = 10.0
+                prev_gray = small_gray
+            except Exception as ex:
                 motion_score = 10.0
-            prev_gray = small_gray
 
             # Dynamic AI Cadence: High FPS during active motion/work; Low-compute Sleep during static wait
             has_active_work = any(s.state in ("WORKING", "UNDER_VEHICLE") for s in snapshots)
@@ -1413,17 +1418,18 @@ class LiveStreamEngine:
                     print(f"[LiveStreamEngine Infer Error] {exc}")
 
             annotated = frame.copy()
-            occupied_ids = {s.bay_id for s in snapshots if s.state != "EMPTY"}
+            bay_cfgs = self.bay_manager.configs()
             for det in last_rejected:
-                in_any = any(s.bay_id in occupied_ids and True for s in snapshots)
+                det_in_roi = any(detection_in_bay(det, b, w, h, kpt_conf) for b in bay_cfgs)
                 draw_detection(
-                    annotated, det, in_roi=in_any, kpt_conf=kpt_conf
+                    annotated, det, in_roi=det_in_roi, kpt_conf=kpt_conf
                 )
             for det in last_accepted:
+                det_in_roi = any(detection_in_bay(det, b, w, h, kpt_conf) for b in bay_cfgs)
                 draw_detection(
                     annotated,
                     det,
-                    in_roi=any(s.state != "EMPTY" for s in snapshots),
+                    in_roi=det_in_roi,
                     kpt_conf=kpt_conf,
                 )
 
@@ -1854,7 +1860,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
             last_seq = -1
             try:
-                while True:
+                while GLOBAL_ENGINE.running:
                     with GLOBAL_ENGINE.lock:
                         cur_seq = GLOBAL_ENGINE.frame_seq
                         frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
@@ -1867,7 +1873,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                         self.wfile.write(b"\r\n")
                         self.wfile.flush()
                     time.sleep(0.02)
-            except (ConnectionResetError, BrokenPipeError):
+            except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, socket.error, OSError):
                 pass
 
         elif parsed.path == "/api/garage/jobs":
