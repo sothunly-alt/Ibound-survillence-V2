@@ -1,6 +1,6 @@
 :root {
   --absolute-black: #000000;
-  --surveillance-green: #00ff55;
+  --surveillance-green: #00ff41;
   --bg: var(--absolute-black);
   --bg-2: #070707;
   --elevated: #0d0d0d;
@@ -8,15 +8,16 @@
   --line: color-mix(in srgb, var(--surveillance-green) 18%, transparent);
   --line-strong: color-mix(in srgb, var(--surveillance-green) 48%, transparent);
   --neon: var(--surveillance-green);
-  --neon-dim: #00c244;
+  --neon-dim: #0a7a2f;
   --neon-ink: #001409;
   --text: #eef3ef;
   --muted: #8d958f;
   --leak: #ff5a5a;
   --header-h: 72px;
-  --radius: 14px;
+  --radius: 4px;
+  --font-display: "Bebas Neue", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-sans: Inter, system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --shadow-neon: 0 0 0 1px color-mix(in srgb, var(--surveillance-green) 35%, transparent),
     0 0 28px color-mix(in srgb, var(--surveillance-green) 22%, transparent);
 }
@@ -80,10 +81,10 @@ select {
 h1,
 h2,
 h3 {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.12;
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.08;
   margin: 0;
   text-transform: uppercase;
 }
@@ -178,19 +179,19 @@ h3 {
 }
 
 .brand-name {
-  font-family: Righteous, sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-size: 19px;
+  font-size: 22px;
   color: #ececec;
   margin-right: -0.08em;
 }
 
 .brand-sub {
-  font-family: Righteous, sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
-  font-size: 7.5px;
+  font-size: 9px;
   letter-spacing: 0.34em;
   text-transform: uppercase;
   color: #ececec;
@@ -225,11 +226,12 @@ h3 {
 .btn {
   border: 0;
   cursor: pointer;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
+  border-radius: var(--radius);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.05rem;
   padding: 12px 18px;
 }
 
@@ -608,7 +610,7 @@ h3 {
   width: min(240px, 34%);
   background: var(--bg-2);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 28px;
+  border-radius: var(--radius);
   padding: 12px 10px 16px;
   opacity: 0;
   transform: translateY(18px) scale(0.96);
@@ -624,7 +626,7 @@ h3 {
 .phone-notch {
   width: 72px;
   height: 8px;
-  border-radius: 99px;
+  border-radius: var(--radius);
   background: #1c2226;
   margin: 0 auto 10px;
 }
@@ -639,7 +641,7 @@ h3 {
 
 .tg-card {
   background: #17212b;
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px;
 }
 
@@ -734,7 +736,7 @@ h3 {
 .price-card {
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 32px;
   transition: border-color 0.2s ease;
 }
