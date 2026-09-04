@@ -71,7 +71,7 @@ export function LiveView() {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const detections = [...state.detections].sort((a, b) => b.ts - a.ts);
   const engine = engineBaseUrl();
-  const engineStream = `${engine}/api/stream`;
+  const [liveFrame, setLiveFrame] = useState("");
   const bays = useMemo(() => {
     const rows = telemetry?.bays || [];
     return rows
@@ -107,6 +107,36 @@ export function LiveView() {
       window.clearInterval(interval);
     };
   }, [engine]);
+
+  useEffect(() => {
+    if (!engineLive) return;
+    let cancelled = false;
+    let current = "";
+    async function pump() {
+      while (!cancelled) {
+        try {
+          const res = await fetch(`${engine}/api/frame.jpeg?t=${Date.now()}`, { cache: "no-store" });
+          if (cancelled) break;
+          if (res.ok) {
+            const blob = await res.blob();
+            if (cancelled) break;
+            const next = URL.createObjectURL(blob);
+            setLiveFrame(next);
+            if (current) URL.revokeObjectURL(current);
+            current = next;
+          }
+        } catch {
+          /* retry */
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 80));
+      }
+      if (current) URL.revokeObjectURL(current);
+    }
+    void pump();
+    return () => {
+      cancelled = true;
+    };
+  }, [engine, engineLive]);
 
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
@@ -222,11 +252,11 @@ export function LiveView() {
         {engineLive ? (
           <article className="frame">
             <div className="frame__scene">
-              <img
-                src={engineStream}
-                alt="Live camera engine"
-                onError={() => setEngineLive(false)}
-              />
+              {liveFrame ? (
+                <img src={liveFrame} alt="Live camera engine" />
+              ) : (
+                <div className="frame__tag">Waiting for frames…</div>
+              )}
               {bays.map((bay) => {
                 const [x, y, w, h] = bay.roi;
                 return (
@@ -257,7 +287,7 @@ export function LiveView() {
               </span>
             </div>
             <div className="frame__meta">
-              <strong>Live MJPEG from the local camera engine</strong>
+              <strong>Live JPEG frames from the local camera engine</strong>
               <span>
                 {formatResolution(telemetry)} · ingest {formatIngest(telemetry)} · infer {formatInfer(telemetry)}
               </span>

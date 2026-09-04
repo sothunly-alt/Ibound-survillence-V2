@@ -34,6 +34,8 @@ from occupancy import (
     BayZoneManager,
     crouching_pose_keypoints,
     idle_standing_keypoints,
+    is_phone_usage_pose,
+    is_sitting_pose,
     is_under_vehicle_pose,
     is_working_pose,
     next_available_bay_name,
@@ -45,7 +47,7 @@ from occupancy import (
     under_vehicle_pose_keypoints,
     working_pose_keypoints,
 )
-from person import Detection, draw_detection, draw_skeleton
+from person import Detection, draw_detection, draw_skeleton, is_human_pose
 import numpy as np
 from report import build_garage_report, efficiency_badge
 from sensors.wifi_tracker import WifiTracker, parse_arp_table, presence_status
@@ -82,6 +84,40 @@ def _shift_kpts(kpts, dx: float, dy: float):
 
 def _det(kpts, **kwargs) -> _Det:
     return _Det(kpts, **kwargs)
+
+
+def phone_usage_keypoints() -> list[tuple[float, float, float]]:
+    """Synthetic: worker looking down at mobile phone with converged wrists."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (100.0, 85.0, 0.9)   # Nose (tilted down towards chest)
+    pts[1] = (95.0, 75.0, 0.9)    # L Eye
+    pts[2] = (105.0, 75.0, 0.9)   # R Eye
+    pts[5] = (80.0, 95.0, 0.9)    # L Shoulder
+    pts[6] = (120.0, 95.0, 0.9)   # R Shoulder
+    pts[7] = (75.0, 130.0, 0.85)  # L Elbow
+    pts[8] = (125.0, 130.0, 0.85) # R Elbow
+    pts[9] = (98.0, 120.0, 0.9)   # L Wrist (converged in front of chest)
+    pts[10] = (102.0, 120.0, 0.9) # R Wrist (converged in front of chest)
+    pts[11] = (85.0, 180.0, 0.8)  # L Hip
+    pts[12] = (115.0, 180.0, 0.8) # R Hip
+    pts[13] = (85.0, 240.0, 0.8)  # L Knee
+    pts[14] = (115.0, 240.0, 0.8) # R Knee
+    return pts
+
+
+def sitting_keypoints() -> list[tuple[float, float, float]]:
+    """Synthetic: worker seated with thighs roughly horizontal."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (100.0, 60.0, 0.9)   # Nose
+    pts[5] = (80.0, 90.0, 0.9)    # L Shoulder
+    pts[6] = (120.0, 90.0, 0.9)   # R Shoulder
+    pts[11] = (85.0, 160.0, 0.9)  # L Hip
+    pts[12] = (115.0, 160.0, 0.9) # R Hip
+    pts[13] = (135.0, 165.0, 0.9) # L Knee (horizontal: y~165, x~135)
+    pts[14] = (155.0, 165.0, 0.9) # R Knee (horizontal: y~165, x~155)
+    pts[15] = (135.0, 220.0, 0.8) # L Ankle
+    pts[16] = (155.0, 220.0, 0.8) # R Ankle
+    return pts
 
 
 class PoseAndRoiTests(unittest.TestCase):
@@ -550,6 +586,73 @@ class AttendanceAndScorecardTests(unittest.TestCase):
         self.assertIn("bay_1", text)
         self.assertGreaterEqual(len(summary["bays"]), 3)
 
+    def test_phone_usage_pose_and_state(self):
+        self.assertTrue(is_phone_usage_pose(phone_usage_keypoints()))
+        self.assertFalse(is_phone_usage_pose(working_pose_keypoints()))
+
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        for b in manager._bays:
+            b.phone_threshold_seconds = 1.0
+
+        phone_worker = _det(_shift_kpts(phone_usage_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+
+        manager.update([phone_worker], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([phone_worker], 1000, 1000, t0 + 1.5, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "NOT_WORKING")
+        self.assertEqual(snap.not_working_reason, "PHONE")
+        self.assertIn("NOT WORKING (PHONE)", snap.as_dict()["badge"])
+
+    def test_sitting_pose_and_state(self):
+        self.assertTrue(is_sitting_pose(sitting_keypoints()))
+        self.assertFalse(is_sitting_pose(working_pose_keypoints()))
+
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        for b in manager._bays:
+            b.sitting_threshold_seconds = 1.0
+
+        sitting_worker = _det(_shift_kpts(sitting_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+
+        manager.update([sitting_worker], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([sitting_worker], 1000, 1000, t0 + 1.5, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "NOT_WORKING")
+        self.assertEqual(snap.not_working_reason, "SITTING")
+        self.assertIn("NOT WORKING (SITTING)", snap.as_dict()["badge"])
+
+    def test_default_to_working_in_bay(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        natural_worker = _det(_shift_kpts(idle_standing_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+
+        manager.update([natural_worker], 1000, 1000, t0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "WORKING")
+        self.assertEqual(snap.mechanic_name, "Hour-Meng")
+
+    def test_bending_mechanic_aspect_ratio_not_dropped(self):
+        kpts = working_pose_keypoints()
+        accepted = is_human_pose(
+            x1=50.0, y1=100.0, x2=210.0, y2=220.0,
+            keypoints=kpts, frame_h=1000,
+            min_height_frac=0.12, min_aspect=1.1, min_keypoints=4, kpt_conf=0.4
+        )
+        self.assertTrue(accepted)
+
 
 class WifiPresenceTests(unittest.TestCase):
     def test_arp_parse_and_two_factor(self):
@@ -712,6 +815,95 @@ class GarageApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertFalse(data["ok"])
+
+    def test_per_camera_bays_isolation(self):
+        from launcher import _normalize_cameras, upsert_camera
+
+        bays_cam1 = [
+            {"id": "bay_a", "name": "Bay A", "roi": [0.1, 0.1, 0.3, 0.4], "type": "vehicle_bay"},
+        ]
+        bays_cam2 = [
+            {"id": "bay_b", "name": "Bay B", "roi": [0.5, 0.2, 0.4, 0.5], "type": "vehicle_bay"},
+            {"id": "tools_2", "name": "Tools 2", "roi": [0.2, 0.05, 0.2, 0.2], "type": "tool_area"},
+        ]
+        raw_cameras = [
+            {"id": "cam-1", "name": "Camera 1", "source": "0", "bays": bays_cam1},
+            {"id": "cam-2", "name": "Camera 2", "source": "1", "bays": bays_cam2},
+        ]
+        normalized = _normalize_cameras(raw_cameras)
+        self.assertEqual(len(normalized), 2)
+        self.assertEqual(len(normalized[0]["bays"]), 1)
+        self.assertEqual(normalized[0]["bays"][0]["id"], "bay_a")
+        self.assertEqual(len(normalized[1]["bays"]), 2)
+        self.assertEqual(normalized[1]["bays"][0]["id"], "bay_b")
+
+        # Upsert camera without touching bays preserves existing bays
+        cfg = {"cameras": normalized, "active_camera_id": "cam-1"}
+        updated = upsert_camera(cfg, {"id": "cam-1", "name": "Camera 1 Renamed"})
+        self.assertEqual(len(updated["bays"]), 1)
+        self.assertEqual(updated["bays"][0]["id"], "bay_a")
+        self.assertEqual(len(cfg["cameras"][1]["bays"]), 2)
+
+    def test_import_bays(self):
+        from launcher import LiveStreamEngine
+        from unittest.mock import patch
+
+        engine = LiveStreamEngine()
+        engine.cfg["cameras"] = [
+            {
+                "id": "cam-source",
+                "name": "Source Cam",
+                "source": "0",
+                "roi": [0.1, 0.1, 0.4, 0.5],
+                "bays": [
+                    {"id": "b1", "name": "Bay 1", "roi": [0.1, 0.1, 0.4, 0.5], "type": "vehicle_bay"},
+                    {"id": "b2", "name": "Bay 2", "roi": [0.5, 0.1, 0.4, 0.5], "type": "vehicle_bay"},
+                ],
+            },
+            {
+                "id": "cam-target",
+                "name": "Target Cam",
+                "source": "1",
+                "roi": [0.2, 0.2, 0.3, 0.3],
+                "bays": [
+                    {"id": "old_bay", "name": "Old Bay", "roi": [0.2, 0.2, 0.3, 0.3], "type": "vehicle_bay"},
+                ],
+            },
+        ]
+        engine.cfg["active_camera_id"] = "cam-target"
+
+        with patch("launcher.save_config"):
+            result = engine.import_bays("cam-source", "cam-target")
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["bays"]), 2)
+        self.assertEqual(result["bays"][0]["id"], "b1")
+        self.assertEqual(result["bays"][1]["id"], "b2")
+
+        # Source camera's bays should be untouched
+        src_cam = next(c for c in engine.cfg["cameras"] if c["id"] == "cam-source")
+        self.assertEqual(len(src_cam["bays"]), 2)
+
+        # Target camera's bays now match imported bays
+        tgt_cam = next(c for c in engine.cfg["cameras"] if c["id"] == "cam-target")
+        self.assertEqual(len(tgt_cam["bays"]), 2)
+        self.assertEqual(tgt_cam["bays"][0]["id"], "b1")
+
+    def test_get_camera_frame_api(self):
+        from launcher import LiveStreamEngine
+
+        engine = LiveStreamEngine()
+        engine.current_frame_jpeg = b"FAKE_JPEG_ACTIVE"
+        engine.cfg["active_camera_id"] = "cam-active"
+        engine.cfg["cameras"] = [{"id": "cam-active", "name": "Active", "source": "0"}]
+
+        # Active camera returns current_frame_jpeg directly
+        frame_bytes, ctype = engine.get_camera_frame("cam-active")
+        self.assertEqual(frame_bytes, b"FAKE_JPEG_ACTIVE")
+        self.assertEqual(ctype, "image/jpeg")
+
+        # None/empty camera_id returns active camera
+        frame_bytes, ctype = engine.get_camera_frame(None)
+        self.assertEqual(frame_bytes, b"FAKE_JPEG_ACTIVE")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 import sys
 import time
+import urllib.parse
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Optional
 
 import cv2
@@ -15,7 +17,9 @@ import numpy as np
 # (FFmpeg's default RTSP timeout is ~20s).
 CAPTURE_TIMEOUT_MS = 2000
 RTSP_STIMEOUT_US = 2_000_000
-V4L_RELEASE_PAUSE = 0.35
+V4L_RELEASE_PAUSE = 0.05
+_VIDEO_EXTS = (".mp4", ".mkv", ".mov", ".avi", ".webm", ".m4v")
+_UNIX_ROOTS = {"home", "users", "tmp", "var", "opt", "media", "mnt", "data"}
 
 
 class FramePacket:
@@ -69,10 +73,64 @@ def parse_source(value: Any) -> int | str:
     return text
 
 
+def source_has_video_ext(text: str) -> bool:
+    path = str(text or "").split("?", 1)[0].rstrip("/").lower()
+    return path.endswith(_VIDEO_EXTS)
+
+
+def unwrap_local_video_source(source: Any) -> str | None:
+    """Return a filesystem path when ``source`` is a local video file.
+
+    The hub used to wrap paths like ``/home/user/clip.mp4`` into
+    ``rtsp://user@home/user/clip.mp4``. That made go2rtc DNS-lookup ``home``
+    and OpenCV/FFmpeg treat a file as RTSP, which hangs or crashes ingest.
+    """
+    text = str(source or "").strip()
+    if not text:
+        return None
+    if text.lower().startswith("file://"):
+        text = text[7:]
+    lower = text.lower()
+    networked = lower.startswith(
+        ("rtsp://", "http://", "https://", "tapo://", "onvif://", "whep://", "webrtc://", "whip://")
+    )
+    if source_has_video_ext(text) and not networked:
+        return text
+    if not lower.startswith(("rtsp://", "http://", "https://")) or not source_has_video_ext(text):
+        return None
+    try:
+        parsed = urllib.parse.urlparse(text)
+    except Exception:
+        return None
+    host = parsed.hostname or ""
+    path = urllib.parse.unquote(parsed.path or "")
+    if not host or not path:
+        return None
+    candidate = "/" + host + path
+    if not source_has_video_ext(candidate):
+        return None
+    if host.lower() in _UNIX_ROOTS:
+        return candidate
+    try:
+        if Path(candidate).is_file():
+            return candidate
+        if Path(path).is_file():
+            return path
+    except Exception:
+        pass
+    return None
+
+
 def protocol_from_source(source: Any) -> str:
     if isinstance(source, int) or str(source or "").strip().isdigit():
         return "webcam"
-    text = str(source or "").strip().lower()
+    raw = str(source or "").strip()
+    text = raw.lower()
+    if unwrap_local_video_source(raw) is not None or (
+        source_has_video_ext(text)
+        and not text.startswith(("rtsp://", "http://", "https://", "tapo://", "onvif://"))
+    ):
+        return "video"
     if text.startswith("onvif://") or (
         (text.startswith("http://") or text.startswith("https://")) and "/onvif" in text
     ):

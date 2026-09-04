@@ -152,14 +152,19 @@ DEFAULT_BAYS: list[dict] = [
 ]
 
 BAY_TYPES = ("vehicle_bay", "tool_area")
-BAY_STATES = ("WORKING", "UNDER_VEHICLE", "ON_BREAK", "PARKED_WAITING", "IDLE", "EMPTY")
+BAY_STATES = ("WORKING", "UNDER_VEHICLE", "NOT_WORKING", "ON_BREAK", "PARKED_WAITING", "IDLE", "EMPTY")
 IDLE_STATIONARY_SECONDS = 120.0
 UNDER_CAR_GRACE_SECONDS = 5.0
 BREAK_TIMEOUT_SECONDS = 3600.0
+PRESENCE_GRACE_SECONDS = 8.0
+PHONE_THRESHOLD_SECONDS = 12.0
+SITTING_THRESHOLD_SECONDS = 15.0
 MAX_ACTIVITY_DT = 2.0
 UNKNOWN_WORKER = "Employee"
 
 # COCO-pose indices (Ultralytics YOLO-pose).
+NOSE = 0
+L_EYE, R_EYE = 1, 2
 L_SHOULDER, R_SHOULDER = 5, 6
 L_ELBOW, R_ELBOW = 7, 8
 L_WRIST, R_WRIST = 9, 10
@@ -170,6 +175,7 @@ L_ANKLE, R_ANKLE = 15, 16
 BAY_BGR = {
     "WORKING": (102, 255, 0),  # Surveillance Green #00FF66
     "UNDER_VEHICLE": (102, 255, 0),  # Surveillance Green #00FF66
+    "NOT_WORKING": (0, 0, 255),  # Crimson Red (Phone / Sitting / Distraction)
     "ON_BREAK": (58, 131, 11),  # Stealth Green #0B833A
     "PARKED_WAITING": (0, 200, 255),  # Amber / Queue
     "IDLE": (0, 200, 255),  # Amber
@@ -411,6 +417,90 @@ def is_under_vehicle_pose(keypoints: list, kpt_conf: float = 0.35) -> bool:
     return False
 
 
+def is_phone_usage_pose(keypoints: list, kpt_conf: float = 0.30) -> bool:
+    """True when pose indicates worker operating or looking down at a phone screen.
+
+    Negative work cues:
+    - Both wrists close together (holding screen with one or both hands).
+    - Wrists in front of torso (between neck/shoulders and hips).
+    - Head/neck flexed downward (nose close to shoulder midpoint height).
+    - Or one wrist held directly adjacent to ear/face (phone call).
+    """
+    ls = _kpt(keypoints, L_SHOULDER, kpt_conf)
+    rs = _kpt(keypoints, R_SHOULDER, kpt_conf)
+    le = _kpt(keypoints, L_ELBOW, kpt_conf)
+    re = _kpt(keypoints, R_ELBOW, kpt_conf)
+    lw = _kpt(keypoints, L_WRIST, kpt_conf)
+    rw = _kpt(keypoints, R_WRIST, kpt_conf)
+    nose = _kpt(keypoints, NOSE, kpt_conf)
+    lh = _kpt(keypoints, L_HIP, kpt_conf)
+    rh = _kpt(keypoints, R_HIP, kpt_conf)
+
+    shoulders = _mid(ls, rs)
+    hips = _mid(lh, rh)
+    torso = max(1.0, abs(hips[1] - shoulders[1])) if (shoulders and hips) else 100.0
+
+    # 1. Phone call to ear/face
+    for wrist in (lw, rw):
+        if wrist and nose:
+            dist_to_face = ((wrist[0] - nose[0]) ** 2 + (wrist[1] - nose[1]) ** 2) ** 0.5
+            if dist_to_face < 0.30 * torso:
+                return True
+
+    # 2. Holding phone in front of chest / lap
+    if lw and rw and shoulders and hips:
+        wrist_dist = ((lw[0] - rw[0]) ** 2 + (lw[1] - rw[1]) ** 2) ** 0.5
+        if wrist_dist < 0.38 * torso:
+            wrist_y = (lw[1] + rw[1]) / 2.0
+            if shoulders[1] - 0.1 * torso <= wrist_y <= hips[1] + 0.35 * torso:
+                # Head pitched downward toward hands
+                if nose and nose[1] > shoulders[1] - 0.25 * torso:
+                    return True
+                # Elbows flexed inwards
+                if le and re and (lw[1] < le[1] + 0.4 * torso or rw[1] < re[1] + 0.4 * torso):
+                    return True
+
+    return False
+
+
+def is_sitting_pose(keypoints: list, kpt_conf: float = 0.30) -> bool:
+    """True when pose indicates worker sitting down on a chair, stool, bench, or bumper.
+
+    Negative work cues:
+    - Vertical distance between hips and knees is compressed (thighs roughly horizontal).
+    - Torso is upright while thighs extend horizontally.
+    """
+    lh = _kpt(keypoints, L_HIP, kpt_conf)
+    rh = _kpt(keypoints, R_HIP, kpt_conf)
+    lk = _kpt(keypoints, L_KNEE, kpt_conf)
+    rk = _kpt(keypoints, R_KNEE, kpt_conf)
+    ls = _kpt(keypoints, L_SHOULDER, kpt_conf)
+    rs = _kpt(keypoints, R_SHOULDER, kpt_conf)
+
+    shoulders = _mid(ls, rs)
+    hips = _mid(lh, rh)
+    knees = _mid(lk, rk)
+
+    torso = max(1.0, abs(hips[1] - shoulders[1])) if (shoulders and hips) else 100.0
+
+    for hip, knee in ((lh, lk), (rh, rk)):
+        if hip and knee:
+            dy = abs(knee[1] - hip[1])
+            dx = abs(knee[0] - hip[0])
+            if dy < 0.42 * torso and dx > 0.25 * torso:
+                return True
+            if dy < 0.26 * torso:
+                return True
+
+    if hips and knees and shoulders:
+        dy_hk = abs(knees[1] - hips[1])
+        dy_sh = abs(hips[1] - shoulders[1])
+        if dy_hk < 0.38 * dy_sh:
+            return True
+
+    return False
+
+
 def detection_anchor(det) -> tuple[float, float]:
     box = det.box() if hasattr(det, "box") else (det.x1, det.y1, det.x2, det.y2)
     x1, y1, x2, y2 = box
@@ -459,6 +549,7 @@ def bay_badge(
     wrench_seconds: float,
     technicians_times: dict[str, float] | None = None,
     queue_seconds: float = 0.0,
+    not_working_reason: str | None = None,
 ) -> str:
     if state == "EMPTY":
         return "EMPTY"
@@ -468,6 +559,9 @@ def bay_badge(
         details = ", ".join(f"{name} ({fmt_duration(sec)})" for name, sec in technicians_times.items())
         if state == "UNDER_VEHICLE":
             return f"UNDER VEHICLE - {details}"
+        if state == "NOT_WORKING":
+            reason_str = f" ({not_working_reason})" if not_working_reason else ""
+            return f"NOT WORKING{reason_str} - {details}"
         if state == "ON_BREAK":
             return f"ON BREAK - (Paused: {details})"
         if state == "WORKING":
@@ -477,6 +571,9 @@ def bay_badge(
     name = technician or "Technician"
     if state == "UNDER_VEHICLE":
         return f"UNDER VEHICLE - {name} ({fmt_duration(wrench_seconds)})"
+    if state == "NOT_WORKING":
+        reason_str = f" ({not_working_reason})" if not_working_reason else ""
+        return f"NOT WORKING{reason_str} - {name} (Paused: {fmt_duration(wrench_seconds)})"
     if state == "ON_BREAK":
         return f"ON BREAK - {name} (Paused: {fmt_duration(wrench_seconds)})"
     if state == "WORKING":
@@ -512,6 +609,8 @@ class BaySnapshot:
     queue_seconds: float = 0.0
     queue_time_today: float = 0.0
     technicians_times: dict[str, float] = field(default_factory=dict)
+    not_working_reason: str | None = None
+    polygon: list[list[float]] | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -519,6 +618,7 @@ class BaySnapshot:
             "name": self.name,
             "type": self.type,
             "roi": list(self.roi),
+            "polygon": [list(pt) for pt in self.polygon] if self.polygon else None,
             "state": self.state,
             "mechanic_name": self.mechanic_name,
             "wrench_seconds": round(self.wrench_seconds, 2),
@@ -535,7 +635,15 @@ class BaySnapshot:
             "job_id": self.job_id,
             "vehicle_present": self.vehicle_present,
             "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
-            "badge": bay_badge(self.state, self.mechanic_name, self.wrench_time_today, self.technicians_times, self.queue_seconds),
+            "not_working_reason": self.not_working_reason,
+            "badge": bay_badge(
+                self.state,
+                self.mechanic_name,
+                self.wrench_time_today,
+                self.technicians_times,
+                self.queue_seconds,
+                not_working_reason=self.not_working_reason,
+            ),
         }
 
 
@@ -577,6 +685,12 @@ class _BayRuntime:
         self.labor_started = False
         self.under_car_grace_seconds = float(under_car_grace_seconds)
         self.break_timeout_seconds = float(break_timeout_seconds)
+        self.presence_grace_seconds = float(PRESENCE_GRACE_SECONDS)
+        self.phone_threshold_seconds = float(PHONE_THRESHOLD_SECONDS)
+        self.sitting_threshold_seconds = float(SITTING_THRESHOLD_SECONDS)
+        self.phone_since: float | None = None
+        self.sitting_since: float | None = None
+        self.not_working_reason: str | None = None
         self.job_id: str | None = cfg.get("job_id")
         self.vehicle_type: str = cfg.get("vehicle_type") or ("vehicle" if cfg["type"] == "vehicle_bay" else "station")
         self.vehicle_present: bool = bool(cfg.get("vehicle_present", False))
@@ -611,6 +725,8 @@ class _BayRuntime:
             job_id=self.job_id,
             vehicle_present=self.vehicle_present,
             technicians_times=dict(self.technicians_times),
+            not_working_reason=self.not_working_reason,
+            polygon=[list(pt) for pt in self.polygon] if self.polygon else None,
         )
 
 
@@ -765,31 +881,74 @@ class BayZoneManager:
             working_pose = under_vehicle or any(
                 is_working_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside
             )
+            is_phone = any(
+                is_phone_usage_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside
+            )
+            is_sitting = any(
+                is_sitting_pose(getattr(det, "keypoints", []), kpt_conf) for det in inside
+            )
             moving = _is_moving(bay, inside, self.motion_px)
-            is_actively_working = (bay.type == "tool_area") or under_vehicle or working_pose or moving
+            is_actively_moving = moving or working_pose or under_vehicle or (bay.type == "tool_area")
 
-            if inside:
+            if inside or occupied:
                 bay.session_open = True
-                bay.last_active_t = now
+                if inside:
+                    bay.last_active_t = now
 
-                if is_actively_working:
+                # Track negative behavior duration with brief grace
+                if is_phone:
+                    if bay.phone_since is None:
+                        bay.phone_since = now
+                elif bay.phone_since is not None and (now - bay.phone_since > 3.0):
+                    bay.phone_since = None
+
+                if is_sitting:
+                    if bay.sitting_since is None:
+                        bay.sitting_since = now
+                elif bay.sitting_since is not None and (now - bay.sitting_since > 3.0):
+                    bay.sitting_since = None
+
+                phone_elapsed = (now - bay.phone_since) if bay.phone_since is not None else 0.0
+                sitting_elapsed = (now - bay.sitting_since) if bay.sitting_since is not None else 0.0
+
+                if is_actively_moving:
                     bay.stationary_since = None
                 elif bay.stationary_since is None:
                     bay.stationary_since = now
 
                 stationary_elapsed = (now - bay.stationary_since) if bay.stationary_since is not None else 0.0
-                is_idle = (not is_actively_working) and (stationary_elapsed >= self.idle_stationary_seconds)
+                is_idle = stationary_elapsed >= self.idle_stationary_seconds
 
-                # Track each employee in the bay individually. Head turns that
-                # drop face-ID to "Employee" keep the locked staff name so the
-                # session timer does not fragment.
+                # INVERTED STATE LOGIC: Default to WORKING unless a negative state is confirmed
+                is_not_working = False
+                if phone_elapsed >= bay.phone_threshold_seconds:
+                    bay.state = "NOT_WORKING"
+                    bay.not_working_reason = "PHONE"
+                    is_not_working = True
+                elif sitting_elapsed >= bay.sitting_threshold_seconds:
+                    bay.state = "NOT_WORKING"
+                    bay.not_working_reason = "SITTING"
+                    is_not_working = True
+                elif is_idle:
+                    bay.state = "IDLE"
+                    bay.not_working_reason = "IDLE"
+                    is_not_working = True
+                elif under_vehicle:
+                    bay.state = "UNDER_VEHICLE"
+                    bay.not_working_reason = None
+                else:
+                    # Default: Technician inside bay with vehicle -> actively working
+                    bay.state = "WORKING"
+                    bay.not_working_reason = None
+
+                # Track each employee in the bay individually
                 active_names: list[str] = []
                 for det in inside:
                     name = _resolve_occupant_name(det, inside, bay)
                     track_id = getattr(det, "track_id", None)
                     if track_id is not None and name != UNKNOWN_WORKER:
                         bay.locked_tracks[int(track_id)] = name
-                    if dt > 0 and not is_idle:
+                    if dt > 0 and not is_not_working:
                         bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
                     det.active_time_str = fmt_duration(bay.technicians_times.get(name, bay.wrench_seconds + dt))
                     det.bay_name = bay.name
@@ -802,31 +961,30 @@ class BayZoneManager:
                 elif len(named_staff) > 1 and bay.last_working_technician not in named_staff:
                     bay.last_working_technician = named_staff[0]
                 display = named_staff or active_names
-                bay.technician = ", ".join(display) if display else (technician or UNKNOWN_WORKER)
+                if display:
+                    bay.technician = ", ".join(display)
+                elif not bay.technician:
+                    bay.technician = technician or UNKNOWN_WORKER
 
-                if under_vehicle:
-                    bay.state = "UNDER_VEHICLE"
-                    if dt > 0:
+                if dt > 0:
+                    if bay.state == "UNDER_VEHICLE":
                         bay.under_vehicle_seconds += dt
                         bay.today_under_vehicle += dt
                         bay.wrench_seconds += dt
                         bay.today_wrench += dt
-                elif is_idle:
-                    bay.state = "IDLE"
-                    if dt > 0:
-                        bay.idle_seconds += dt
-                        bay.today_idle += dt
-                else:
-                    bay.state = "WORKING"
-                    if dt > 0:
+                    elif bay.state == "WORKING":
                         bay.wrench_seconds += dt
                         bay.today_wrench += dt
+                    else:
+                        bay.idle_seconds += dt
+                        bay.today_idle += dt
 
             else:
-                # Person is OUT of the bay -> Stop/pause work timer immediately
+                # Person is truly OUT of the bay
                 time_since_active = (now - bay.last_active_t) if bay.last_active_t is not None else 999999.0
                 if bay.session_open and time_since_active <= bay.break_timeout_seconds:
                     bay.state = "ON_BREAK"
+                    bay.not_working_reason = None
                     bay.technician = technician
                     if dt > 0:
                         bay.break_seconds += dt
@@ -834,12 +992,14 @@ class BayZoneManager:
                 elif bay.vehicle_present:
                     # Car is parked in bay, but no mechanic has started labor yet (e.g. customer consultation / paperwork wait)
                     bay.state = "PARKED_WAITING"
+                    bay.not_working_reason = None
                     bay.technician = None
                     if dt > 0:
                         bay.queue_seconds += dt
                         bay.today_queue += dt
                 else:
                     bay.state = "EMPTY"
+                    bay.not_working_reason = None
                     bay.technician = None
                     bay.stationary_since = None
                     bay.last_anchor = None

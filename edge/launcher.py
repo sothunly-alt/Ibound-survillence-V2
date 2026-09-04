@@ -41,13 +41,42 @@ import numpy as np
 import requests
 import yaml
 
+import re
+
 ROOT = resource_dir()
 DATA_DIR = data_dir()
+VIDEOS_DIR = ROOT / "videos"
+
+
+def init_videos_dir() -> Path:
+    VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+    sample = ROOT.parent / "tools" / "virtual-camera" / "videos" / "sample_garage_demo.mp4"
+    target = VIDEOS_DIR / "sample_garage_demo.mp4"
+    if not target.exists() and sample.is_file():
+        try:
+            target.symlink_to(sample.resolve())
+        except Exception:
+            try:
+                import shutil
+                shutil.copy2(sample, target)
+            except Exception:
+                pass
+    return VIDEOS_DIR
+
+
+init_videos_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from adapters import create_adapter
-from adapters.base import BaseCameraAdapter, FramePacket, parse_source, protocol_from_source, redact_source
+from adapters import create_adapter, ingest_kind
+from adapters.base import (
+    BaseCameraAdapter,
+    FramePacket,
+    parse_source,
+    protocol_from_source,
+    redact_source,
+    unwrap_local_video_source,
+)
 from adapters.onvif import onvif_xaddr
 from adapters.webcam import open_webcam_index as _open_webcam_index
 from capture import AsyncFrameGrabber, request_still
@@ -139,7 +168,15 @@ def read_config() -> dict[str, Any]:
     data["garage_name"] = str(data.get("garage_name") or data.get("venue") or "Demo Garage")
     data["venue"] = str(data.get("venue") or data["garage_name"])
     data["close_time"] = str(data.get("close_time") or "18:00")
-    data["bays"] = normalize_bays(data.get("bays"), fallback_roi=parse_roi(data.get("roi")))
+    active_cid = data["active_camera_id"]
+    active_cam = next((c for c in data["cameras"] if c["id"] == active_cid), None)
+    if active_cam and active_cam.get("bays"):
+        data["bays"] = active_cam["bays"]
+    else:
+        fallback_roi = parse_roi(active_cam.get("roi")) if active_cam else parse_roi(data.get("roi"))
+        data["bays"] = normalize_bays(data.get("bays"), fallback_roi=fallback_roi)
+        if active_cam and not active_cam.get("bays"):
+            active_cam["bays"] = data["bays"]
     data["wifi_devices"] = normalize_wifi_devices(data.get("wifi_devices"))
     hours = data.get("operating_hours")
     if not isinstance(hours, dict):
@@ -227,6 +264,12 @@ def _normalize_cameras(raw: Any) -> list[dict[str, Any]]:
         main_source = item.get("main_source", "")
         if not isinstance(main_source, int):
             main_source = str(main_source or "")
+        cam_roi = parse_roi(item.get("roi")) or [0.30, 0.20, 0.40, 0.60]
+        raw_bays = item.get("bays")
+        if raw_bays and isinstance(raw_bays, list):
+            cam_bays = parse_bays(raw_bays, fallback_roi=cam_roi, seed_if_empty=False)
+        else:
+            cam_bays = []
         out.append(
             {
                 "id": cid,
@@ -239,7 +282,8 @@ def _normalize_cameras(raw: Any) -> list[dict[str, Any]]:
                 "xaddrs": _normalize_xaddrs(item.get("xaddrs")),
                 "rotate": item.get("rotate", "auto") if str(item.get("rotate", "")).lower() == "auto" else item.get("rotate", 0),
                 "flip": str(item.get("flip") or "none"),
-                "roi": parse_roi(item.get("roi")) or [0.30, 0.20, 0.40, 0.60],
+                "roi": cam_roi,
+                "bays": cam_bays,
             }
         )
     return out
@@ -277,6 +321,11 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
     if roi is None:
         roi = [0.30, 0.20, 0.40, 0.60]
     rotate = fields.get("rotate", existing.get("rotate", cfg.get("rotate", "auto")))
+    bays_val = fields.get("bays") if "bays" in fields else existing.get("bays")
+    if bays_val and isinstance(bays_val, list):
+        bays = parse_bays(bays_val, fallback_roi=roi, seed_if_empty=False)
+    else:
+        bays = list(existing.get("bays") or [])
     entry = {
         "id": cid,
         "name": name,
@@ -289,6 +338,7 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
         "rotate": rotate,
         "flip": str(fields.get("flip") or existing.get("flip") or cfg.get("flip") or "none"),
         "roi": roi,
+        "bays": bays,
     }
     for i, cam in enumerate(cameras):
         if cam["id"] == cid:
@@ -299,6 +349,8 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
     cfg["cameras"] = cameras
     cfg["active_camera_id"] = cid
     cfg["roi"] = roi
+    if bays:
+        cfg["bays"] = bays
     return entry
 
 
@@ -454,6 +506,7 @@ class LiveStreamEngine:
         self.is_streaming = False
         self.thread: threading.Thread | None = None
         self.current_frame_jpeg: bytes | None = None
+        self.mjpeg_generation = 0
         self.frame_seq = 0
         self.new_frame_event = threading.Event()
         self.grabber = AsyncFrameGrabber()
@@ -482,6 +535,7 @@ class LiveStreamEngine:
         self.bay_telemetry: list[dict[str, Any]] = []
         self.last_face_seen: dict[str, float] = {}
         self._wifi_last_tick: float | None = None
+        self._camera_frame_cache: dict[str, tuple[bytes, str, float]] = {}
 
         # Load initial config. SQLite is opened on the worker thread —
         # connections cannot be shared across threads.
@@ -502,6 +556,7 @@ class LiveStreamEngine:
             self.running = True
             try:
                 self.media.start()
+                self.register_all_cameras_in_gateway()
             except Exception as exc:
                 print(f"[go2rtc] start failed: {exc}", flush=True)
             self.grabber.start()
@@ -547,27 +602,47 @@ class LiveStreamEngine:
             except Exception:
                 pass
 
+    def register_all_cameras_in_gateway(self) -> None:
+        """Register all configured network cameras and video files into go2rtc so multi-camera grid can stream simultaneously."""
+        if not self.media.is_ready():
+            return
+        cameras = list(self.cfg.get("cameras") or [])
+        for cam in cameras:
+            cid = cam.get("id")
+            src = cam.get("source")
+            if not cid or not src:
+                continue
+            kind = ingest_kind(src, cam.get("protocol"))
+            if kind == "webcam":
+                continue
+            stream_id = sanitize_stream_id(cid)
+            if kind == "video":
+                try:
+                    from adapters.video_file import resolve_video_path
+                    vp = resolve_video_path(src)
+                    if vp.is_file():
+                        url = f"ffmpeg:{vp.resolve()}#video=h264#loop"
+                    else:
+                        continue
+                except Exception:
+                    continue
+            else:
+                url = str(parse_source(src))
+            try:
+                self.media.client.register_stream(stream_id, url)
+                main_src = str(cam.get("main_source") or "").strip()
+                if main_src:
+                    self.media.client.register_stream(f"{stream_id}-main", main_src)
+            except Exception as exc:
+                print(f"[go2rtc] background register failed for {stream_id}: {exc}", flush=True)
+
     def _bind_gateway(self, source: Any, camera_id: str, main_source: Any = None) -> str | None:
         """Register a network camera with go2rtc. Webcams skip the gateway."""
-        kind = protocol_from_source(source)
-        if kind == "webcam" or not self.media.is_ready():
-            self._drop_gateway_stream()
+        kind = ingest_kind(source, None)
+        if kind in ("webcam", "video") or not self.media.is_ready():
             return None
         stream_id = sanitize_stream_id(camera_id or "live")
         url = str(parse_source(source))
-        prev = self._gateway_stream_id
-        prev_main = self._gateway_main_stream_id
-        if prev and prev != stream_id:
-            try:
-                self.media.client.remove_stream(prev)
-            except Exception:
-                pass
-        main_id = f"{stream_id}-main"
-        if prev_main and prev_main != main_id:
-            try:
-                self.media.client.remove_stream(prev_main)
-            except Exception:
-                pass
         try:
             ok = self.media.client.register_stream(stream_id, url)
         except Exception as exc:
@@ -575,11 +650,10 @@ class LiveStreamEngine:
             ok = False
         if not ok:
             print(f"[go2rtc] could not register {stream_id}", flush=True)
-            self._gateway_stream_id = None
-            self._gateway_main_stream_id = None
             return None
         self._gateway_stream_id = stream_id
         main_url = str(main_source or "").strip()
+        main_id = f"{stream_id}-main"
         if main_url:
             try:
                 if self.media.client.register_stream(main_id, main_url):
@@ -591,11 +665,6 @@ class LiveStreamEngine:
                 print(f"[go2rtc] main register failed: {exc}", flush=True)
                 self._gateway_main_stream_id = None
         else:
-            if prev_main:
-                try:
-                    self.media.client.remove_stream(prev_main)
-                except Exception:
-                    pass
             self._gateway_main_stream_id = None
         print(f"[go2rtc] stream {stream_id} <- {redact_source(url)}", flush=True)
         return stream_id
@@ -637,16 +706,25 @@ class LiveStreamEngine:
             camera_fields["xaddrs"] = payload.pop("xaddrs")
         with self.lock:
             self.cfg.update(payload)
+            recovered = unwrap_local_video_source(self.cfg.get("source"))
+            proto_hint = str(camera_fields.get("protocol") or self.cfg.get("protocol") or "").lower()
+            if recovered or proto_hint in ("video", "file"):
+                if recovered:
+                    self.cfg["source"] = recovered
+                self.cfg["protocol"] = "video"
+                camera_fields["protocol"] = "video"
             if str(camera_fields.get("name") or "").strip() or str(camera_fields.get("id") or "").strip():
                 camera_fields["source"] = self.cfg.get("source")
                 camera_fields["rotate"] = self.cfg.get("rotate")
                 camera_fields["flip"] = self.cfg.get("flip")
                 upsert_camera(self.cfg, camera_fields)
             cameras = list(self.cfg.get("cameras") or [])
-            active_id = str(self.cfg.get("active_camera_id") or cid or "")
+            active_id = str(cid or self.cfg.get("active_camera_id") or "")
+            if active_id:
+                self.cfg["active_camera_id"] = active_id
             active: dict[str, Any] = {}
             for cam in cameras:
-                if cam.get("id") == active_id or cam.get("id") == cid:
+                if cam.get("id") == active_id:
                     active = cam
                     break
             protocol = str(
@@ -660,7 +738,7 @@ class LiveStreamEngine:
             username = str(active.get("username") or camera_fields.get("username") or "")
             self.cfg["protocol"] = protocol
             self.cfg["main_source"] = main_source
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
             self.bot = TelegramOut(
                 self.cfg.get("telegram_bot_token", ""),
                 self.cfg.get("telegram_chat_id", ""),
@@ -668,6 +746,7 @@ class LiveStreamEngine:
             self.error_message = None
             self.is_streaming = True
             self.current_frame_jpeg = None
+            self.mjpeg_generation += 1
             self.fps = 0.0
             self.is_occupied = False
             self.person_count = 0
@@ -677,66 +756,88 @@ class LiveStreamEngine:
             self.connection_state = "CONNECTING"
             self.new_frame_event.set()
             source = self.cfg.get("source", 0)
-            roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
-            if _needs_onvif_onboard(protocol, source, xaddrs):
-                self.grabber.mark_connecting()
-                threading.Thread(
-                    target=self._onboard_onvif,
-                    kwargs={
-                        "xaddrs": xaddrs,
-                        "source": source,
-                        "username": username,
-                        "password": password,
-                        "camera_id": active_id or cid,
-                        "camera_name": cam_name or str(active.get("name") or ""),
-                    },
-                    name="OnvifOnboard",
-                    daemon=True,
-                ).start()
-                media = {"ready": self.media.is_ready()}
-                return {
-                    "success": True,
-                    "pending": True,
-                    "connection": "CONNECTING",
-                    "status": "CONNECTING",
-                    "message": f"Resolving ONVIF '{redact_source(onvif_xaddr(source, xaddrs))}'…",
-                    "roi": roi,
-                    "bays": list(self.cfg.get("bays") or DEFAULT_BAYS),
-                    "rotate": self.cfg.get("rotate", 0),
-                    "flip": self.cfg.get("flip", "none"),
-                    "cameras": cameras,
-                    "active_camera_id": active_id,
-                    "stream_id": None,
-                    "media": media,
-                }
-            stream_id = self._bind_gateway(source, active_id, main_source=main_source)
-            adapter = create_adapter(
-                source,
-                gateway=self.media if stream_id else None,
-                stream_id=stream_id,
-                protocol=protocol,
-                username=username,
-                password=password,
-                xaddrs=xaddrs,
-                main_source=main_source,
-            )
-            self.grabber.switch_source(adapter)
-            media = self.media.status(stream_id) if stream_id else {"ready": self.media.is_ready()}
+            active_bays = list(active.get("bays") or [])
+            if not active_bays:
+                active_roi = parse_roi(active.get("roi")) or parse_roi(self.cfg.get("roi")) or [0.30, 0.20, 0.40, 0.60]
+                active_bays = parse_bays(None, fallback_roi=active_roi, seed_if_empty=True)
+                active["bays"] = active_bays
+            self.cfg["bays"] = active_bays
+            roi = list(parse_roi(active.get("roi")) or self.cfg.get("roi") or (active_bays[0]["roi"] if active_bays else [0.30, 0.20, 0.40, 0.60]))
+            self.cfg["roi"] = roi
+            self.bay_manager.set_bays(active_bays)
+            self.bay_telemetry = self.bay_manager.telemetry()
+            bays = list(self.cfg.get("bays") or DEFAULT_BAYS)
+            rotate = self.cfg.get("rotate", 0)
+            flip = self.cfg.get("flip", "none")
+            cfg_to_save = dict(self.cfg)
+
+        # Perform disk write and network/gateway operations outside self.lock to avoid deadlock
+        save_config(cfg_to_save)
+        try:
+            self.register_all_cameras_in_gateway()
+        except Exception:
+            pass
+
+        if _needs_onvif_onboard(protocol, source, xaddrs):
+            self.grabber.mark_connecting()
+            threading.Thread(
+                target=self._onboard_onvif,
+                kwargs={
+                    "xaddrs": xaddrs,
+                    "source": source,
+                    "username": username,
+                    "password": password,
+                    "camera_id": active_id or cid,
+                    "camera_name": cam_name or str(active.get("name") or ""),
+                },
+                name="OnvifOnboard",
+                daemon=True,
+            ).start()
+            media = {"ready": self.media.is_ready()}
             return {
                 "success": True,
                 "pending": True,
                 "connection": "CONNECTING",
                 "status": "CONNECTING",
-                "message": f"Connecting to '{redact_source(source)}'…",
+                "message": f"Resolving ONVIF '{redact_source(onvif_xaddr(source, xaddrs))}'…",
                 "roi": roi,
-                "bays": list(self.cfg.get("bays") or DEFAULT_BAYS),
-                "rotate": self.cfg.get("rotate", 0),
-                "flip": self.cfg.get("flip", "none"),
+                "bays": bays,
+                "rotate": rotate,
+                "flip": flip,
                 "cameras": cameras,
                 "active_camera_id": active_id,
-                "stream_id": stream_id,
+                "stream_id": None,
                 "media": media,
             }
+
+        stream_id = self._bind_gateway(source, active_id, main_source=main_source)
+        adapter = create_adapter(
+            source,
+            gateway=self.media if stream_id else None,
+            stream_id=stream_id,
+            protocol=protocol,
+            username=username,
+            password=password,
+            xaddrs=xaddrs,
+            main_source=main_source,
+        )
+        self.grabber.switch_source(adapter)
+        media = self.media.status(stream_id) if stream_id else {"ready": self.media.is_ready()}
+        return {
+            "success": True,
+            "pending": True,
+            "connection": "CONNECTING",
+            "status": "CONNECTING",
+            "message": f"Connecting to '{redact_source(source)}'…",
+            "roi": roi,
+            "bays": bays,
+            "rotate": rotate,
+            "flip": flip,
+            "cameras": cameras,
+            "active_camera_id": active_id,
+            "stream_id": stream_id,
+            "media": media,
+        }
 
     def _onboard_onvif(
         self,
@@ -791,18 +892,16 @@ class LiveStreamEngine:
                             "xaddrs": xaddrs,
                         },
                     )
-                save_config(self.cfg)
-                stream_id = self._bind_gateway(
-                    sub,
-                    str(self.cfg.get("active_camera_id") or camera_id or ""),
-                    main_source=main,
-                )
-                inner = create_adapter(
-                    sub,
-                    gateway=self.media if stream_id else None,
-                    stream_id=stream_id,
-                    protocol="rtsp",
-                )
+                cfg_to_save = dict(self.cfg)
+                active_id = str(self.cfg.get("active_camera_id") or camera_id or "")
+            save_config(cfg_to_save)
+            stream_id = self._bind_gateway(sub, active_id, main_source=main)
+            inner = create_adapter(
+                sub,
+                gateway=self.media if stream_id else None,
+                stream_id=stream_id,
+                protocol="rtsp",
+            )
             self.grabber.switch_source(inner)
         except Exception as exc:
             self.grabber.switch_source(_ConnectErrorAdapter(str(exc)))
@@ -869,15 +968,22 @@ class LiveStreamEngine:
             mapped["main_source"] = fields.get("main_source", "")
         if "xaddrs" in fields:
             mapped["xaddrs"] = fields.get("xaddrs")
+        if "bays" in fields:
+            mapped["bays"] = fields.get("bays")
         with self.lock:
             entry = upsert_camera(self.cfg, mapped)
             save_config(self.cfg)
-            return {
-                "success": True,
-                "camera": entry,
-                "cameras": list(self.cfg.get("cameras") or []),
-                "active_camera_id": entry["id"],
-            }
+        try:
+            self.register_all_cameras_in_gateway()
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "camera": entry,
+            "cameras": list(self.cfg.get("cameras") or []),
+            "active_camera_id": entry["id"],
+            "bays": entry.get("bays") or [],
+        }
 
     def delete_camera(self, camera_id: Any) -> dict[str, Any]:
         cid = str(camera_id or "").strip()
@@ -963,6 +1069,122 @@ class LiveStreamEngine:
             "active_camera_id": active,
             "removed_bay_ids": removed_ids,
         }
+
+    def import_bays(self, source_camera_id: Any, target_camera_id: Any = None) -> dict[str, Any]:
+        src_id = str(source_camera_id or "").strip()
+        if not src_id:
+            return {"success": False, "error": "Source camera id is required."}
+        with self.lock:
+            cameras = _normalize_cameras(self.cfg.get("cameras"))
+            tgt_id = str(target_camera_id or self.cfg.get("active_camera_id") or "").strip()
+            if not tgt_id:
+                return {"success": False, "error": "Target camera id is required."}
+            src_cam = next((c for c in cameras if c["id"] == src_id), None)
+            if not src_cam:
+                return {"success": False, "error": f"Source camera '{src_id}' not found."}
+            tgt_cam = next((c for c in cameras if c["id"] == tgt_id), None)
+            if not tgt_cam:
+                return {"success": False, "error": f"Target camera '{tgt_id}' not found."}
+
+            src_bays = src_cam.get("bays") or []
+            if not src_bays:
+                src_roi = src_cam.get("roi") or [0.30, 0.20, 0.40, 0.60]
+                src_bays = parse_bays(None, fallback_roi=src_roi, seed_if_empty=True)
+
+            cloned = []
+            for b in src_bays:
+                item = dict(b)
+                if "roi" in item and isinstance(item["roi"], list):
+                    item["roi"] = list(item["roi"])
+                if "polygon" in item and isinstance(item["polygon"], list):
+                    item["polygon"] = [list(pt) for pt in item["polygon"]]
+                cloned.append(item)
+
+            tgt_cam["bays"] = cloned
+            if tgt_id == str(self.cfg.get("active_camera_id") or ""):
+                self.cfg["bays"] = cloned
+                if cloned:
+                    self.cfg["roi"] = list(cloned[0]["roi"])
+                self.bay_manager.set_bays(cloned)
+                self.bay_telemetry = self.bay_manager.telemetry()
+
+            self.cfg["cameras"] = cameras
+            save_config(self.cfg)
+            active = str(self.cfg.get("active_camera_id") or "")
+            roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
+        return {
+            "success": True,
+            "imported_bays_count": len(cloned),
+            "bays": cloned,
+            "cameras": cameras,
+            "active_camera_id": active,
+            "roi": roi,
+            "message": f"Imported {len(cloned)} bays from {src_cam.get('name', src_id)}.",
+        }
+
+    def get_camera_frame(self, camera_id: str | None = None) -> tuple[bytes | None, str]:
+        """Fetch latest JPEG frame for a specific camera.
+
+        Returns (jpeg_bytes, content_type).
+        - If camera_id is None, empty, or active_camera_id: returns the active AI-annotated frame.
+        - If another camera: attempts to pull a JPEG snapshot from go2rtc, falling back to request_still.
+        Uses in-memory cache to prevent blocking and stream drops across concurrent grid tiles.
+        """
+        cid = str(camera_id or "").strip()
+        active_id = str(self.cfg.get("active_camera_id") or "").strip()
+        if not cid or cid == active_id:
+            with self.lock:
+                frame_data = self.current_frame_jpeg
+            if frame_data:
+                self._camera_frame_cache[cid or active_id] = (frame_data, "image/jpeg", time.time())
+                return frame_data, "image/jpeg"
+            cached = self._camera_frame_cache.get(cid or active_id)
+            if cached:
+                return cached[0], cached[1]
+            return None, "image/jpeg"
+
+        now = time.time()
+        cached = self._camera_frame_cache.get(cid)
+        # If cached within last 400ms, return immediately to keep HTTP throughput high
+        if cached and (now - cached[2]) < 0.40:
+            return cached[0], cached[1]
+
+        stream_id = sanitize_stream_id(cid)
+        if self.media.is_ready():
+            try:
+                resp = requests.get(
+                    f"{self.media.api_base}/api/frame.jpeg?src={urllib.parse.quote(stream_id, safe='')}",
+                    timeout=2.5,
+                )
+                if resp.status_code == 200 and resp.content and len(resp.content) > 100:
+                    self._camera_frame_cache[cid] = (resp.content, "image/jpeg", now)
+                    return resp.content, "image/jpeg"
+            except Exception:
+                pass
+
+        cam = None
+        with self.lock:
+            for c in self.cfg.get("cameras") or []:
+                if c.get("id") == cid:
+                    cam = dict(c)
+                    break
+        if cam and cam.get("source"):
+            src = cam["source"]
+            try:
+                still = request_still(src, gateway=self.media, stream_id=stream_id, timeout=2.0)
+                if still is not None:
+                    ok, buf = cv2.imencode(".jpg", still, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    if ok:
+                        data = buf.tobytes()
+                        self._camera_frame_cache[cid] = (data, "image/jpeg", now)
+                        return data, "image/jpeg"
+            except Exception:
+                pass
+
+        # Fallback to cached frame if available within 15s to avoid black tile flicker
+        if cached and (now - cached[2]) < 15.0:
+            return cached[0], cached[1]
+        return None, "image/jpeg"
 
     def set_wifi_devices(self, devices_value: Any) -> dict[str, Any]:
         parsed = self.wifi.set_devices(devices_value)
@@ -1521,6 +1743,19 @@ def load_hub_html() -> bytes:
     return HUB_HTML_PATH.read_text(encoding="utf-8").encode("utf-8")
 
 
+def encode_mjpeg_part(frame_bytes: bytes, timestamp: float | None = None) -> bytes:
+    """One multipart MJPEG part with Content-Length so libsoup/WebKit can frame it."""
+    ts = time.time() if timestamp is None else timestamp
+    header = (
+        b"--frame\r\n"
+        b"Content-Type: image/jpeg\r\n"
+        + f"Content-Length: {len(frame_bytes)}\r\n".encode("ascii")
+        + f"X-Timestamp: {ts:.3f}\r\n".encode("ascii")
+        + b"\r\n"
+    )
+    return header + frame_bytes + b"\r\n"
+
+
 class DashboardRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -1850,28 +2085,85 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/discovery/results":
             self._send_json(GLOBAL_ENGINE.discovery.results())
 
+        elif parsed.path == "/api/uploaded-videos":
+            init_videos_dir()
+            videos = []
+            allowed_exts = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts"}
+            if VIDEOS_DIR.is_dir():
+                for f in sorted(VIDEOS_DIR.iterdir()):
+                    if f.is_file() and f.suffix.lower() in allowed_exts:
+                        videos.append({
+                            "name": f.name,
+                            "path": str(f.resolve()),
+                            "size": f.stat().st_size,
+                        })
+            self._send_json({"videos": videos})
+
+        elif parsed.path == "/api/frame.jpeg" or parsed.path.startswith("/api/camera/"):
+            cam_id = None
+            if parsed.path.startswith("/api/camera/"):
+                parts = parsed.path.strip("/").split("/")
+                if len(parts) >= 2:
+                    cam_id = parts[1]
+            if not cam_id and parsed.query:
+                q = dict(urllib.parse.parse_qsl(parsed.query))
+                cam_id = q.get("camera_id") or q.get("src") or q.get("id")
+
+            frame_bytes, ctype = GLOBAL_ENGINE.get_camera_frame(cam_id)
+            if not frame_bytes:
+                self.send_response(204)
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(frame_bytes)))
+            self.send_header("Cache-Control", "no-cache, private, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.end_headers()
+            self.wfile.write(frame_bytes)
+
         elif parsed.path == "/api/stream":
-            # MJPEG stream response
+            # MJPEG kept for non-WebKit clients. Desktop hub uses /api/frame.jpeg
+            # instead — WebKitGTK segfaults on long-lived multipart/x-mixed-replace.
             self.send_response(200)
             self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
             self.send_header("Cache-Control", "no-cache, private, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.end_headers()
 
+            try:
+                self.connection.settimeout(2.0)
+            except Exception:
+                pass
+
             last_seq = -1
+            stream_camera_id = str(GLOBAL_ENGINE.cfg.get("active_camera_id") or "")
+            stream_generation = int(getattr(GLOBAL_ENGINE, "mjpeg_generation", 0) or 0)
+            idle_ticks = 0
             try:
                 while GLOBAL_ENGINE.running:
+                    # If active camera switched or a same-camera reconnect started,
+                    # terminate this old stream so the browser frees the connection slot.
+                    cur_cam = str(GLOBAL_ENGINE.cfg.get("active_camera_id") or "")
+                    cur_gen = int(getattr(GLOBAL_ENGINE, "mjpeg_generation", 0) or 0)
+                    if cur_cam != stream_camera_id or cur_gen != stream_generation:
+                        break
+
                     with GLOBAL_ENGINE.lock:
                         cur_seq = GLOBAL_ENGINE.frame_seq
                         frame_bytes = GLOBAL_ENGINE.current_frame_jpeg
 
                     if cur_seq != last_seq and frame_bytes is not None:
                         last_seq = cur_seq
-                        self.wfile.write(b"--frame\r\n")
-                        self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
-                        self.wfile.write(frame_bytes)
-                        self.wfile.write(b"\r\n")
+                        idle_ticks = 0
+                        self.wfile.write(encode_mjpeg_part(frame_bytes))
                         self.wfile.flush()
+                    else:
+                        idle_ticks += 1
+                        # If frame is absent for > 8 seconds (400 * 0.02s), terminate to free socket
+                        if idle_ticks > 400:
+                            break
                     time.sleep(0.02)
             except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, socket.error, OSError):
                 pass
@@ -1975,6 +2267,52 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             )
             result = GLOBAL_ENGINE.set_bays(bays_payload)
             self._send_json(result)
+
+        elif parsed.path == "/api/cameras/import-bays":
+            src_id = payload.get("source_camera_id") or payload.get("source_id")
+            tgt_id = payload.get("target_camera_id") or payload.get("target_id")
+            result = GLOBAL_ENGINE.import_bays(src_id, tgt_id)
+            self._send_json(result)
+
+        elif parsed.path == "/api/upload-video":
+            init_videos_dir()
+            filename = ""
+            file_content = b""
+
+            params = urllib.parse.parse_qs(parsed.query)
+            if "filename" in params:
+                filename = params["filename"][0]
+
+            if files:
+                filename = filename or files[0][0]
+                file_content = files[0][1]
+            elif "multipart/form-data" in content_type and b"filename=" in body:
+                match = re.search(rb'filename="([^"]+)"', body)
+                if match:
+                    filename = match.group(1).decode("utf-8", errors="replace")
+                parts = body.split(b"\r\n\r\n", 1)
+                if len(parts) == 2:
+                    raw_data = parts[1]
+                    boundary_end = raw_data.rfind(b"\r\n--")
+                    file_content = raw_data[:boundary_end] if boundary_end != -1 else raw_data
+                else:
+                    file_content = body
+            else:
+                file_content = body
+
+            if not filename:
+                filename = f"upload_{int(time.time())}.mp4"
+
+            safe_name = Path(filename).name
+            dest = VIDEOS_DIR / safe_name
+            dest.write_bytes(file_content)
+
+            self._send_json({
+                "success": True,
+                "filename": safe_name,
+                "path": str(dest.resolve()),
+                "size": len(file_content),
+            })
 
         elif parsed.path == "/api/garage/wifi":
             devices = raw_json if isinstance(raw_json, list) else payload.get("wifi_devices")

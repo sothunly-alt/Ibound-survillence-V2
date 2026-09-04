@@ -68,40 +68,42 @@ class RTSPAdapter(BaseCameraAdapter):
 
         last_err: str | None = None
         seen: set[tuple[str, int | None]] = set()
-        with _ENV_LOCK:
-            prev_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
-            try:
-                for opts, backend in attempts:
-                    key = (opts, backend)
-                    if key in seen:
-                        continue
-                    seen.add(key)
+        for opts, backend in attempts:
+            key = (opts, backend)
+            if key in seen:
+                continue
+            seen.add(key)
+            with _ENV_LOCK:
+                prev_opts = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+                try:
                     if opts:
                         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = opts
                     elif prev_opts is not None:
                         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = prev_opts
                     cap = open_capture(self.url, backend)
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    if not cap.isOpened():
-                        cap.release()
-                        last_err = f"Could not connect to camera '{redact_source(self.url)}'."
-                        continue
-                    frame = read_first_frame(cap, tries=4, pause=0.15)
-                    if frame is not None:
-                        self._cap = cap
-                        self._pending_first = frame
-                        self.error = None
-                        return True
-                    cap.release()
-                    time.sleep(V4L_RELEASE_PAUSE)
-                    last_err = (
-                        f"Connected to '{redact_source(self.url)}', but received no video frame. "
-                        "The stream may be offline, already in use, or using a transport "
-                        "this PC cannot read."
-                    )
-            finally:
-                if prev_opts is not None:
-                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = prev_opts
+                finally:
+                    if prev_opts is not None:
+                        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = prev_opts
+                    else:
+                        os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+            if not cap.isOpened():
+                cap.release()
+                last_err = f"Could not connect to camera '{redact_source(self.url)}'."
+                continue
+            frame = read_first_frame(cap, tries=4, pause=0.15)
+            if frame is not None:
+                self._cap = cap
+                self._pending_first = frame
+                self.error = None
+                return True
+            cap.release()
+            time.sleep(V4L_RELEASE_PAUSE)
+            last_err = (
+                f"Connected to '{redact_source(self.url)}', but received no video frame. "
+                "The stream may be offline, already in use, or using a transport "
+                "this PC cannot read."
+            )
 
         hint = (
             " Generic RTSP on port 554 is for CCTV/NVRs, not phones. "

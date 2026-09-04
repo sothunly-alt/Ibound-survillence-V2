@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import threading
 import time
+import unittest
 from pathlib import Path
 
 import numpy as np
@@ -58,8 +59,8 @@ class FakeAdapter(BaseCameraAdapter):
 
 
 class SlowConnectAdapter(FakeAdapter):
-    def __init__(self, delay: float = 2.0):
-        super().__init__(name="slow")
+    def __init__(self, delay: float = 2.0, name: str = "slow"):
+        super().__init__(name=name)
         self.delay = delay
 
     def connect(self) -> bool:
@@ -79,6 +80,8 @@ def test_create_adapter_routing() -> None:
     assert protocol_from_source("http://192.168.1.1/onvif/device_service") == "onvif"
     assert protocol_from_source("tapo://u:p@host") == "tapo"
     assert protocol_from_source("whep://host/path") == "webrtc"
+    assert protocol_from_source("clip.mp4") == "video"
+    assert protocol_from_source("file:///tmp/clip.mkv") == "video"
 
 
 def test_latest_frame_does_not_accumulate_lag() -> None:
@@ -230,6 +233,53 @@ def test_failed_connect_does_not_leave_adapter() -> None:
         grabber.stop()
 
 
+def test_rapid_switch_ten_times_no_deadlock() -> None:
+    grabber = AsyncFrameGrabber()
+    adapters: list[FakeAdapter] = []
+    for i in range(10):
+        if i == 9:
+            adapters.append(FakeAdapter(name="last"))
+        elif i % 2 == 0:
+            adapters.append(SlowConnectAdapter(delay=0.15, name=f"slow-{i}"))
+        else:
+            adapters.append(FakeAdapter(name=f"fake-{i}"))
+    last = adapters[-1]
+    grabber.start()
+    try:
+        t0 = time.time()
+        for adapter in adapters:
+            grabber.switch_source(adapter)
+        elapsed = time.time() - t0
+        assert elapsed < 1.0, f"rapid switch_source blocked ({elapsed:.3f}s)"
+
+        deadline = time.time() + 5.0
+        pkt = None
+        while time.time() < deadline:
+            pkt = grabber.get_latest_frame(0.1)
+            if (
+                pkt is not None
+                and grabber.connection_state == "CONNECTED"
+                and last.frames_produced > 0
+            ):
+                break
+        assert pkt is not None, "grabber never produced a frame from last adapter"
+        assert grabber.connection_state == "CONNECTED"
+        assert last.frames_produced > 0, "last adapter never produced a frame"
+
+        for adapter in adapters[:-1]:
+            assert adapter.released.wait(timeout=3.0), (
+                f"superseded adapter {adapter.name} was not torn down"
+            )
+        print(f"ok rapid switch x10 ({elapsed*1000:.1f}ms)")
+    finally:
+        grabber.stop()
+
+
+class RapidSwitchTests(unittest.TestCase):
+    def test_rapid_switch_ten_times_no_deadlock(self) -> None:
+        test_rapid_switch_ten_times_no_deadlock()
+
+
 def test_request_still_uses_gateway_jpeg() -> None:
     class FakeClient:
         def snapshot_jpeg(self, stream_id: str, timeout=None):
@@ -263,5 +313,6 @@ if __name__ == "__main__":
     test_http_telemetry_stays_responsive_during_connect()
     test_rtsp_unreachable_fails_fast()
     test_failed_connect_does_not_leave_adapter()
+    test_rapid_switch_ten_times_no_deadlock()
     test_request_still_uses_gateway_jpeg()
     print("all capture tests passed")

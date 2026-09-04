@@ -119,6 +119,13 @@ function isFrozenBinary(file) {
 
 ensureIcons();
 
+if (process.platform === "linux") {
+  // Applied here for documentation; run-tauri.mjs and src-tauri/src/lib.rs
+  // are what the WebKitGTK process actually inherits.
+  process.env.WEBKIT_DISABLE_DMABUF_RENDERER ||= "1";
+  process.env.WEBKIT_DISABLE_COMPOSITING_MODE ||= "1";
+}
+
 const triple = hostTriple();
 const ext = process.platform === "win32" || triple.includes("windows") ? ".exe" : "";
 const dest = path.join(binaries, `inbound-engine-${triple}${ext}`);

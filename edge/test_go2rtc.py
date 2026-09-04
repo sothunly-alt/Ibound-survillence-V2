@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import time
+import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,92 @@ def test_create_adapter_gateway_routing() -> None:
     phone = create_adapter("http://192.168.1.8:8080/video", gateway=gw, stream_id="phone")
     assert isinstance(phone, GatewayAdapter)
     print("ok gateway adapter routing")
+
+
+def test_bind_gateway_keeps_previous_streams() -> None:
+    from launcher import LiveStreamEngine
+
+    class FakeClient:
+        def __init__(self):
+            self.registered: list[tuple[str, str]] = []
+            self.removed: list[str] = []
+
+        def register_stream(self, stream_id: str, source_url: str) -> bool:
+            self.registered.append((stream_id, source_url))
+            return True
+
+        def remove_stream(self, stream_id: str) -> bool:
+            self.removed.append(stream_id)
+            return True
+
+    class FakeMedia:
+        def __init__(self):
+            self.client = FakeClient()
+
+        def is_ready(self) -> bool:
+            return True
+
+        def status(self, stream_id: str) -> dict[str, Any]:
+            return {"ready": True}
+
+    engine = LiveStreamEngine()
+    engine.media = FakeMedia()
+    engine.cfg["cameras"] = []
+
+    sid1 = sanitize_stream_id("camera_1")
+    sid2 = sanitize_stream_id("camera_2")
+    engine._bind_gateway("rtsp://192.168.1.10/cam1", "camera_1")
+    engine._bind_gateway("rtsp://192.168.1.11/cam2", "camera_2")
+
+    registered_ids = [sid for sid, _url in engine.media.client.registered]
+    assert sid1 in registered_ids, f"camera_1 not registered: {registered_ids}"
+    assert sid2 in registered_ids, f"camera_2 not registered: {registered_ids}"
+    removed = list(engine.media.client.removed)
+    assert sid1 not in removed, f"remove_stream called for camera_1: {removed}"
+    assert f"{sid1}-main" not in removed, f"remove_stream called for camera_1-main: {removed}"
+    assert sid2 not in removed
+
+    engine.cfg["cameras"] = [
+        {"id": "net_a", "source": "rtsp://192.168.1.21/a"},
+        {"id": "net_b", "source": "rtsp://192.168.1.22/b"},
+        {"id": "net_c", "source": "rtsp://192.168.1.23/c"},
+        {"id": "laptop_cam", "source": 0},
+        {"id": "clip", "source": "/tmp/demo.mp4", "protocol": "video"},
+    ]
+    engine._bind_gateway("rtsp://192.168.1.10/cam1", "camera_1")
+    registered_ids = [sid for sid, _url in engine.media.client.registered]
+    assert sanitize_stream_id("net_a") not in registered_ids, (
+        f"single-camera connect registered all cameras: {registered_ids}"
+    )
+    engine.register_all_cameras_in_gateway()
+    registered_ids = [sid for sid, _url in engine.media.client.registered]
+    for cid in ("net_a", "net_b", "net_c"):
+        assert sanitize_stream_id(cid) in registered_ids, (
+            f"{cid} not registered: {registered_ids}"
+        )
+    assert sanitize_stream_id("laptop_cam") not in registered_ids
+    assert sanitize_stream_id("clip") not in registered_ids
+    print("ok bind_gateway keeps previous streams")
+
+
+def test_mjpeg_part_includes_content_length() -> None:
+    from launcher import encode_mjpeg_part
+
+    payload = b"\xff\xd8fakejpeg\xff\xd9"
+    part = encode_mjpeg_part(payload, timestamp=1700000000.123)
+    assert b"Content-Type: image/jpeg\r\n" in part
+    assert f"Content-Length: {len(payload)}\r\n".encode("ascii") in part
+    assert b"X-Timestamp: 1700000000.123\r\n" in part
+    assert part.endswith(payload + b"\r\n")
+    print("ok mjpeg part includes Content-Length")
+
+
+class GatewayRegistryTests(unittest.TestCase):
+    def test_bind_gateway_keeps_previous_streams(self) -> None:
+        test_bind_gateway_keeps_previous_streams()
+
+    def test_mjpeg_part_includes_content_length(self) -> None:
+        test_mjpeg_part_includes_content_length()
 
 
 class _FakeGo2rtcHandler(BaseHTTPRequestHandler):
@@ -444,6 +531,8 @@ def test_clean_teardown(mgr: Go2RtcManager) -> None:
 def main() -> None:
     test_platform_and_stream_id()
     test_create_adapter_gateway_routing()
+    test_bind_gateway_keeps_previous_streams()
+    test_mjpeg_part_includes_content_length()
     test_client_register_and_delete()
 
     binary = _ensure_binary_or_skip()

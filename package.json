@@ -8,9 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "desktop:dev": "node scripts/ensure-dev-sidecar.mjs && tauri dev",
+    "desktop:dev": "node scripts/ensure-dev-sidecar.mjs && node scripts/run-tauri.mjs dev",
     "desktop-dev": "npm run desktop:dev",
-    "desktop:build": "node scripts/ensure-dev-sidecar.mjs && tauri build",
+    "desktop:build": "node scripts/ensure-dev-sidecar.mjs && node scripts/run-tauri.mjs build",
     "desktop-build": "npm run desktop:build",
     "engine": "edge/.venv/bin/python edge/launcher.py --no-browser",
     "sidecar": "python3 edge/build_sidecar.py"

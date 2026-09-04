@@ -191,6 +191,35 @@
     .roi-handle.s  { left: 50%; bottom: -4px; transform: translateX(-50%); cursor: ns-resize; }
     .roi-handle.sw { left: -4px; bottom: -4px; cursor: nesw-resize; }
     .roi-handle.w  { left: -4px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
+    .roi-svg-poly {
+      cursor: move;
+      transition: fill 0.15s ease, stroke-width 0.15s ease;
+      pointer-events: auto;
+    }
+    .roi-corner-handle {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #00FF66;
+      border: 2px solid #ffffff;
+      transform: translate(-50%, -50%);
+      cursor: crosshair;
+      z-index: 40;
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+      pointer-events: auto;
+      transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.1s ease;
+    }
+    .roi-corner-handle:hover {
+      transform: translate(-50%, -50%) scale(1.4);
+      background: #ffffff;
+      border-color: #00FF66;
+    }
+    .roi-corner-handle.corner-active {
+      transform: translate(-50%, -50%) scale(1.5);
+      background: #ffcc00;
+      border-color: #000000;
+    }
     #bay-context-menu { min-width: 220px; }
     #bay-context-menu button { background: transparent; border: 0; color: inherit; cursor: pointer; }
     input[type=range] { accent-color: #00FF66; }
@@ -368,7 +397,7 @@
             <img id="live-camera-feed" alt="Live camera feed" onerror="handleStreamError()"/>
             <div id="roi-overlay" class="roi-overlay" onmousedown="onRoiDown(event)" oncontextmenu="onBayContextMenu(event)"></div>
             <div class="absolute bottom-3 left-1/2 -translate-x-1/2 glass-panel px-3 py-1 rounded-full z-20 pointer-events-none text-label-upper font-label-upper text-on-surface">
-              Drag empty space to add a bay · right-click a bay to rename or delete
+              Drag corners to stretch bay angles · Drag inside to move · Right-click for options
             </div>
           </div>
 
@@ -428,6 +457,7 @@
                   <option value="onvif">ONVIF</option>
                   <option value="tapo">Tapo</option>
                   <option value="webrtc">WebRTC</option>
+                  <option value="video">Video file</option>
                 </select>
               </div>
               <div class="flex flex-col gap-1.5">
@@ -500,6 +530,32 @@
                   <input id="hw-decode" class="sr-only peer" type="checkbox"/>
                   <div class="w-9 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
+              </div>
+            </div>
+
+            <div class="bg-surface-container rounded-lg p-5 border border-outline-variant mt-4">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold text-on-surface flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[18px] text-primary">grid_on</span>
+                  Service Bay Grid
+                </h3>
+                <span id="cam-bay-count-badge" class="px-2 py-0.5 rounded-full text-xs bg-surface-container-highest text-on-surface font-mono-data">0 bays</span>
+              </div>
+              <p class="text-xs text-on-surface-variant mb-3 leading-relaxed">
+                Each camera has its own independent bay grid. Drag directly on the camera viewport to draw or resize bays, or import an existing grid layout from another camera.
+              </p>
+              <div class="pt-3 border-t border-outline-variant/50">
+                <label class="font-label-upper text-label-upper text-on-surface-variant block mb-1.5" for="import-grid-source-select">Import Grid from Camera</label>
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <select id="import-grid-source-select" class="bg-surface-container-highest border-transparent text-on-surface text-xs rounded-lg p-2.5 flex-1 focus:ring-primary focus:border-primary">
+                    <option value="">Select camera to copy bays from...</option>
+                  </select>
+                  <button type="button" id="btn-import-grid" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-3 rounded-lg font-medium transition-colors text-xs border border-outline-variant flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50" onclick="importGridFromCamera()">
+                    <span class="material-symbols-outlined text-[15px]">download</span>
+                    Import Grid
+                  </button>
+                </div>
+                <p id="import-grid-feedback" class="hidden text-xs mt-2"></p>
               </div>
             </div>
           </div>
@@ -627,6 +683,12 @@
     <button type="button" id="ctx-type-bay" class="w-full px-4 py-1.5 text-left hover:bg-surface-container-highest flex items-center gap-2">
       <span>🏷️</span> Toggle Vehicle Bay / Tool Station
     </button>
+    <button type="button" id="ctx-align-rect" class="w-full px-4 py-1.5 text-left hover:bg-surface-container-highest flex items-center gap-2">
+      <span>📐</span> Reset to Rectangle (Square Angles)
+    </button>
+    <button type="button" id="ctx-import-grid" class="w-full px-4 py-1.5 text-left hover:bg-surface-container-highest flex items-center gap-2" onclick="promptImportGrid()">
+      <span>📥</span> Import Grid from Camera…
+    </button>
     <div class="my-1 border-t border-outline-variant"></div>
     <button type="button" id="ctx-delete-bay" class="w-full px-4 py-1.5 text-left text-error hover:bg-error/10 flex items-center gap-2">
       <span>🗑️</span> Delete Bay
@@ -647,8 +709,10 @@
     let wifiDevices = [];
     let roiDragging = false;
     let roiMode = null;
+    let roiCornerIdx = -1;
     let roiHandle = null;
     let roiOrigin = [0, 0];
+    let roiStartPoly = [];
     let roiStart = [0.30, 0.20, 0.40, 0.60];
     let rotateDeg = 'auto';
     let flipMode = 'none';
@@ -671,6 +735,10 @@
     let go2rtcFallbackTimer = 0;
     let lastLiveStreamId = '';
     let lastLiveMedia = null;
+    let jpegPumpTimer = 0;
+    let jpegPumpGeneration = 0;
+    let jpegObjectUrl = '';
+    let lastLayoutKey = '';
 
     const VENDOR_TEMPLATES = {
       dahua: { port: 554, path: '/cam/realmonitor?channel=1&subtype=0', forcePort: true, defaultHost: '192.168.1.108' },
@@ -1017,12 +1085,88 @@
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    function sanitizeStreamId(value) {
+      const text = String(value || 'live').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+      return text || 'live';
+    }
+
+    function stopJpegPump() {
+      jpegPumpGeneration += 1;
+      if (jpegPumpTimer) {
+        clearTimeout(jpegPumpTimer);
+        jpegPumpTimer = 0;
+      }
+      if (jpegObjectUrl) {
+        URL.revokeObjectURL(jpegObjectUrl);
+        jpegObjectUrl = '';
+      }
+    }
+
+    function snapshotUrlFromMjpeg(url) {
+      const text = String(url || '');
+      if (!text) return '/api/frame.jpeg';
+      return text.replace('/api/stream.mjpeg', '/api/frame.jpeg');
+    }
+
+    function startJpegPump(url) {
+      stopJpegPump();
+      const generation = jpegPumpGeneration;
+      const img = document.getElementById('live-camera-feed');
+      if (!img || !url) return;
+      img.style.display = 'block';
+      img.onload = function () {
+        if (generation !== jpegPumpGeneration) return;
+        const nw = img.naturalWidth || 0;
+        const nh = img.naturalHeight || 0;
+        if (nw > 1 && nh > 1 && (nw !== streamW || nh !== streamH)) {
+          applyStreamSize(nw, nh);
+          layoutVideoStage();
+        }
+      };
+
+      const tick = async function () {
+        if (generation !== jpegPumpGeneration || !isStreamActive) return;
+        try {
+          const res = await fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now(), {
+            cache: 'no-store'
+          });
+          if (generation !== jpegPumpGeneration || !isStreamActive) return;
+          if (res.status === 204) {
+            jpegPumpTimer = setTimeout(tick, 200);
+            return;
+          }
+          if (!res.ok) throw new Error('frame ' + res.status);
+          const blob = await res.blob();
+          if (generation !== jpegPumpGeneration || !isStreamActive) return;
+          const nextUrl = URL.createObjectURL(blob);
+          const prev = jpegObjectUrl;
+          jpegObjectUrl = nextUrl;
+          img.src = nextUrl;
+          if (prev) {
+            requestAnimationFrame(function () {
+              URL.revokeObjectURL(prev);
+            });
+          }
+        } catch (err) {
+          if (isStreamActive) handleStreamError();
+          jpegPumpTimer = setTimeout(tick, 400);
+          return;
+        }
+        if (generation !== jpegPumpGeneration || !isStreamActive) return;
+        jpegPumpTimer = setTimeout(tick, 80);
+      };
+      tick();
+      requestAnimationFrame(layoutVideoStage);
+    }
+
     function detachLiveFeed() {
+      stopJpegPump();
       stopGo2rtcPlayer();
       const img = document.getElementById('live-camera-feed');
       if (!img) return;
+      img.onload = null;
       img.removeAttribute('src');
-      img.src = '';
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
       img.style.display = 'block';
     }
 
@@ -1053,31 +1197,13 @@
         video.srcObject = null;
       }
       if (!img) return;
-      img.style.display = 'block';
-      const targetSrc = '/api/stream?t=' + Date.now();
-      img.src = targetSrc;
-      img.onload = function () {
-        layoutVideoStage();
-      };
-      img.onerror = function () {
-        if (isStreamActive) {
-          setTimeout(function () {
-            if (isStreamActive && img) img.src = '/api/stream?t=' + Date.now();
-          }, 1000);
-        }
-      };
-      requestAnimationFrame(layoutVideoStage);
+      startJpegPump('/api/frame.jpeg');
     }
 
     function showGo2rtcMjpeg(url) {
       const video = document.getElementById('live-webrtc');
-      const img = document.getElementById('live-camera-feed');
       if (video) video.style.display = 'none';
-      if (!img) return;
-      img.style.display = 'block';
-      img.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
-      img.onload = function () { layoutVideoStage(); };
-      requestAnimationFrame(layoutVideoStage);
+      startJpegPump(snapshotUrlFromMjpeg(url));
     }
 
     function startLivePlayer(streamId, media) {
@@ -1208,13 +1334,18 @@
       const stage = document.getElementById('video-stage');
       const placeholder = document.getElementById('stream-placeholder');
       if (stage) stage.style.display = 'none';
-      if (placeholder) placeholder.style.display = 'flex';
+      if (placeholder) {
+        placeholder.style.display = currentLayoutMode === 'grid' ? 'none' : 'flex';
+      }
       clearNativeFeedLayout();
       setLiveChrome(false, 'Offline');
       document.getElementById('telem-status').textContent = 'ERROR';
       document.getElementById('telem-health').textContent = 'Failed';
       resetConnectButton();
       renderCameraList();
+      if (currentLayoutMode === 'grid') {
+        updateMultiCamGridFocus();
+      }
     }
 
     function showBanner(el, ok, message) {
@@ -1248,8 +1379,8 @@
         hint.textContent = 'ONVIF device URL such as http://CAMERA_IP/onvif/device_service, or Scan Network and Connect. Username and password are sent separately — they are not put in the URL.';
       } else if (protocol === 'tapo') {
         hint.textContent = 'Camera IP or tapo://user:pass@CAMERA_IP. go2rtc speaks Tapo; if that fails the engine probes common RTSP paths.';
-      } else if (protocol === 'webrtc') {
-        hint.textContent = 'WHEP/WHIP URL. go2rtc ingests WebRTC; this hub does not terminate ICE.';
+      } else if (protocol === 'video') {
+        hint.textContent = 'Local video file (MP4, MKV, MOV, AVI, WebM). Paste an absolute path or a filename in edge/videos. Do not wrap it in rtsp://.';
       } else if (vendor === 'ipwebcam') {
         hint.textContent = 'Phone RTSP via IP Webcam: rtsp://PHONE_IP:8080/h264_ulaw.sdp with empty username and password. If this fails, switch Protocol to Phone HTTP.';
       } else if (vendor === 'generic') {
@@ -1295,11 +1426,11 @@
       const pass = document.getElementById('password-input');
       const vendor = document.getElementById('vendor-input');
       const mainWrap = document.getElementById('main-source-wrap');
-      const authDisabled = tab === 'webcam';
+      const authDisabled = tab === 'webcam' || tab === 'video';
       user.disabled = authDisabled;
       pass.disabled = authDisabled;
       vendor.disabled = tab !== 'rtsp';
-      if (mainWrap) mainWrap.classList.toggle('hidden', tab === 'webcam');
+      if (mainWrap) mainWrap.classList.toggle('hidden', tab === 'webcam' || tab === 'video');
       if (tab === 'webcam') {
         if (!sourceInput.value || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http') || sourceInput.value.startsWith('tapo') || sourceInput.value.startsWith('whep') || sourceInput.value.startsWith('webrtc')) {
           sourceInput.value = '0';
@@ -1323,6 +1454,10 @@
       } else if (tab === 'webrtc') {
         if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp')) {
           sourceInput.value = 'http://127.0.0.1:1984/api/webrtc?src=cam';
+        }
+      } else if (tab === 'video') {
+        if (sourceInput.value === '0' || sourceInput.value.startsWith('rtsp') || sourceInput.value.startsWith('http')) {
+          sourceInput.value = '';
         }
       }
       updateSourceHint();
@@ -1360,10 +1495,33 @@
       }
     }
 
+    function looksLikeVideoFile(src) {
+      const text = String(src || '').trim();
+      if (/\.(mp4|mkv|mov|avi|webm|m4v)(\?|$)/i.test(text)) return true;
+      if (text.toLowerCase().startsWith('file://')) return true;
+      return false;
+    }
+
+    function unwrapVideoSource(src) {
+      let text = String(src || '').trim();
+      if (text.toLowerCase().startsWith('file://')) text = text.slice(7);
+      if (!looksLikeVideoFile(text)) return text;
+      if (!/^rtsp:\/\//i.test(text) && !/^https?:\/\//i.test(text)) return text;
+      try {
+        const u = new URL(text);
+        const host = u.hostname || '';
+        const path = decodeURIComponent(u.pathname || '');
+        if (host && path) return '/' + host + path;
+      } catch { /* keep original */ }
+      return text;
+    }
+
     function buildSource() {
       const protocol = document.getElementById('protocol-input').value;
       let src = document.getElementById('source-input').value.trim();
       if (protocol === 'webcam') return src || '0';
+      if (protocol === 'video' || protocol === 'file') return unwrapVideoSource(src);
+      if (looksLikeVideoFile(src)) return unwrapVideoSource(src);
       if (protocol === 'onvif') {
         if (!src) return src;
         if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(src)) src = 'http://' + src + '/onvif/device_service';
@@ -1406,6 +1564,9 @@
           document.getElementById('username-input').value = u.username ? decodeURIComponent(u.username) : '';
           document.getElementById('password-input').value = u.password ? decodeURIComponent(u.password) : '';
         } catch { /* keep defaults */ }
+      } else if (looksLikeVideoFile(srcStr)) {
+        document.getElementById('protocol-input').value = 'video';
+        sourceInput.value = unwrapVideoSource(srcStr);
       } else {
         document.getElementById('protocol-input').value = 'rtsp';
         try {
@@ -1526,12 +1687,17 @@
       const gridStage = document.getElementById('multi-cam-grid');
       const placeholder = document.getElementById('stream-placeholder');
       const clockPanel = document.getElementById('overlay-clock-panel');
+      const overlayCam = document.getElementById('overlay-cam');
+      const overlayBadges = document.getElementById('overlay-protocol');
 
       if (mode === 'grid' && cameras.length > 1) {
         if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors';
         if (btnGrid) btnGrid.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors';
         if (singleStage) singleStage.style.display = 'none';
         if (placeholder) placeholder.style.display = 'none';
+        if (clockPanel) clockPanel.style.display = 'none';
+        if (overlayCam && overlayCam.parentElement) overlayCam.parentElement.style.display = 'none';
+        if (overlayBadges && overlayBadges.parentElement) overlayBadges.parentElement.style.display = 'none';
         if (gridStage) {
           gridStage.style.display = 'grid';
           renderMultiCamGrid();
@@ -1541,9 +1707,13 @@
         if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors';
         if (btnGrid) btnGrid.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors';
         if (gridStage) gridStage.style.display = 'none';
+        if (clockPanel) clockPanel.style.display = '';
+        if (overlayCam && overlayCam.parentElement) overlayCam.parentElement.style.display = '';
+        if (overlayBadges && overlayBadges.parentElement) overlayBadges.parentElement.style.display = '';
         if (isStreamActive) {
           if (singleStage) singleStage.style.display = 'block';
           if (placeholder) placeholder.style.display = 'none';
+          requestAnimationFrame(layoutVideoStage);
         } else {
           if (singleStage) singleStage.style.display = 'none';
           if (placeholder) placeholder.style.display = 'flex';
@@ -1551,88 +1721,235 @@
       }
     }
 
+    function updateMultiCamGridFocus() {
+      const grid = document.getElementById('multi-cam-grid');
+      if (!grid) return;
+      grid.querySelectorAll('.grid-cam-tile').forEach((tile) => {
+        const camId = tile.dataset.camId;
+        const isFocus = camId === activeCameraId;
+        tile.classList.toggle('active-focus', isFocus);
+        tile.classList.toggle('ring-2', isFocus);
+        tile.classList.toggle('ring-primary', isFocus);
+        const badgeDot = tile.querySelector('.cam-badge-dot');
+        if (badgeDot) {
+          badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}`;
+        }
+        const badgeText = tile.querySelector('.cam-badge-sub');
+        if (badgeText) {
+          badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
+        }
+      });
+    }
+
     function renderMultiCamGrid() {
       const grid = document.getElementById('multi-cam-grid');
       if (!grid) return;
       const count = cameras.length;
       
-      // Auto-fit grid dimensions with zero wasted black space:
+      // Auto-fit grid dimensions up to 12 cameras with zero wasted black space:
       if (count <= 1) {
         grid.className = 'w-full h-full p-1.5 grid grid-cols-1 grid-rows-1 gap-2';
       } else if (count === 2) {
-        // 2 Cameras: 50 / 50 side-by-side full height
         grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-1 gap-2';
       } else if (count === 3) {
-        // 3 Cameras: 1 Top Wide (100% width, 50% height) + 2 Bottom Split (50% each)
         grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-2 gap-2';
+      } else if (count <= 4) {
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-2 gap-2';
+      } else if (count <= 6) {
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-3 grid-rows-2 gap-2';
+      } else if (count <= 9) {
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-3 grid-rows-3 gap-2';
       } else {
-        // 4+ Cameras: 2x2 Matrix
-        grid.className = 'w-full h-full p-1.5 grid grid-cols-2 grid-rows-2 gap-2';
+        grid.className = 'w-full h-full p-1.5 grid grid-cols-4 grid-rows-3 gap-2';
       }
 
-      grid.innerHTML = '';
-      cameras.slice(0, 4).forEach((cam, idx) => {
-        const isFocus = cam.id === activeCameraId;
-        const tile = document.createElement('div');
-        let spanCls = '';
-        if (count === 3 && idx === 0) {
-          spanCls = 'col-span-2 row-span-1';
-        } else {
-          spanCls = 'col-span-1 row-span-1';
-        }
-        tile.className = `grid-cam-tile ${spanCls} ${isFocus ? 'active-focus' : ''} flex items-center justify-center relative w-full h-full rounded-lg border border-outline-variant bg-black overflow-hidden group`;
-        
-        // Active stream feed
-        const img = document.createElement('img');
-        img.src = isFocus && isStreamActive ? '/api/stream' : '';
-        img.alt = cam.name;
-        img.className = 'w-full h-full object-cover';
-        if (!isFocus || !isStreamActive) {
-          img.style.display = 'none';
-        }
+      const activeCams = cameras.slice(0, 12);
+      const activeCamIds = new Set(activeCams.map((c) => c.id));
 
-        const fallback = document.createElement('div');
-        fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
-        fallback.innerHTML = `
-          <span class="material-symbols-outlined text-2xl mb-1">${isFocus ? 'videocam' : 'videocam_off'}</span>
-          <span class="text-xs font-medium text-on-surface">${escapeHtml(cam.name)}</span>
-          <span class="text-[10px] font-mono-data text-outline mt-0.5">${isFocus && isStreamActive ? 'ACTIVE STREAM' : 'CLICK TO VIEW'}</span>
-        `;
-        if (isFocus && isStreamActive) {
-          fallback.style.display = 'none';
-        }
-
-        // Top-left camera badge
-        const badge = document.createElement('div');
-        badge.className = 'absolute top-2 left-2 glass-panel px-2.5 py-1 rounded-full z-10 flex items-center gap-1.5 pointer-events-none';
-        badge.innerHTML = `
-          <span class="w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-outline'}"></span>
-          <span class="text-[11px] font-semibold text-on-surface truncate max-w-[140px]">${escapeHtml(cam.name)}</span>
-        `;
-
-        // Top-right maximize button
-        const maxBtn = document.createElement('button');
-        maxBtn.type = 'button';
-        maxBtn.className = 'absolute top-2 right-2 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary text-on-surface';
-        maxBtn.title = 'Make Full Screen (1x1)';
-        maxBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">fullscreen</span>';
-        maxBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          selectCamera(cam.id);
-          setLayoutMode('single');
-        });
-
-        tile.appendChild(img);
-        tile.appendChild(fallback);
-        tile.appendChild(badge);
-        tile.appendChild(maxBtn);
-
-        tile.addEventListener('click', () => {
-          selectCamera(cam.id);
-        });
-
-        grid.appendChild(tile);
+      // Remove tiles no longer present
+      grid.querySelectorAll('.grid-cam-tile').forEach((tile) => {
+        if (!activeCamIds.has(tile.dataset.camId)) tile.remove();
       });
+
+      activeCams.forEach((cam, idx) => {
+        let tile = grid.querySelector(`.grid-cam-tile[data-cam-id="${CSS.escape(cam.id)}"]`);
+        const isFocus = cam.id === activeCameraId;
+        let spanCls = (count === 3 && idx === 0) ? 'col-span-2 row-span-1' : 'col-span-1 row-span-1';
+
+        if (!tile) {
+          tile = document.createElement('div');
+          tile.dataset.camId = cam.id;
+          tile.className = `grid-cam-tile ${spanCls} ${isFocus ? 'active-focus ring-2 ring-primary' : ''} flex items-center justify-center relative w-full h-full rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
+
+          const img = document.createElement('img');
+          img.alt = cam.name;
+          img.className = 'w-full h-full object-cover';
+
+          const fallback = document.createElement('div');
+          fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
+          fallback.innerHTML = `
+            <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
+            <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
+            <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
+          `;
+
+          let failCount = 0;
+          let timer = null;
+          const poll = () => {
+            if (!img.isConnected) return;
+            const isCurrentlyFocus = cam.id === activeCameraId;
+            const srcUrl = (isCurrentlyFocus && isStreamActive)
+              ? '/api/frame.jpeg'
+              : `/api/camera/${encodeURIComponent(cam.id)}/frame.jpeg`;
+            img.src = srcUrl + (srcUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+          };
+
+          img.onload = () => {
+            failCount = 0;
+            img.style.display = 'block';
+            fallback.style.display = 'none';
+            const isCurrentlyFocus = cam.id === activeCameraId;
+            const pollMs = (isCurrentlyFocus && isStreamActive) ? 120 : 600;
+            timer = setTimeout(poll, pollMs);
+          };
+
+          img.onerror = () => {
+            failCount += 1;
+            img.style.display = 'none';
+            fallback.style.display = 'flex';
+            const backoff = Math.min(3000, 700 + failCount * 300);
+            timer = setTimeout(poll, backoff);
+          };
+
+          const badge = document.createElement('div');
+          badge.className = 'absolute top-2 left-2 glass-panel px-2.5 py-1 rounded-full z-10 flex items-center gap-1.5 pointer-events-none';
+          badge.innerHTML = `
+            <span class="cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}"></span>
+            <span class="text-[11px] font-semibold text-on-surface truncate max-w-[140px]">${escapeHtml(cam.name)}</span>
+          `;
+
+          const maxBtn = document.createElement('button');
+          maxBtn.type = 'button';
+          maxBtn.className = 'absolute top-2 right-2 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary text-on-surface';
+          maxBtn.title = 'Make Full Screen (1x1)';
+          maxBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">fullscreen</span>';
+          maxBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            selectCamera(cam.id);
+            setLayoutMode('single');
+          });
+
+          tile.appendChild(img);
+          tile.appendChild(fallback);
+          tile.appendChild(badge);
+          tile.appendChild(maxBtn);
+
+          tile.addEventListener('click', () => {
+            selectCamera(cam.id);
+          });
+
+          grid.appendChild(tile);
+          poll();
+        } else {
+          tile.className = `grid-cam-tile ${spanCls} ${isFocus ? 'active-focus ring-2 ring-primary' : ''} flex items-center justify-center relative w-full h-full rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
+          const badgeDot = tile.querySelector('.cam-badge-dot');
+          if (badgeDot) {
+            badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}`;
+          }
+          const badgeText = tile.querySelector('.cam-badge-sub');
+          if (badgeText) {
+            badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
+          }
+        }
+      });
+    }
+
+    function updateImportGridOptions() {
+      const select = document.getElementById('import-grid-source-select');
+      const badge = document.getElementById('cam-bay-count-badge');
+      if (badge) {
+        badge.textContent = `${liveBays.length} bay${liveBays.length === 1 ? '' : 's'}`;
+      }
+      if (!select) return;
+      select.innerHTML = '<option value="">Select camera to copy bays from...</option>';
+      const others = cameras.filter((c) => c.id !== activeCameraId);
+      others.forEach((c) => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        const count = Array.isArray(c.bays) ? c.bays.length : 0;
+        opt.textContent = `${c.name || 'Untitled'} (${count} bay${count === 1 ? '' : 's'})`;
+        select.appendChild(opt);
+      });
+      const btn = document.getElementById('btn-import-grid');
+      if (btn) btn.disabled = others.length === 0;
+    }
+
+    async function importGridFromCamera(sourceId) {
+      const select = document.getElementById('import-grid-source-select');
+      const feedback = document.getElementById('import-grid-feedback');
+      const srcId = String(sourceId || (select ? select.value : '')).trim();
+      if (!srcId) {
+        if (feedback) {
+          feedback.textContent = 'Please choose a camera to import bays from.';
+          feedback.className = 'text-xs text-error mt-2 block';
+        }
+        return;
+      }
+      const sourceCam = cameras.find((c) => c.id === srcId);
+      const targetCam = cameras.find((c) => c.id === activeCameraId);
+      const srcName = sourceCam ? sourceCam.name : 'Selected camera';
+      const tgtName = targetCam ? targetCam.name : 'Current camera';
+      const bayCount = (sourceCam && Array.isArray(sourceCam.bays)) ? sourceCam.bays.length : 0;
+      const ok = confirm(`Import ${bayCount} bays from "${srcName}" into "${tgtName}"?\n\nThis will replace the current bay layout on this camera.`);
+      if (!ok) return;
+
+      try {
+        const res = await fetch('/api/cameras/import-bays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_camera_id: srcId,
+            target_camera_id: activeCameraId
+          })
+        });
+        const data = await res.json();
+        if (!data.success) {
+          if (feedback) {
+            feedback.textContent = data.error || 'Failed to import bays.';
+            feedback.className = 'text-xs text-error mt-2 block';
+          }
+          return;
+        }
+        if (Array.isArray(data.bays)) {
+          liveBays = data.bays.map(cloneBay);
+          selectedBayId = liveBays[0] ? liveBays[0].id : '';
+          if (liveBays[0]) liveRoi = liveBays[0].roi.slice();
+        }
+        if (data.cameras) applyCameraList(data);
+        syncBayDom();
+        layoutRoiOverlay();
+        updateImportGridOptions();
+        if (feedback) {
+          feedback.textContent = data.message || `Imported ${liveBays.length} bays successfully.`;
+          feedback.className = 'text-xs text-primary mt-2 block';
+          setTimeout(() => { if (feedback) feedback.classList.add('hidden'); }, 4000);
+        }
+      } catch (err) {
+        if (feedback) {
+          feedback.textContent = 'Error: ' + err.message;
+          feedback.className = 'text-xs text-error mt-2 block';
+        }
+      }
+    }
+
+    function promptImportGrid() {
+      hideBayContextMenu();
+      showConfigTab('source');
+      const select = document.getElementById('import-grid-source-select');
+      if (select) {
+        select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        select.focus();
+      }
     }
 
     function fillCameraForm(cam) {
@@ -1650,8 +1967,21 @@
         liveRoi = liveBays[0].roi.slice();
       } else if (Array.isArray(cam.roi) && cam.roi.length === 4) {
         liveRoi = cam.roi.map(Number);
+        liveBays = [
+          { id: 'bay_1', name: 'Lift Bay 1', roi: liveRoi.slice(), type: 'vehicle_bay' },
+          { id: 'tools', name: 'Tool Station', roi: [0.42, 0.05, 0.16, 0.20], type: 'tool_area' }
+        ];
+        selectedBayId = 'bay_1';
+      } else {
+        liveRoi = [0.30, 0.20, 0.40, 0.60];
+        liveBays = [
+          { id: 'bay_1', name: 'Lift Bay 1', roi: liveRoi.slice(), type: 'vehicle_bay' },
+          { id: 'tools', name: 'Tool Station', roi: [0.42, 0.05, 0.16, 0.20], type: 'tool_area' }
+        ];
+        selectedBayId = 'bay_1';
       }
       syncBayDom();
+      updateImportGridOptions();
       const rot = cam.rotate;
       if (rot !== undefined && rot !== '' && rot !== 'auto') {
         const n = Number(rot);
@@ -1694,17 +2024,31 @@
       document.getElementById('camera-name-input').focus();
     }
 
+    let switchDebounceTimer = null;
     async function selectCamera(id) {
+      if (activeCameraId === id && isStreamActive) return;
       const cam = cameras.find((c) => c.id === id);
       if (!cam) return;
-      isStreamActive = false;
-      detachLiveFeed();
+      const wasInGrid = currentLayoutMode === 'grid';
       activeCameraId = id;
       fillCameraForm(cam);
       renderCameraList();
       updateCrumbs();
       showConfigTab('source');
-      await connectAndStreamCamera();
+      updateImportGridOptions();
+      if (wasInGrid) {
+        updateMultiCamGridFocus();
+      } else {
+        isStreamActive = false;
+        detachLiveFeed();
+      }
+      if (switchDebounceTimer) clearTimeout(switchDebounceTimer);
+      switchDebounceTimer = setTimeout(async () => {
+        await connectAndStreamCamera();
+        if (currentLayoutMode === 'grid') {
+          updateMultiCamGridFocus();
+        }
+      }, 300);
     }
 
     function cameraPayload() {
@@ -2153,6 +2497,7 @@
         }
         renderCameraList();
         updateCrumbs();
+        updateImportGridOptions();
         if (activeCameraId || currentConfig.source !== undefined) {
           connectAndStreamCamera();
         }
@@ -2211,8 +2556,10 @@
       }
 
       const seq = ++connectSeq;
-      isStreamActive = false;
-      detachLiveFeed();
+      if (currentLayoutMode !== 'grid') {
+        isStreamActive = false;
+        detachLiveFeed();
+      }
       lastFailedId = '';
       liveStatusText = 'Connecting…';
       btn.disabled = true;
@@ -2264,9 +2611,17 @@
         updateCrumbs();
         if (data.stream_id && data.media && data.media.ready) {
           isStreamActive = true;
-          stage.style.display = 'block';
-          placeholder.style.display = 'none';
-          startLivePlayer(data.stream_id, data.media);
+          if (currentLayoutMode === 'grid') {
+            stage.style.display = 'none';
+            if (placeholder) placeholder.style.display = 'none';
+            const gridStage = document.getElementById('multi-cam-grid');
+            if (gridStage) gridStage.style.display = 'grid';
+            updateMultiCamGridFocus();
+          } else {
+            stage.style.display = 'block';
+            placeholder.style.display = 'none';
+            startLivePlayer(data.stream_id, data.media);
+          }
         }
 
         const outcome = data.pending === false && data.width
@@ -2285,9 +2640,17 @@
         showBanner(feedback, true, data.message || 'Camera connected.');
         const streamId = data.stream_id || (outcome.data && outcome.data.stream_id) || '';
         const media = data.media || (outcome.data && outcome.data.media) || {};
-        startLivePlayer(streamId, media);
-        stage.style.display = 'block';
-        placeholder.style.display = 'none';
+        if (currentLayoutMode === 'grid') {
+          stage.style.display = 'none';
+          if (placeholder) placeholder.style.display = 'none';
+          const gridStage = document.getElementById('multi-cam-grid');
+          if (gridStage) gridStage.style.display = 'grid';
+          updateMultiCamGridFocus();
+        } else {
+          startLivePlayer(streamId, media);
+          stage.style.display = 'block';
+          placeholder.style.display = 'none';
+        }
         setLiveChrome(true, 'LIVE');
         document.getElementById('telem-health').textContent = 'Stable';
         const tel = outcome.data || {};
@@ -2378,12 +2741,14 @@
         const ingestRaw = data.ingest_fps != null ? data.ingest_fps : data.fps;
         const ingest = ingestRaw != null ? Number(ingestRaw).toFixed(1) : fps;
         setCamStatus((data.resolution || 'live') + ' | ' + ingest + 'FPS', 'text-green-400');
+        const prevW = streamW;
+        const prevH = streamH;
         parseResolution(data.resolution);
         applyGarageHeader(data);
         if (!roiDragging && Array.isArray(data.bays) && data.bays.length) {
           mergeBayTelemetry(data.bays);
         }
-        layoutVideoStage();
+        if (streamW !== prevW || streamH !== prevH) layoutVideoStage();
       } catch (err) {
         /* ignore poll glitches */
       }
@@ -2639,7 +3004,10 @@
         id: String(bay.id || ('bay_' + Date.now())),
         name: String(bay.name || bay.id || 'Bay'),
         type: bay.type === 'tool_area' ? 'tool_area' : 'vehicle_bay',
-        roi: Array.isArray(bay.roi) ? bay.roi.map(Number) : [0.3, 0.2, 0.2, 0.3]
+        roi: Array.isArray(bay.roi) ? bay.roi.map(Number) : [0.3, 0.2, 0.2, 0.3],
+        polygon: Array.isArray(bay.polygon) && bay.polygon.length >= 3
+          ? bay.polygon.map((p) => [Number(p[0]), Number(p[1])])
+          : null
       };
     }
 
@@ -2676,11 +3044,12 @@
       ev.preventDefault();
       ev.stopPropagation();
       if (!isStreamActive) return;
-      const fromBox = ev.target && ev.target.closest ? ev.target.closest('.roi-box') : null;
+      const [nx, ny] = clientToRoi(ev);
       let bay = null;
-      if (fromBox) bay = liveBays.find((b) => b.id === fromBox.dataset.bayId) || null;
+      if (ev.target && ev.target.dataset && ev.target.dataset.bayId) {
+        bay = liveBays.find((b) => b.id === ev.target.dataset.bayId) || null;
+      }
       if (!bay) {
-        const [nx, ny] = clientToRoi(ev);
         bay = hitBay(nx, ny);
       }
       if (!bay) {
@@ -2738,6 +3107,23 @@
       await persistLiveBays();
     }
 
+    async function resetSelectedBayToRect() {
+      hideBayContextMenu();
+      const bay = selectedBay();
+      if (!bay) return;
+      recomputeBayRoi(bay);
+      const [x, y, w, h] = bay.roi;
+      bay.polygon = [
+        [clamp01(x), clamp01(y)],
+        [clamp01(x + w), clamp01(y)],
+        [clamp01(x + w), clamp01(y + h)],
+        [clamp01(x), clamp01(y + h)]
+      ];
+      syncBayDom();
+      layoutRoiOverlay();
+      await persistLiveBays();
+    }
+
     async function deleteBay(bayId) {
       hideBayContextMenu();
       const id = String(bayId || selectedBayId || '');
@@ -2759,6 +3145,7 @@
     const STATE_COLORS = {
       WORKING: '#22c55e',
       UNDER_VEHICLE: '#3b82f6',
+      NOT_WORKING: '#ef4444',
       ON_BREAK: '#10b981',
       PARKED_WAITING: '#f59e0b',
       IDLE: '#eab308',
@@ -2789,6 +3176,10 @@
       if (state === 'UNDER_VEHICLE') {
         return '🔵 UNDER VEHICLE' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
       }
+      if (state === 'NOT_WORKING') {
+        const reason = live.not_working_reason || 'DISTRACTED';
+        return '🔴 NOT WORKING (' + reason + ')' + (name ? ' - ' + name : '') + ' (Paused: ' + timeStr + ')';
+      }
       if (state === 'ON_BREAK') {
         return '☕ ON BREAK' + (name ? ' - ' + name : '') + ' (Paused: ' + timeStr + ')';
       }
@@ -2810,75 +3201,169 @@
       return s + 's';
     }
 
-    function syncBayDom() {
-      const overlay = document.getElementById('roi-overlay');
-      if (!overlay) return;
-      const keep = new Set();
-      liveBays.forEach((bay, index) => {
-        keep.add(bay.id);
-        let el = document.getElementById('bay-box-' + bay.id);
-        if (!el) {
-          el = document.createElement('div');
-          el.id = 'bay-box-' + bay.id;
-          el.dataset.bayId = bay.id;
-          el.className = 'roi-box border border-dashed cursor-move';
-          el.innerHTML = '<div class="bay-chip"></div>'
-            + '<span class="roi-handle nw" data-handle="nw"></span>'
-            + '<span class="roi-handle n" data-handle="n"></span>'
-            + '<span class="roi-handle ne" data-handle="ne"></span>'
-            + '<span class="roi-handle e" data-handle="e"></span>'
-            + '<span class="roi-handle se" data-handle="se"></span>'
-            + '<span class="roi-handle s" data-handle="s"></span>'
-            + '<span class="roi-handle sw" data-handle="sw"></span>'
-            + '<span class="roi-handle w" data-handle="w"></span>';
-          overlay.appendChild(el);
-        }
-        const color = bayColor(bay.id, index);
-        const selected = bay.id === selectedBayId;
-        el.classList.toggle('selected', selected);
-        el.style.borderColor = color;
-        el.style.background = color + (selected ? '33' : '18');
-        const chip = el.querySelector('.bay-chip');
-        if (chip) {
-          chip.style.background = color;
-          const live = bayLive[bay.id] || {};
-          const state = live.state || 'EMPTY';
-          let fullLabel = '';
-          if (live.badge) {
-            const icon = state === 'WORKING' ? '🟢 ' :
-                         state === 'UNDER_VEHICLE' ? '🔵 ' :
-                         state === 'ON_BREAK' ? '☕ ' :
-                         state === 'PARKED_WAITING' ? '⏳ ' :
-                         state === 'IDLE' ? '🟡 ' : '';
-            fullLabel = bay.name + ' · ' + icon + live.badge;
-          } else {
-            fullLabel = bay.name + ' · ' + stateBadge(bay);
-          }
-          chip.textContent = fullLabel;
-          chip.title = fullLabel;
-        }
-      });
-      overlay.querySelectorAll('.roi-box').forEach((el) => {
-        if (!keep.has(el.dataset.bayId)) el.remove();
-      });
-      const sel = selectedBay();
-      if (sel) liveRoi = sel.roi.slice();
+    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+    function ensureBayPolygon(bay) {
+      if (Array.isArray(bay.polygon) && bay.polygon.length >= 3) {
+        return bay.polygon;
+      }
+      const roi = Array.isArray(bay.roi) && bay.roi.length === 4 ? bay.roi : [0.3, 0.2, 0.4, 0.6];
+      const [x, y, w, h] = roi;
+      bay.polygon = [
+        [clamp01(x), clamp01(y)],
+        [clamp01(x + w), clamp01(y)],
+        [clamp01(x + w), clamp01(y + h)],
+        [clamp01(x), clamp01(y + h)]
+      ];
+      return bay.polygon;
+    }
+
+    function recomputeBayRoi(bay) {
+      if (!Array.isArray(bay.polygon) || bay.polygon.length < 3) return;
+      const xs = bay.polygon.map((p) => p[0]);
+      const ys = bay.polygon.map((p) => p[1]);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      bay.roi = [
+        clamp01(minX),
+        clamp01(minY),
+        Math.max(0.02, clamp01(maxX - minX)),
+        Math.max(0.02, clamp01(maxY - minY))
+      ];
+    }
+
+    function pointInPoly(px, py, polygon) {
+      if (!Array.isArray(polygon) || polygon.length < 3) return false;
+      let inside = false;
+      let j = polygon.length - 1;
+      for (let i = 0; i < polygon.length; i++) {
+        const xi = polygon[i][0], yi = polygon[i][1];
+        const xj = polygon[j][0], yj = polygon[j][1];
+        const intersect = ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+        j = i;
+      }
+      return inside;
     }
 
     function hitBay(nx, ny) {
       for (let i = liveBays.length - 1; i >= 0; i--) {
-        const [x, y, w, h] = liveBays[i].roi;
-        if (nx >= x && nx <= x + w && ny >= y && ny <= y + h) return liveBays[i];
+        const bay = liveBays[i];
+        const poly = ensureBayPolygon(bay);
+        if (pointInPoly(nx, ny, poly)) return bay;
+        const [x, y, w, h] = bay.roi;
+        if (nx >= x && nx <= x + w && ny >= y && ny <= y + h) return bay;
       }
       return null;
     }
 
-    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+    function syncBayDom() {
+      const overlay = document.getElementById('roi-overlay');
+      if (!overlay) return;
+
+      let svg = document.getElementById('roi-svg');
+      if (!svg) {
+        svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.id = 'roi-svg';
+        svg.setAttribute('viewBox', '0 0 1000 1000');
+        svg.setAttribute('preserveAspectRatio', 'none');
+        svg.className = 'absolute inset-0 w-full h-full pointer-events-none';
+        svg.style.zIndex = '10';
+        overlay.appendChild(svg);
+      }
+
+      const keep = new Set();
+      liveBays.forEach((bay, index) => {
+        keep.add(bay.id);
+        const poly = ensureBayPolygon(bay);
+        const color = bayColor(bay.id, index);
+        const selected = bay.id === selectedBayId;
+
+        // SVG Polygon
+        let polyEl = document.getElementById('bay-svg-' + bay.id);
+        if (!polyEl) {
+          polyEl = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          polyEl.id = 'bay-svg-' + bay.id;
+          polyEl.setAttribute('data-bay-id', bay.id);
+          polyEl.setAttribute('class', 'roi-svg-poly');
+          polyEl.setAttribute('stroke-dasharray', '6 4');
+          polyEl.style.cursor = 'move';
+          polyEl.style.pointerEvents = 'auto';
+          svg.appendChild(polyEl);
+        }
+        polyEl.setAttribute('fill', color + (selected ? '35' : '18'));
+        polyEl.setAttribute('stroke', color);
+        polyEl.setAttribute('stroke-width', selected ? '3' : '2');
+
+        // Bay Chip badge
+        let chip = document.getElementById('bay-chip-' + bay.id);
+        if (!chip) {
+          chip = document.createElement('div');
+          chip.id = 'bay-chip-' + bay.id;
+          chip.setAttribute('data-bay-id', bay.id);
+          chip.className = 'bay-chip absolute pointer-events-auto select-none';
+          chip.style.zIndex = '25';
+          chip.style.cursor = 'pointer';
+          overlay.appendChild(chip);
+        }
+        chip.style.background = color;
+        const live = bayLive[bay.id] || {};
+        const state = live.state || 'EMPTY';
+        let fullLabel = '';
+        if (live.badge) {
+          const icon = state === 'WORKING' ? '🟢 ' :
+                       state === 'UNDER_VEHICLE' ? '🔵 ' :
+                       state === 'NOT_WORKING' ? '🔴 ' :
+                       state === 'ON_BREAK' ? '☕ ' :
+                       state === 'PARKED_WAITING' ? '⏳ ' :
+                       state === 'IDLE' ? '🟡 ' : '';
+          fullLabel = bay.name + ' · ' + icon + live.badge;
+        } else {
+          fullLabel = bay.name + ' · ' + stateBadge(bay);
+        }
+        chip.textContent = fullLabel;
+        chip.title = fullLabel;
+      });
+
+      // Remove obsolete polygons & chips
+      svg.querySelectorAll('.roi-svg-poly').forEach((el) => {
+        if (!keep.has(el.getAttribute('data-bay-id'))) el.remove();
+      });
+      overlay.querySelectorAll('.bay-chip').forEach((el) => {
+        if (!keep.has(el.getAttribute('data-bay-id'))) el.remove();
+      });
+
+      // Draggable corner handles for the selected bay
+      const selBay = selectedBay();
+      const cornerCount = selBay ? ensureBayPolygon(selBay).length : 0;
+      for (let i = 0; i < Math.max(cornerCount, 8); i++) {
+        let handle = document.getElementById('roi-corner-' + i);
+        if (i < cornerCount) {
+          if (!handle) {
+            handle = document.createElement('div');
+            handle.id = 'roi-corner-' + i;
+            handle.setAttribute('data-corner-idx', String(i));
+            handle.className = 'roi-corner-handle';
+            handle.title = 'Drag corner to stretch angle';
+            overlay.appendChild(handle);
+          }
+          handle.style.display = 'block';
+        } else if (handle) {
+          handle.style.display = 'none';
+        }
+      }
+
+      if (selBay) liveRoi = selBay.roi.slice();
+    }
 
     function applyStreamSize(w, h) {
       if (w > 1 && h > 1) {
         streamW = w;
         streamH = h;
+        lastLayoutKey = '';
       }
     }
 
@@ -2893,6 +3378,7 @@
       const viewport = document.getElementById('video-viewport');
       if (workspace) workspace.classList.remove('is-native-feed');
       if (viewport) viewport.style.height = '';
+      lastLayoutKey = '';
     }
 
     function visibleFeedMaxHeight(workspace) {
@@ -2906,6 +3392,7 @@
     }
 
     function layoutVideoStage() {
+      if (currentLayoutMode === 'grid') return;
       const img = document.getElementById('live-camera-feed');
       const video = document.getElementById('live-webrtc');
       const viewport = document.getElementById('video-viewport');
@@ -2940,9 +3427,16 @@
         w = vw;
         h = Math.max(1, w / ar);
       }
-      viewport.style.height = Math.round(h) + 'px';
-      stage.style.width = Math.round(w) + 'px';
-      stage.style.height = Math.round(h) + 'px';
+      const outW = Math.round(w);
+      const outH = Math.round(h);
+      const layoutKey = outW + 'x' + outH + '@' + vw + ':' + maxH + ':' + nw + 'x' + nh;
+      if (layoutKey === lastLayoutKey) {
+        return;
+      }
+      lastLayoutKey = layoutKey;
+      viewport.style.height = outH + 'px';
+      stage.style.width = outW + 'px';
+      stage.style.height = outH + 'px';
       layoutRoiOverlay();
     }
 
@@ -2960,32 +3454,54 @@
       const stageH = (stage && stage.clientHeight) || overlay.clientHeight || 480;
 
       liveBays.forEach((bay) => {
-        const box = document.getElementById('bay-box-' + bay.id);
-        if (!box) return;
-        const [x, y, w, h] = bay.roi;
-        box.style.left = (x * 100) + '%';
-        box.style.top = (y * 100) + '%';
-        box.style.width = (w * 100) + '%';
-        box.style.height = (h * 100) + '%';
+        const poly = ensureBayPolygon(bay);
+        const polyEl = document.getElementById('bay-svg-' + bay.id);
+        if (polyEl) {
+          const ptsStr = poly.map((pt) => Math.round(pt[0] * 1000) + ',' + Math.round(pt[1] * 1000)).join(' ');
+          polyEl.setAttribute('points', ptsStr);
+        }
 
-        const boxTopPx = y * stageH;
-        box.classList.toggle('chip-inside-top', boxTopPx < 24);
-
-        const boxRightFrac = x + w;
-        const shouldAlignRight = boxRightFrac > 0.70 || x > 0.55;
-        box.classList.toggle('chip-align-right', shouldAlignRight);
-
-        const chip = box.querySelector('.bay-chip');
+        const chip = document.getElementById('bay-chip-' + bay.id);
         if (chip) {
-          let maxAvailPx;
+          const xs = poly.map((pt) => pt[0]);
+          const ys = poly.map((pt) => pt[1]);
+          const minX = Math.min(...xs);
+          const minY = Math.min(...ys);
+          const maxX = Math.max(...xs);
+          const boxTopPx = minY * stageH;
+          const shouldInside = boxTopPx < 26;
+          const shouldAlignRight = maxX > 0.85 || minX > 0.65;
+
+          const topPct = shouldInside ? (minY * 100 + 0.5) : Math.max(0, (minY * 100) - 4.5);
+          chip.style.top = topPct + '%';
           if (shouldAlignRight) {
-            maxAvailPx = Math.max(120, (x + w) * stageW - 8);
+            chip.style.left = 'auto';
+            chip.style.right = Math.max(0, (1 - maxX) * 100) + '%';
           } else {
-            maxAvailPx = Math.max(120, stageW - (x * stageW) - 8);
+            chip.style.left = (minX * 100) + '%';
+            chip.style.right = 'auto';
           }
+
+          let maxAvailPx = shouldAlignRight
+            ? Math.max(120, maxX * stageW - 8)
+            : Math.max(120, stageW - (minX * stageW) - 8);
           chip.style.maxWidth = Math.min(480, Math.floor(maxAvailPx)) + 'px';
         }
       });
+
+      const selBay = selectedBay();
+      if (selBay) {
+        const poly = ensureBayPolygon(selBay);
+        const color = bayColor(selBay.id, liveBays.indexOf(selBay));
+        poly.forEach((pt, i) => {
+          const handle = document.getElementById('roi-corner-' + i);
+          if (handle) {
+            handle.style.left = (pt[0] * 100) + '%';
+            handle.style.top = (pt[1] * 100) + '%';
+            handle.style.background = color;
+          }
+        });
+      }
     }
 
     function clientToRoi(ev) {
@@ -2995,73 +3511,71 @@
       return [clamp01(x), clamp01(y)];
     }
 
-    function hitHandle(nx, ny, roi, pad) {
-      const [x, y, w, h] = roi;
-      const pts = {
-        nw: [x, y], n: [x + w / 2, y], ne: [x + w, y],
-        e: [x + w, y + h / 2], se: [x + w, y + h], s: [x + w / 2, y + h],
-        sw: [x, y + h], w: [x, y + h / 2]
-      };
-      let best = null;
-      let bestD = pad * pad;
-      for (const [name, point] of Object.entries(pts)) {
-        const d = (nx - point[0]) ** 2 + (ny - point[1]) ** 2;
-        if (d <= bestD) { bestD = d; best = name; }
-      }
-      return best;
-    }
-
-    function applyHandle(start, name, nx, ny) {
-      let [x, y, w, h] = start;
-      let x2 = x + w, y2 = y + h;
-      if (name.indexOf('n') !== -1) y = ny;
-      if (name.indexOf('s') !== -1) y2 = ny;
-      if (name.indexOf('w') !== -1) x = nx;
-      if (name.indexOf('e') !== -1) x2 = nx;
-      if (x2 < x) { const t = x; x = x2; x2 = t; }
-      if (y2 < y) { const t = y; y = y2; y2 = t; }
-      w = Math.max(0.02, x2 - x);
-      h = Math.max(0.02, y2 - y);
-      x = clamp01(x); y = clamp01(y);
-      w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
-      return [x, y, w, h];
-    }
-
     function onRoiDown(ev) {
       if (!isStreamActive) return;
       if (ev.button !== 0) return;
       hideBayContextMenu();
       ev.preventDefault();
       const [nx, ny] = clientToRoi(ev);
-      const fromHandle = ev.target.dataset.handle;
-      let bay = selectedBay();
-      if (fromHandle && ev.target.closest('.roi-box')) {
-        const id = ev.target.closest('.roi-box').dataset.bayId;
-        bay = liveBays.find((b) => b.id === id) || bay;
-      } else {
+
+      // Check if user clicked a corner control handle
+      const cornerIdxStr = ev.target.dataset ? ev.target.dataset.cornerIdx : undefined;
+      if (cornerIdxStr !== undefined) {
+        const bay = selectedBay();
+        if (bay) {
+          const poly = ensureBayPolygon(bay);
+          roiCornerIdx = parseInt(cornerIdxStr, 10);
+          if (roiCornerIdx >= 0 && roiCornerIdx < poly.length) {
+            roiDragging = true;
+            roiMode = 'stretch-corner';
+            roiOrigin = [nx, ny];
+            roiStartPoly = poly.map((p) => p.slice());
+            ev.target.classList.add('corner-active');
+            return;
+          }
+        }
+      }
+
+      // Check if clicked bay chip or SVG polygon or hit polygon interior
+      const bayIdFromEl = ev.target.dataset && ev.target.dataset.bayId;
+      let bay = bayIdFromEl ? liveBays.find((b) => b.id === bayIdFromEl) : null;
+      if (!bay) {
         bay = hitBay(nx, ny);
       }
+
       roiDragging = true;
       roiOrigin = [nx, ny];
-      if (fromHandle && bay) {
-        selectedBayId = bay.id;
-        roiMode = 'resize';
-        roiHandle = fromHandle;
-        roiStart = bay.roi.slice();
-      } else if (bay) {
+
+      if (bay) {
         selectedBayId = bay.id;
         roiMode = 'move';
+        ensureBayPolygon(bay);
+        roiStartPoly = bay.polygon.map((p) => p.slice());
         roiStart = bay.roi.slice();
       } else {
         roiMode = 'draw';
         const id = 'bay_' + Date.now();
-        const created = { id: id, name: nextAvailableBayName(liveBays), type: 'vehicle_bay', roi: [nx, ny, 0.02, 0.02] };
+        const created = {
+          id: id,
+          name: nextAvailableBayName(liveBays),
+          type: 'vehicle_bay',
+          roi: [nx, ny, 0.02, 0.02],
+          polygon: [
+            [nx, ny],
+            [clamp01(nx + 0.02), ny],
+            [clamp01(nx + 0.02), clamp01(ny + 0.02)],
+            [nx, clamp01(ny + 0.02)]
+          ]
+        };
         liveBays.push(created);
         selectedBayId = id;
+        roiStartPoly = created.polygon.map((p) => p.slice());
         roiStart = created.roi.slice();
         syncBayDom();
       }
-      liveRoi = (selectedBay() || { roi: [nx, ny, 0.02, 0.02] }).roi.slice();
+
+      const sel = selectedBay();
+      if (sel) liveRoi = sel.roi.slice();
       layoutRoiOverlay();
     }
 
@@ -3070,19 +3584,28 @@
       const [nx, ny] = clientToRoi(ev);
       const bay = selectedBay();
       if (!bay) return;
-      if (roiMode === 'draw') {
-        const x = Math.min(roiOrigin[0], nx);
-        const y = Math.min(roiOrigin[1], ny);
-        bay.roi = [x, y, Math.max(0.02, Math.abs(nx - roiOrigin[0])), Math.max(0.02, Math.abs(ny - roiOrigin[1]))];
-      } else if (roiMode === 'move') {
+
+      if (roiMode === 'stretch-corner' && roiCornerIdx >= 0) {
+        ensureBayPolygon(bay);
+        bay.polygon[roiCornerIdx] = [clamp01(nx), clamp01(ny)];
+        recomputeBayRoi(bay);
+      } else if (roiMode === 'move' && roiStartPoly.length) {
         const dx = nx - roiOrigin[0];
         const dy = ny - roiOrigin[1];
-        let [x, y, w, h] = roiStart;
-        x = clamp01(Math.min(1 - w, x + dx));
-        y = clamp01(Math.min(1 - h, y + dy));
+        bay.polygon = roiStartPoly.map((pt) => [clamp01(pt[0] + dx), clamp01(pt[1] + dy)]);
+        recomputeBayRoi(bay);
+      } else if (roiMode === 'draw') {
+        const x = Math.min(roiOrigin[0], nx);
+        const y = Math.min(roiOrigin[1], ny);
+        const w = Math.max(0.02, Math.abs(nx - roiOrigin[0]));
+        const h = Math.max(0.02, Math.abs(ny - roiOrigin[1]));
         bay.roi = [x, y, w, h];
-      } else if (roiMode === 'resize' && roiHandle) {
-        bay.roi = applyHandle(roiStart, roiHandle, nx, ny);
+        bay.polygon = [
+          [x, y],
+          [clamp01(x + w), y],
+          [clamp01(x + w), clamp01(y + h)],
+          [x, clamp01(y + h)]
+        ];
       }
       liveRoi = bay.roi.slice();
       layoutRoiOverlay();
@@ -3091,9 +3614,12 @@
     async function onRoiUp() {
       if (!roiDragging) return;
       const wasDraw = roiMode === 'draw';
+      document.querySelectorAll('.roi-corner-handle.corner-active').forEach((el) => {
+        el.classList.remove('corner-active');
+      });
       roiDragging = false;
       roiMode = null;
-      roiHandle = null;
+      roiCornerIdx = -1;
       const bay = selectedBay();
       if (bay && wasDraw) {
         const [x, y, w, h] = bay.roi;
@@ -3301,12 +3827,12 @@
       });
       const ctxRename = document.getElementById('ctx-rename-bay');
       const ctxType = document.getElementById('ctx-type-bay');
+      const ctxAlign = document.getElementById('ctx-align-rect');
       const ctxDelete = document.getElementById('ctx-delete-bay');
       if (ctxRename) ctxRename.addEventListener('click', () => renameSelectedBay());
       if (ctxType) ctxType.addEventListener('click', () => toggleSelectedBayType());
+      if (ctxAlign) ctxAlign.addEventListener('click', () => resetSelectedBayToRect());
       if (ctxDelete) ctxDelete.addEventListener('click', () => deleteBay(selectedBayId));
-      const feed = document.getElementById('live-camera-feed');
-      if (feed) feed.addEventListener('load', layoutVideoStage);
       const fileInput = document.getElementById('identity-file-input');
       if (fileInput) {
         fileInput.addEventListener('change', () => {

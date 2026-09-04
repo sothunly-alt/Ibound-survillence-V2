@@ -9,9 +9,43 @@ from __future__ import annotations
 
 import threading
 import time
+from queue import Full, Queue
 from typing import Any, Optional
 
 from adapters.base import BaseCameraAdapter, FramePacket, safe_release
+
+
+class _AdapterReleaseQueue:
+    """Serializes adapter.release() so camera switches do not spawn unbounded threads."""
+
+    def __init__(self) -> None:
+        self._q: Queue = Queue(maxsize=32)
+        self._thread = threading.Thread(target=self._loop, name="AdapterRelease", daemon=True)
+        self._thread.start()
+
+    def submit(self, adapter: BaseCameraAdapter | None) -> None:
+        if adapter is None:
+            return
+        try:
+            self._q.put_nowait(adapter)
+        except Full:
+            threading.Thread(
+                target=safe_release,
+                args=(adapter,),
+                name="AdapterReleaseOverflow",
+                daemon=True,
+            ).start()
+
+    def _loop(self) -> None:
+        while True:
+            adapter = self._q.get()
+            try:
+                safe_release(adapter)
+            except Exception:
+                pass
+
+
+_RELEASE_QUEUE = _AdapterReleaseQueue()
 
 
 class AsyncFrameGrabber:
@@ -86,13 +120,7 @@ class AsyncFrameGrabber:
             self.connection_state = "CONNECTING"
             self.error = None
             self._ready.clear()
-        if old_pending is not None:
-            threading.Thread(
-                target=safe_release,
-                args=(old_pending,),
-                name="AdapterRelease",
-                daemon=True,
-            ).start()
+        _RELEASE_QUEUE.submit(old_pending)
 
     def clear_source(self) -> None:
         """Drop the active camera without opening another."""
@@ -104,13 +132,7 @@ class AsyncFrameGrabber:
             self.connection_state = "STANDBY"
             self.error = None
             self._ready.clear()
-        if old_pending is not None:
-            threading.Thread(
-                target=safe_release,
-                args=(old_pending,),
-                name="AdapterRelease",
-                daemon=True,
-            ).start()
+        _RELEASE_QUEUE.submit(old_pending)
 
     def get_latest_frame(self, timeout: float = 0.1) -> Optional[FramePacket]:
         """Wait up to ``timeout`` seconds for a frame newer than the last consume.

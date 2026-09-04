@@ -262,6 +262,26 @@ def _port_open(host: str, port: int, timeout: float = 0.25) -> bool:
         return False
 
 
+def find_ffmpeg_binary() -> str | None:
+    """Find a usable ffmpeg executable for go2rtc transcoding and frame capture."""
+    candidates = [
+        shutil.which("ffmpeg"),
+        str(Path.home() / ".local" / "bin" / "ffmpeg"),
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+    ]
+    try:
+        res = resource_dir()
+        candidates.append(str(res / "bin" / "ffmpeg"))
+        candidates.append(str(res / "ffmpeg"))
+    except Exception:
+        pass
+    for cand in candidates:
+        if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
 _CONFIG_TEMPLATE = """\
 api:
   listen: "{host}:{api_port}"
@@ -272,7 +292,7 @@ webrtc:
   listen: "{host}:{webrtc_port}"
 log:
   level: info
-"""
+{ffmpeg_section}"""
 
 
 class Go2RtcManager:
@@ -375,12 +395,18 @@ class Go2RtcManager:
         work = Path(tempfile.mkdtemp(prefix="inbound-go2rtc-"))
         self._work_dir = work
         config = work / "go2rtc.yaml"
+        ffmpeg_bin = find_ffmpeg_binary()
+        if ffmpeg_bin:
+            ffmpeg_section = f"ffmpeg:\n  bin: \"{ffmpeg_bin}\"\n"
+        else:
+            ffmpeg_section = ""
         config.write_text(
             _CONFIG_TEMPLATE.format(
                 host=self.host,
                 api_port=self.api_port,
                 rtsp_port=self.rtsp_port,
                 webrtc_port=self.webrtc_port,
+                ffmpeg_section=ffmpeg_section,
             ),
             encoding="utf-8",
         )

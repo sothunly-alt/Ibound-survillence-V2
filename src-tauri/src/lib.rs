@@ -9,6 +9,26 @@ struct EngineProcess(Mutex<Option<CommandChild>>);
 const ENGINE_PORT: &str = "8765";
 const READY_MARKER: &str = "[INBOUND_SERVER_READY]";
 
+fn apply_linux_webkit_workarounds() {
+    #[cfg(target_os = "linux")]
+    {
+        // Intel Iris Xe + WebKitGTK 2.42+/2.52: DMABUF/EGL compositing tears
+        // frames and can take down WebKitWebProcess. Set only when unset so
+        // operators can override from the environment.
+        for (key, value) in [
+            ("WEBKIT_DISABLE_DMABUF_RENDERER", "1"),
+            ("WEBKIT_DISABLE_COMPOSITING_MODE", "1"),
+        ] {
+            if std::env::var_os(key).is_none() {
+                #[allow(unused_unsafe)]
+                unsafe {
+                    std::env::set_var(key, value);
+                }
+            }
+        }
+    }
+}
+
 fn parse_ready_port(line: &str) -> Option<u16> {
     let idx = line.find(READY_MARKER)?;
     let rest = line[idx + READY_MARKER.len()..].trim();
@@ -118,6 +138,7 @@ fn spawn_engine(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    apply_linux_webkit_workarounds();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(EngineProcess(Mutex::new(None)))

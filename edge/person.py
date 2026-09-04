@@ -270,7 +270,15 @@ def is_human_pose(
     ):
         return True
 
-    if height < min_height_frac * max(frame_h, 1):
+    # Crouching, kneeling, or bending worker: height is compressed but kinematic bones are solid
+    effective_min_h = min_height_frac * max(frame_h, 1)
+    bones = count_valid_bones(keypoints, KINEMATIC_EDGES, x1, y1, x2, y2, kpt_conf)
+    torso_visible = _count_visible(keypoints, TORSO_POINTS, kpt_conf)
+    legs_visible = _count_visible(keypoints, LEG_POINTS, kpt_conf)
+    if bones >= 2 and (torso_visible >= 2 or legs_visible >= 2):
+        effective_min_h *= 0.55
+
+    if height < effective_min_h:
         return False
 
     if is_face_closeup(keypoints, kpt_conf):
@@ -281,9 +289,6 @@ def is_human_pose(
         return False
 
     head_visible = _count_visible(keypoints, HEAD_POINTS, kpt_conf)
-    torso_visible = _count_visible(keypoints, TORSO_POINTS, kpt_conf)
-    legs_visible = _count_visible(keypoints, LEG_POINTS, kpt_conf)
-    bones = count_valid_bones(keypoints, KINEMATIC_EDGES, x1, y1, x2, y2, kpt_conf)
 
     # Anti-object: desk clutter has no head and no connected torso girdle.
     if head_visible == 0 and torso_visible < 2:
@@ -292,7 +297,7 @@ def is_human_pose(
         return False
 
     if (head_visible >= 1 or torso_visible >= 2) and (torso_visible >= 1 or legs_visible >= 1):
-        if min_aspect > 0 and height / width < min_aspect * 0.55 and torso_visible < 2:
+        if min_aspect > 0 and height / width < min_aspect * 0.35 and torso_visible < 2:
             return False
         return True
 
