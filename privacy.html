@@ -32,20 +32,151 @@
     </header>
     <main class="container legal-page">
       <p class="section-index">Legal</p>
-      <h1>Privacy Policy</h1>
-      <p>
-        Inbound Surveillance processes bay camera footage on your shop’s local PC. Edge inference
-        runs on-premises. We do not charge cloud processing fees and do not require footage to leave
-        your network for wrench-time tracking to function.
-      </p>
-      <p>
-        Demo requests collect the name, shop, contact method, bay count, and plan interest you
-        submit so we can schedule a walkthrough. We do not sell this information.
-      </p>
-      <p>
-        Timestamped stills used for invoice proof stay under your shop’s control. Telegram
-        scorecards are delivered to the account you designate.
-      </p>
+      <h1>Privacy Policy &amp; Data Architecture Disclosure</h1>
+      <p class="legal-updated">Last Updated: September 2026</p>
+
+      <div class="legal-roles" role="note" aria-label="Data roles">
+        <p class="legal-roles-title">Roles</p>
+        <dl>
+          <div>
+            <dt>Data Controller</dt>
+            <dd>Garage Owner / Facility Operator — determines purposes and means of workplace processing.</dd>
+          </div>
+          <div>
+            <dt>Data Processor</dt>
+            <dd>
+              Inbound Surveillance — supplies and configures on-premises edge appliances that process data
+              solely on the Controller’s instructions and hardware.
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <section>
+        <h2>1. System Architecture &amp; Zero-Cloud Guarantee</h2>
+        <p>Inbound Surveillance is engineered around local edge-compute infrastructure.</p>
+        <ul>
+          <li>
+            <strong>Local Processing:</strong> All computer vision pipelines, body-pose estimation, and facial
+            identification algorithms execute exclusively on on-premises local edge hardware deployed within
+            the client’s facility.
+          </li>
+          <li>
+            <strong>No Video Streaming:</strong> Continuous CCTV video streams are processed ephemerally in
+            volatile memory (RAM) and are never transmitted to external cloud servers, third-party databases,
+            or hosted remote storage.
+          </li>
+          <li>
+            <strong>Bandwidth &amp; Transit:</strong> Network egress is restricted exclusively to authenticated
+            payload triggers (e.g., encrypted Telegram bot webhooks delivering metadata and shift verification
+            snapshots).
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>2. Categories of Data Processed</h2>
+        <ul>
+          <li>
+            <strong>Biometric &amp; Pose Telemetry:</strong> Ephemeral spatial coordinates (full-body posture
+            tracking) used to maintain active labor session continuity, alongside cryptographic vector
+            embeddings generated from facial features for operator authentication. Raw facial templates are
+            stored locally in hashed, non-reversible binary formats.
+          </li>
+          <li>
+            <strong>Labor Telemetry:</strong> Timestamped event intervals (Session Start, Session Pause,
+            Session Terminate), active bay IDs, and dual-clock calculations (Billable Project Time vs.
+            Attendance/Payroll Time).
+          </li>
+          <li>
+            <strong>Verification Proof:</strong> Momentary, downscaled image captures generated solely upon
+            session state transitions to serve as timestamped proof-of-work verification.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>3. Purpose of Processing</h2>
+        <p>Data processed by the Inbound Surveillance hardware is utilized strictly for:</p>
+        <ul>
+          <li>Automating billable labor tracking and bay occupancy metrics.</li>
+          <li>Generating shift scorecards and operational summaries for garage management.</li>
+          <li>Eliminating manual interaction with physical terminals in industrial environments.</li>
+        </ul>
+        <p>
+          Data is never harvested, resold, aggregated for third-party advertising, or used to train external
+          global foundation models.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Third-Party Transmissions (Telegram Integration)</h2>
+        <p>
+          Shift summaries, timestamped visual verifications, and bay status alerts are dispatched via
+          encrypted HTTPS webhooks directly to client-configured endpoints (such as the Telegram Bot API).
+          Once dispatched, the storage, retention, and access governance of transmitted scorecards adhere to
+          the client’s internal messaging security policies and Telegram’s platform terms.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Data Retention &amp; Erasure</h2>
+        <ul>
+          <li>
+            <strong>Telemetry Logs:</strong> Raw operational event timestamps are retained on local hardware
+            storage for a rolling retention cycle (default: 30 to 90 days) configured by the facility owner.
+          </li>
+          <li>
+            <strong>Local Media:</strong> Ephemeral frame buffers are overwritten continuously. Hashed
+            enrollment profiles remain stored on the local appliance until manually revoked or deleted by the
+            facility administrator.
+          </li>
+          <li>
+            <strong>System Purge:</strong> Upon termination of service, all locally stored vector databases,
+            enrollment profiles, and shift history can be completely purged via an on-site factory hardware
+            reset.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>6. Facility Operator Obligations (Workplace Notice)</h2>
+        <p>
+          The purchasing entity (Garage Owner / Operator) serves as the primary
+          <strong>Data Controller</strong>. Inbound Surveillance acts as
+          <strong>Data Processor</strong>. The Controller acknowledges the following legal commitments:
+        </p>
+        <ul>
+          <li>
+            <strong>Employee Notice:</strong> The operator is solely responsible for providing conspicuous
+            workplace notification (e.g., posted signage in bays) indicating that active optical computer
+            vision and automated timekeeping systems are operational.
+          </li>
+          <li>
+            <strong>Jurisdictional Compliance:</strong> The operator must ensure deployment complies with all
+            applicable local labor statutes, workplace surveillance regulations, and employee consent
+            standards.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>B2B Hardware &amp; Onboarding Consent Clause</h2>
+        <p>
+          The following acknowledgment is required on deployment booking forms and customer agreements:
+        </p>
+        <blockquote class="legal-quote">
+          <p class="legal-quote-label">Operator Acknowledgment</p>
+          <p>
+            Client confirms that Inbound Surveillance hardware will be deployed strictly for internal labor
+            accounting, bay occupancy auditing, and workflow automation. Client assumes sole responsibility
+            for notifying all personnel and contractors that automated optical labor tracking is operational
+            within designated service bays, indemnifying Inbound Surveillance against unauthorized
+            surveillance claims resulting from failure to provide adequate workplace notice.
+          </p>
+        </blockquote>
+      </section>
+
       <p>Questions: <a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
       <p>© 2026 Inbound Surveillance</p>
     </main>

@@ -1176,6 +1176,32 @@ h3 {
   border-radius: 4px;
 }
 
+.demo-form .consent-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.demo-form .consent-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--neon);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.demo-form .consent-check strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .form-success {
   color: var(--neon);
   font-family: var(--font-mono);
@@ -1183,16 +1209,117 @@ h3 {
 
 .legal-page {
   padding: 48px 0 96px;
+  max-width: 72ch;
 }
 
 .legal-page h1 {
-  font-size: 48px;
-  margin-bottom: 24px;
+  font-size: clamp(2rem, 4vw, 48px);
+  margin-bottom: 12px;
+}
+
+.legal-page h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 40px 0 16px;
+}
+
+.legal-page section + section h2 {
+  margin-top: 40px;
+}
+
+.legal-page p,
+.legal-page li {
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.65;
 }
 
 .legal-page p {
-  max-width: 68ch;
+  margin-bottom: 14px;
+}
+
+.legal-updated {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--neon);
+  margin-bottom: 28px;
+}
+
+.legal-page ul {
+  margin: 0 0 16px;
+  padding-left: 1.25rem;
+}
+
+.legal-page li {
+  margin-bottom: 10px;
+}
+
+.legal-page li strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.legal-roles {
+  background: #0d0d0d;
+  border: 1px solid rgba(0, 255, 65, 0.28);
+  border-radius: 4px;
+  padding: 20px 22px;
+  margin: 8px 0 32px;
+}
+
+.legal-roles-title {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--neon);
+  margin: 0 0 14px;
+}
+
+.legal-roles dl {
+  margin: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.legal-roles dt {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.legal-roles dd {
+  margin: 0;
   color: var(--muted);
+  line-height: 1.55;
+  font-size: 0.95rem;
+}
+
+.legal-quote {
+  margin: 16px 0 28px;
+  padding: 18px 20px;
+  border-left: 3px solid var(--neon);
+  background: #0d0d0d;
+  border-radius: 0 4px 4px 0;
+}
+
+.legal-quote-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--neon);
+  margin: 0 0 10px;
+}
+
+.legal-quote p:last-child {
+  margin-bottom: 0;
 }
 
 @media (max-width: 860px) {
