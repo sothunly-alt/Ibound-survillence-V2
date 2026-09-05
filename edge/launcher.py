@@ -582,11 +582,20 @@ class CameraStreamWorker:
 
     def _loop(self) -> None:
         last_encode_time = 0.0
+        last_reconnect_time = time.time()
         while not self._stop_event.is_set():
+            now = time.time()
             if not self.is_active_ai:
+                # If grabber failed or lost adapter, attempt periodic reconnection
+                if (
+                    self.grabber.connection_state in ("FAILED", "STANDBY")
+                    or getattr(self.grabber, "_adapter", None) is None
+                ) and (now - last_reconnect_time >= 3.0):
+                    last_reconnect_time = now
+                    self._reconnect()
+
                 packet = self.grabber.get_latest_frame(timeout=0.15)
                 if packet is not None and packet.frame is not None:
-                    now = time.time()
                     if (now - last_encode_time) >= 0.09:
                         last_encode_time = now
                         frame = packet.frame
@@ -640,7 +649,8 @@ class CameraStreamPool:
         with self._lock:
             for cam in cameras:
                 cid = str(cam.get("id") or "").strip()
-                if not cid or not cam.get("source"):
+                src = cam.get("source")
+                if not cid or src is None or str(src).strip() == "":
                     continue
                 configured_ids.add(cid)
                 if cid not in self._workers:
@@ -650,6 +660,7 @@ class CameraStreamPool:
                     worker.start()
                 else:
                     self._workers[cid].update_cfg(cam)
+                    self._workers[cid].is_active_ai = (cid == active_id)
 
             to_remove = [wid for wid in self._workers if wid not in configured_ids]
             for wid in to_remove:
@@ -1349,21 +1360,36 @@ class LiveStreamEngine:
                 self._camera_frame_cache[cid or active_id] = (frame_data, "image/jpeg", now)
                 return frame_data, "image/jpeg"
             cached = self._camera_frame_cache.get(cid or active_id)
-            if cached and (now - cached[2]) < 15.0:
+            if cached and (now - cached[2]) < 60.0:
                 return cached[0], cached[1]
             worker = self.camera_pool.get_worker(cid or active_id)
             if worker and worker.latest_jpeg:
                 return worker.latest_jpeg, "image/jpeg"
+            if cached:
+                return cached[0], cached[1]
             return None, "image/jpeg"
 
         # Background camera: query CameraStreamPool worker
         worker = self.camera_pool.get_worker(cid)
-        if worker and worker.latest_jpeg:
-            self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
-            return worker.latest_jpeg, "image/jpeg"
+        if worker is None and self.running:
+            with self.lock:
+                cams = list(self.cfg.get("cameras") or [])
+            self.camera_pool.sync_cameras(cams)
+            worker = self.camera_pool.get_worker(cid)
+
+        if worker:
+            if worker.latest_jpeg:
+                self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
+                return worker.latest_jpeg, "image/jpeg"
+            # Allow brief moment for initial frame acquisition
+            for _ in range(8):
+                if worker.latest_jpeg:
+                    self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
+                    return worker.latest_jpeg, "image/jpeg"
+                time.sleep(0.05)
 
         cached = self._camera_frame_cache.get(cid)
-        if cached and (now - cached[2]) < 15.0:
+        if cached and (now - cached[2]) < 60.0:
             return cached[0], cached[1]
 
         stream_id = sanitize_stream_id(cid)
@@ -1385,7 +1411,7 @@ class LiveStreamEngine:
                 if c.get("id") == cid:
                     cam = dict(c)
                     break
-        if cam and cam.get("source"):
+        if cam and cam.get("source") is not None and str(cam.get("source")).strip() != "":
             src = cam["source"]
             try:
                 still = request_still(src, gateway=self.media, stream_id=stream_id, timeout=2.0)
@@ -1398,7 +1424,7 @@ class LiveStreamEngine:
             except Exception:
                 pass
 
-        if cached and (now - cached[2]) < 15.0:
+        if cached:
             return cached[0], cached[1]
         return None, "image/jpeg"
 
@@ -2411,7 +2437,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
         length = int(self.headers.get("Content-Length", 0) or 0)
-        if length > 40 * 1024 * 1024:
+        max_upload_size = 1024 * 1024 * 1024 if parsed.path == "/api/upload-video" else 40 * 1024 * 1024
+        if length > max_upload_size:
             self._send_json({"error": "Upload is too large."}, 413)
             return
         body = self.rfile.read(length) if length > 0 else b""
