@@ -23,11 +23,19 @@ _UNIX_ROOTS = {"home", "users", "tmp", "var", "opt", "media", "mnt", "data"}
 
 
 class FramePacket:
-    def __init__(self, frame: np.ndarray, timestamp: float, width: int, height: int):
+    def __init__(
+        self,
+        frame: np.ndarray,
+        timestamp: float,
+        width: int,
+        height: int,
+        jpeg: bytes | None = None,
+    ):
         self.frame = frame
         self.timestamp = timestamp
         self.width = width
         self.height = height
+        self.jpeg = jpeg
 
 
 class BaseCameraAdapter(ABC):

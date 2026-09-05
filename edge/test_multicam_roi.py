@@ -99,6 +99,30 @@ class TestMultiCamRoiTracking(unittest.TestCase):
         self.assertIn("cam-3", self.engine.active_roi_cameras)
         self.assertIn("cam-4", self.engine.active_roi_cameras)
 
+    def test_background_camera_freshness_when_stale_in_grid(self):
+        from adapters.base import FramePacket
+        import numpy as np
+
+        cam_cfg = {"id": "cam-2", "name": "Bay 2 Camera", "source": "rtsp://192.168.1.102/live"}
+        worker = CameraStreamWorker("cam-2", cam_cfg)
+        self.engine.camera_pool._workers["cam-2"] = worker
+
+        # Simulate stale cached JPEG
+        now = time.time()
+        worker.latest_jpeg = b"STALE_OLD_JPEG"
+        worker.latest_ts = now - 2.0
+
+        # Grabber has newer frame
+        fake_frame = np.zeros((10, 10, 3), dtype=np.uint8)
+        new_packet = FramePacket(fake_frame, now, 10, 10, jpeg=b"FRESH_NEW_JPEG")
+        worker.grabber.peek_latest_frame = lambda: new_packet
+
+        # get_camera_frame must return the fresh JPEG, not the 2.0s stale one
+        jpeg, ctype = self.engine.get_camera_frame("cam-2")
+        self.assertEqual(jpeg, b"FRESH_NEW_JPEG")
+        self.assertEqual(worker.latest_jpeg, b"FRESH_NEW_JPEG")
+        self.assertEqual(worker.latest_ts, now)
+
 
 if __name__ == "__main__":
     unittest.main()

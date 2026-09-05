@@ -11,6 +11,8 @@ edge/config.yaml
 *.pt
 edge/*.pt
 edge/models/*.onnx
+models/
+*.onnx
 edge/__pycache__/
 __pycache__/
 .venv

@@ -55,6 +55,8 @@ From the dashboard you can:
 4. Click **Connect Stream**.
 5. The machine learning pipeline (YOLO pose estimation, vehicle detection, and lift bay analytics) will immediately process the virtual camera feed as if it were a real physical camera!
 
+> **Note on Multi-Camera Concurrency**: Secondary camera streams (virtual RTSP, IP phone cameras, video files) stream smoothly in the multi-camera grid without freezing, even when another camera is actively tracking technicians in its ROI.
+
 ---
 
 ## Testing / Verification

@@ -14,6 +14,24 @@ from typing import Any, Optional
 
 from adapters.base import BaseCameraAdapter, FramePacket, safe_release
 
+import cv2
+
+
+def _orient_bgr(frame, rotate_deg, flip):
+    rot = int(rotate_deg or 0)
+    if rot == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif rot == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif rot == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    flp = str(flip or "none")
+    if flp in ("h", "horizontal"):
+        frame = cv2.flip(frame, 1)
+    elif flp in ("v", "vertical"):
+        frame = cv2.flip(frame, 0)
+    return frame
+
 
 class _AdapterReleaseQueue:
     """Serializes adapter.release() so camera switches do not spawn unbounded threads."""
@@ -65,6 +83,10 @@ class AsyncFrameGrabber:
         self.ingest_fps = 0.0
         self._ingest_count = 0
         self._ingest_t0 = time.time()
+        self.output_rotate = 0
+        self.output_flip = "none"
+        self._last_jpeg: bytes | None = None
+        self._last_jpeg_t = 0.0
 
     def start(self) -> None:
         with self._lock:
@@ -120,6 +142,8 @@ class AsyncFrameGrabber:
             self.connection_state = "CONNECTING"
             self.error = None
             self._ready.clear()
+            self._last_jpeg = None
+            self._last_jpeg_t = 0.0
         _RELEASE_QUEUE.submit(old_pending)
 
     def clear_source(self) -> None:
@@ -269,7 +293,25 @@ class AsyncFrameGrabber:
                 frame = packet.frame.copy()
             except Exception:
                 frame = packet.frame
-            published = FramePacket(frame, packet.timestamp, packet.width, packet.height)
+            jpeg = None
+            now_enc = time.time()
+            if now_enc - self._last_jpeg_t >= 0.09:
+                try:
+                    encoded_frame = frame
+                    rot = getattr(self, "output_rotate", 0) or 0
+                    flp = getattr(self, "output_flip", "none") or "none"
+                    if rot or str(flp) not in ("none", "", "0"):
+                        encoded_frame = _orient_bgr(frame, rot, flp)
+                    ok, buf = cv2.imencode(".jpg", encoded_frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                    if ok:
+                        jpeg = buf.tobytes()
+                        self._last_jpeg = jpeg
+                        self._last_jpeg_t = now_enc
+                except Exception:
+                    jpeg = self._last_jpeg
+            else:
+                jpeg = self._last_jpeg
+            published = FramePacket(frame, packet.timestamp, packet.width, packet.height, jpeg=jpeg)
             with self._lock:
                 if self.generation != active_generation:
                     continue

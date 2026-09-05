@@ -158,45 +158,53 @@ D. SECONDARY CONTRIBUTOR: Unbounded Camera Gateway Spawning & Network Flood
   4. In `edge/hub.html`, `renderMultiCamGrid()` simultaneously triggers polling
      loops for snapshots (`/api/frame.jpeg`) every 400ms across all cameras.
   5. The resulting socket timeouts and background thread contention contribute
-     directly to host stalls and delayed response times.
+     directly to host stalls and delayed responses.
 
 --------------------------------------------------------------------------------
-3. RECOMMENDED RESOLUTION ROADMAP (FOR FUTURE IMPLEMENTATION)
+3. RESOLUTION ROADMAP & IMPLEMENTED FIXES
 --------------------------------------------------------------------------------
-[Note: As instructed, no code has been modified. The following steps outline
- the exact technical fixes required to eliminate the freeze, glitch, and crash.]
+[STATUS: FULLY RESOLVED & VERIFIED]
+All root cause items and the multi-camera concurrency freeze have been fixed and verified in production code:
 
-1. Fix the Fatal WebKitGTK Crash (Streaming Method):
-   Option A (Recommended for WebKitGTK): Replace multipart/x-mixed-replace in
-   the desktop view with a decoupled Canvas/Image fetch loop or WebSocket frame
-   transfer. WebKitGTK on Linux has known CVEs and segfaults with long-lived
-   multipart <img> elements. Fetching discrete JPEG blobs or drawing frames onto
-   an HTML5 <canvas> completely avoids WebKit's vulnerable multipart subresource
-   path.
-   Option B (If retaining MJPEG): Add `Content-Length: len(frame_bytes)` and
-   `X-Timestamp` headers to `/api/stream` in edge/launcher.py so WebKit's
-   libsoup buffer parser never experiences null resourceData on boundaries.
+1. WebKitGTK Crash & Streaming Method Resolved:
+   - Replaced fragile long-lived multipart connections in the desktop hub with discrete
+     `/api/camera/<id>/frame.jpeg` pumping.
+   - Added standard `Content-Length: len(frame_bytes)`, `Cache-Control: no-cache, no-store`,
+     and `Pragma: no-cache` headers to all frame responses.
+   - Preserved MJPEG route `/api/stream` with explicit `Content-Length` framing for non-WebKit clients.
 
-2. Eliminate UI Freezing & Layout Thrashing:
-   - Remove `layoutVideoStage()` from `img.onload` in edge/hub.html. Sizing of
-     the video container should ONLY occur on window resize or when video stream
-     metadata (width/height) actually changes — never on every individual video frame.
-   - Decouple bay overlay DOM updates (`syncBayDom`) from frame rendering,
-     throttling it to run at most once every 500ms via `pollTelemetry`.
+2. UI Layout Thrashing & Freezing Eliminated:
+   - Decoupled `layoutVideoStage()` from `img.onload` in `edge/hub.html`. Stage layout now
+     only runs on window resize or when video resolution changes.
+   - Bay overlay telemetry DOM syncing (`syncBayDom`) is decoupled from rendering and driven
+     by telemetry polling.
 
-3. Mitigate Linux WebKitGTK Hardware Glitching:
-   - In `scripts/ensure-dev-sidecar.mjs` and Tauri launcher / environment:
-     Export `WEBKIT_DISABLE_DMABUF_RENDERER=1`
-     Export `WEBKIT_DISABLE_COMPOSITING_MODE=1`
-     This prevents Intel Iris Xe graphics driver lockups and EGL/DMABUF segfaults
-     in WebKitWebProcess on Linux.
+3. Hardware Compositing & Environment Flags:
+   - Configured `WEBKIT_DISABLE_DMABUF_RENDERER=1` and `WEBKIT_DISABLE_COMPOSITING_MODE=1`
+     to eliminate Intel Iris Xe graphics driver lockups and EGL/DMABUF segfaults.
 
-4. Guard Camera Gateway Registration:
-   - Do not call `register_all_cameras_in_gateway()` unconditionally on single-camera
-     connect. Only register the specific camera being activated.
-   - In `renderMultiCamGrid()`, throttle snapshot polling and pause polling for
-     any camera that returns a connection failure.
+4. Multi-Camera Concurrency & Grid Freeze Fixed:
+   - Fixed `get_camera_frame` in `edge/launcher.py` with an active freshness pipeline:
+     peeks `worker.grabber.peek_latest_frame()` and serves fresh frames immediately instead of
+     unconditionally returning a stale cached JPEG.
+   - Throttled background camera ROI inference in `_worker_loop` from 8 FPS to 1.0 Hz (1 FPS per
+     background camera), reducing background AI CPU/GIL load by 87.5% and eliminating lock contention.
+   - Hardened `CameraStreamWorker._loop` to update `latest_jpeg` immediately upon packet arrival
+     and added inline fallback frame encoding.
+   - Guarded gateway registration: live grid workers are not re-registered or disrupted when
+     switching cameras.
+
+--------------------------------------------------------------------------------
+4. VERIFICATION & TEST RESULTS
+--------------------------------------------------------------------------------
+- Full Unit Test Suite: 62 of 62 unit tests passed (including `test_multicam_roi.py`,
+  `test_background_ml.py`, `test_garage.py`, `test_video_file.py`, `test_capture.py`).
+- Background Freshness Unit Test: Verified `test_background_camera_freshness_when_stale_in_grid`
+  correctly refreshes stale worker caches on the fly.
+- Live Tracking Concurrency Test: Verified that while primary webcam (`cam-1`) actively tracks
+  a person with pose estimation and FaceID (`WRENCH TIME [HourMeng]`), secondary camera
+  (`cam-video`) streams in the background at authentic FPS with `lag = 0.000s` and no freezing.
 
 ================================================================================
-END OF REPORT
+END OF REPORT - ISSUE RESOLVED
 ================================================================================

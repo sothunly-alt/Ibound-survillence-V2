@@ -554,6 +554,8 @@ class CameraStreamWorker:
         self.is_active_ai: bool = False
         self._prev_gray: np.ndarray | None = None
         self._last_bg_eval: float = 0.0
+        self._bg_eval_pending: bool = False
+        self._bg_eval_frame: np.ndarray | None = None
 
     def update_cfg(self, new_cfg: dict[str, Any]) -> bool:
         """Update config. Reconnects adapter if source, credentials, or protocol changed."""
@@ -628,12 +630,6 @@ class CameraStreamWorker:
         last_packet_ts = 0.0
         while not self._stop_event.is_set():
             now = time.time()
-            # Keep encoding even when this camera is the AI spotlight.
-            # Skipping JPEG here made the selected tile depend on /api/frame.jpeg
-            # alone; combined with a go2rtc re-register on select, every RTSP
-            # grid tile froze while the laptop webcam kept moving.
-
-            # If grabber failed or lost adapter, attempt periodic reconnection
             if (
                 self.grabber.connection_state in ("FAILED", "STANDBY", "RECONNECTING")
                 or getattr(self.grabber, "_adapter", None) is None
@@ -644,51 +640,52 @@ class CameraStreamWorker:
 
             packet = self.grabber.peek_latest_frame()
             if packet is None:
-                packet = self.grabber.get_latest_frame(timeout=0.12)
-            if packet is not None and packet.frame is not None:
-                pkt_ts = float(getattr(packet, "timestamp", 0.0) or 0.0)
-                if pkt_ts and pkt_ts == last_packet_ts:
-                    time.sleep(0.04)
-                    continue
-                last_packet_ts = pkt_ts
-                rot = int(self.cfg.get("rotate") or 0)
-                flp = str(self.cfg.get("flip") or "none")
-                frame = packet.frame
-                if rot != 0 or flp != "none":
-                    frame = orient_frame(frame, rot, flp)
-
-                if (now - last_encode_time) >= 0.09:
-                    last_encode_time = now
-                    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
-                    if ok:
-                        data = buf.tobytes()
-                        with self._lock:
-                            self.latest_jpeg = data
-                            self.latest_ts = now
-                            self.latest_packet = packet
-
-                # Two-Stage Motion Gating for Background ML (~1 FPS)
-                ml_on = bool(self.cfg.get("ml_enabled", True))
-                if ml_on and self.eval_callback is not None and (now - self._last_bg_eval >= 1.0):
-                    try:
-                        small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
-                        if self._prev_gray is not None:
-                            diff = cv2.absdiff(self._prev_gray, small_gray)
-                            motion_score = float(cv2.mean(diff)[0])
-                        else:
-                            motion_score = 0.0
-                        self._prev_gray = small_gray
-                    except Exception:
-                        motion_score = 0.0
-
-                    if motion_score > 1.2:
-                        self._last_bg_eval = now
-                        try:
-                            self.eval_callback(self.camera_id, frame, self.cfg)
-                        except Exception as exc:
-                            print(f"[CameraStreamWorker:{self.camera_id}] Eval error: {exc}", flush=True)
-            else:
                 time.sleep(0.04)
+                continue
+            if packet.frame is None:
+                time.sleep(0.04)
+                continue
+            pkt_ts = float(getattr(packet, "timestamp", 0.0) or 0.0)
+            if pkt_ts and pkt_ts == last_packet_ts:
+                time.sleep(0.04)
+                continue
+            self.grabber.output_rotate = int(self.cfg.get("rotate") or 0)
+            self.grabber.output_flip = str(self.cfg.get("flip") or "none")
+            jpeg = getattr(packet, "jpeg", None)
+            if jpeg:
+                with self._lock:
+                    self.latest_jpeg = jpeg
+                    self.latest_ts = pkt_ts or now
+                    self.latest_packet = packet
+                last_packet_ts = pkt_ts
+            elif packet.frame is not None and (now - last_encode_time) >= 0.09:
+                try:
+                    rot = int(self.cfg.get("rotate") or 0)
+                    flp = str(self.cfg.get("flip") or "none")
+                    fr = packet.frame
+                    if rot or flp not in ("none", "", "0"):
+                        fr = orient_frame(fr, rot, flp)
+                    ok, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                    if ok:
+                        enc_jpeg = buf.tobytes()
+                        last_encode_time = now
+                        with self._lock:
+                            self.latest_jpeg = enc_jpeg
+                            self.latest_ts = pkt_ts or now
+                            self.latest_packet = packet
+                        last_packet_ts = pkt_ts
+                except Exception:
+                    pass
+
+            # Flag background ML for the engine thread. Do not call cv2 here —
+            # FFmpeg-backed cameras deadlock if the worker encodes while the
+            # grabber is reading.
+            ml_on = bool(self.cfg.get("ml_enabled", True))
+            if ml_on and not self.is_active_ai and (now - self._last_bg_eval >= 1.0):
+                self._last_bg_eval = now
+                self._bg_eval_frame = packet.frame
+                self._bg_eval_pending = True
+            time.sleep(0.04)
 
 
 class CameraStreamPool:
@@ -775,6 +772,7 @@ class LiveStreamEngine:
         self.latest_camera_event: dict[str, Any] | None = None
         self._bg_camera_state: dict[str, dict[str, Any]] = {}
         self.active_roi_cameras: dict[str, float] = {}
+        self._last_bg_roi_infer: dict[str, float] = {}
         self.media = Go2RtcManager()
         self.camera_pool = CameraStreamPool(
             gateway=self.media, eval_callback=self._evaluate_background_camera
@@ -1395,6 +1393,7 @@ class LiveStreamEngine:
             save_config(self.cfg)
             if not new_state:
                 self.active_roi_cameras.pop(cid, None)
+                self._last_bg_roi_infer.pop(cid, None)
         worker = self.camera_pool.get_worker(cid)
         if worker is not None:
             worker.update_cfg({"ml_enabled": new_state})
@@ -1568,27 +1567,58 @@ class LiveStreamEngine:
             self.camera_pool.sync_cameras(cams)
             worker = self.camera_pool.get_worker(cid)
 
-        if worker and worker.latest_jpeg:
-            self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts or now)
-            return worker.latest_jpeg, "image/jpeg"
-
         if worker:
             pkt = worker.grabber.peek_latest_frame()
+            pkt_ts = float(getattr(pkt, "timestamp", 0.0) or 0.0) if pkt is not None else 0.0
+            pkt_jpeg = getattr(pkt, "jpeg", None) if pkt is not None else None
+
+            # 1. Grabber has a newer pre-encoded JPEG frame
+            if pkt_jpeg and pkt_ts > (worker.latest_ts or 0.0):
+                with worker._lock:
+                    worker.latest_jpeg = pkt_jpeg
+                    worker.latest_ts = pkt_ts
+                    worker.latest_packet = pkt
+                self._camera_frame_cache[cid] = (pkt_jpeg, "image/jpeg", pkt_ts)
+                return pkt_jpeg, "image/jpeg"
+
+            # 2. Worker cache is fresh (within last 0.35s)
+            if worker.latest_jpeg and (now - (worker.latest_ts or 0.0)) <= 0.35:
+                self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
+                return worker.latest_jpeg, "image/jpeg"
+
+            # 3. Worker cache is stale, but grabber has a pre-encoded JPEG
+            if pkt_jpeg:
+                with worker._lock:
+                    worker.latest_jpeg = pkt_jpeg
+                    worker.latest_ts = pkt_ts or now
+                    worker.latest_packet = pkt
+                self._camera_frame_cache[cid] = (pkt_jpeg, "image/jpeg", worker.latest_ts)
+                return pkt_jpeg, "image/jpeg"
+
+            # 4. Fallback: encode raw frame from grabber if needed
             if pkt is not None and pkt.frame is not None:
-                rot = int(worker.cfg.get("rotate") or 0)
-                flp = str(worker.cfg.get("flip") or "none")
-                fr = pkt.frame
-                if rot != 0 or flp != "none":
-                    fr = orient_frame(fr, rot, flp)
-                ok, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 72])
-                if ok:
-                    data = buf.tobytes()
-                    with worker._lock:
-                        worker.latest_jpeg = data
-                        worker.latest_ts = now
-                        worker.latest_packet = pkt
-                    self._camera_frame_cache[cid] = (data, "image/jpeg", now)
-                    return data, "image/jpeg"
+                try:
+                    rot = int(worker.cfg.get("rotate") or 0)
+                    flp = str(worker.cfg.get("flip") or "none")
+                    fr = pkt.frame
+                    if rot or flp not in ("none", "", "0"):
+                        fr = orient_frame(fr, rot, flp)
+                    ok, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                    if ok:
+                        enc_jpeg = buf.tobytes()
+                        with worker._lock:
+                            worker.latest_jpeg = enc_jpeg
+                            worker.latest_ts = pkt_ts or now
+                            worker.latest_packet = pkt
+                        self._camera_frame_cache[cid] = (enc_jpeg, "image/jpeg", worker.latest_ts)
+                        return enc_jpeg, "image/jpeg"
+                except Exception:
+                    pass
+
+            # 5. Serve existing worker latest_jpeg if available
+            if worker.latest_jpeg:
+                self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts or now)
+                return worker.latest_jpeg, "image/jpeg"
 
         cached = self._camera_frame_cache.get(cid)
         if cached and (now - cached[2]) < 5.0:
@@ -1606,13 +1636,13 @@ class LiveStreamEngine:
 
     def _evaluate_background_camera(
         self, camera_id: str, frame: np.ndarray, cam_cfg: dict[str, Any]
-    ) -> None:
+    ) -> bool:
         if not cam_cfg.get("ml_enabled", True):
-            return
+            return True
         if self.model is None or not self.running:
-            return
+            return False
         if not self.infer_lock.acquire(blocking=False):
-            return
+            return False
         try:
             now = time.time()
             state = self._bg_camera_state.setdefault(
@@ -1741,6 +1771,37 @@ class LiveStreamEngine:
             print(f"[BackgroundML] Eval error on {camera_id}: {exc}", flush=True)
         finally:
             self.infer_lock.release()
+        return True
+
+    def _drain_background_evals(self) -> None:
+        """Run pending background-camera ML on the engine thread.
+
+        Camera JPEG workers only set a flag. YOLO stays on the thread that
+        loaded the model so grid encoding cannot deadlock inside predict().
+        """
+        if self.model is None or not self.running:
+            return
+        with self.camera_pool._lock:
+            workers = list(self.camera_pool._workers.values())
+        for worker in workers:
+            if worker.is_active_ai:
+                worker._bg_eval_pending = False
+                continue
+            if not getattr(worker, "_bg_eval_pending", False):
+                continue
+            frame = getattr(worker, "_bg_eval_frame", None)
+            if frame is None:
+                pkt = worker.latest_packet or worker.grabber.peek_latest_frame()
+                if pkt is None or pkt.frame is None:
+                    continue
+                frame = pkt.frame
+            ran = self._evaluate_background_camera(
+                worker.camera_id, frame, dict(worker.cfg)
+            )
+            if ran:
+                worker._bg_eval_pending = False
+                worker._bg_eval_frame = None
+                return
 
     def acknowledge_event(self, event_id: str | None = None) -> None:
         with self.lock:
@@ -2189,15 +2250,25 @@ class LiveStreamEngine:
                         for bg_cid in bg_cids:
                             if bg_cid == active_cid:
                                 continue
+                            if (now - self._last_bg_roi_infer.get(bg_cid, 0.0)) < 1.0:
+                                continue
+                            self._last_bg_roi_infer[bg_cid] = now
                             bg_worker = self.camera_pool.get_worker(bg_cid)
                             if bg_worker is None or not bg_worker.cfg.get("ml_enabled", True):
                                 self.active_roi_cameras.pop(bg_cid, None)
+                                self._last_bg_roi_infer.pop(bg_cid, None)
                                 continue
                             bg_pkt = bg_worker.grabber.peek_latest_frame()
                             if bg_pkt is None or bg_pkt.frame is None:
                                 bg_pkt = bg_worker.latest_packet
                             if bg_pkt is None or bg_pkt.frame is None:
                                 continue
+                            bg_pkt_jpeg = getattr(bg_pkt, "jpeg", None)
+                            if bg_pkt_jpeg and (bg_pkt.timestamp or now) > (bg_worker.latest_ts or 0.0):
+                                with bg_worker._lock:
+                                    bg_worker.latest_jpeg = bg_pkt_jpeg
+                                    bg_worker.latest_ts = bg_pkt.timestamp or now
+                                    bg_worker.latest_packet = bg_pkt
                             bg_frame = bg_pkt.frame
                             bg_h, bg_w = bg_frame.shape[:2]
                             bg_bays = bg_worker.cfg.get("bays") or []
@@ -2232,6 +2303,7 @@ class LiveStreamEngine:
                                     last_seen = self.active_roi_cameras.get(bg_cid, 0.0)
                                     if (now - last_seen) >= 3.0:
                                         self.active_roi_cameras.pop(bg_cid, None)
+                                        self._last_bg_roi_infer.pop(bg_cid, None)
                                         print(f"[MultiCamROI] Person exited ROI on {bg_cid}. Remaining active: {list(self.active_roi_cameras.keys())}", flush=True)
                             except Exception as ex:
                                 print(f"[MultiCamROI] Worker infer error on {bg_cid}: {ex}", flush=True)
@@ -2306,6 +2378,7 @@ class LiveStreamEngine:
                         active_worker.latest_jpeg = jpeg_bytes
                         active_worker.latest_ts = now
                         active_worker.latest_packet = packet
+            self._drain_background_evals()
 
         if self.conn is not None:
             self.conn.close()

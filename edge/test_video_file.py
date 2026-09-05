@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -373,6 +374,66 @@ def test_worker_keeps_encoding_while_active_ai() -> None:
         worker.stop()
 
 
+def test_worker_keeps_encoding_when_eval_would_block() -> None:
+    from adapters.base import BaseCameraAdapter, FramePacket
+    from launcher import CameraStreamWorker
+
+    class PulseAdapter(BaseCameraAdapter):
+        def __init__(self):
+            self.error = None
+            self._n = 0
+            self._ok = False
+
+        def connect(self) -> bool:
+            self._ok = True
+            return True
+
+        def read_frame(self):
+            if not self._ok:
+                return None
+            time.sleep(0.03)
+            self._n += 1
+            frame = np.full((16, 16, 3), self._n % 255, dtype=np.uint8)
+            return FramePacket(frame, time.time(), 16, 16)
+
+        def release(self) -> None:
+            self._ok = False
+
+        def is_connected(self) -> bool:
+            return self._ok
+
+    eval_from = []
+
+    def blocking_eval(*_a, **_k):
+        eval_from.append(threading.current_thread().name)
+        time.sleep(8)
+
+    worker = CameraStreamWorker(
+        "cam_file",
+        {"id": "cam_file", "source": "/tmp/demo.mp4", "protocol": "video", "ml_enabled": True},
+        eval_callback=blocking_eval,
+    )
+    pulse = PulseAdapter()
+    worker._build_adapter = lambda: pulse
+    worker.is_active_ai = False
+    worker.start()
+    try:
+        deadline = time.time() + 3.0
+        jpegs = []
+        while time.time() < deadline:
+            if worker.latest_jpeg:
+                jpegs.append(worker.latest_jpeg)
+            if len(jpegs) >= 4 and jpegs[0] != jpegs[-1]:
+                break
+            time.sleep(0.05)
+        assert worker.latest_jpeg, "background worker must keep publishing JPEG frames"
+        assert len(jpegs) >= 2 and jpegs[0] != jpegs[-1], "JPEG cache must keep changing without inline YOLO"
+        assert not eval_from, f"YOLO eval must not run on the JPEG worker thread: {eval_from}"
+        print("ok CameraStreamWorker encodes JPEG without blocking on eval_callback")
+    finally:
+        worker.stop()
+
+
 def test_camera_stream_route_and_background_frame() -> None:
     from launcher import DashboardRequestHandler, GLOBAL_ENGINE
 
@@ -432,5 +493,6 @@ if __name__ == "__main__":
     test_launcher_video_api()
     test_camera_stream_pool_sync_and_webcam_zero()
     test_worker_keeps_encoding_while_active_ai()
+    test_worker_keeps_encoding_when_eval_would_block()
     test_camera_stream_route_and_background_frame()
     print("\nALL VIDEO FILE STREAMING TESTS PASSED!")
