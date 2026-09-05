@@ -1,0 +1,202 @@
+================================================================================
+INBOUND SURVEILLANCE - CAMERA CONNECTION ROOT CAUSE INVESTIGATION REPORT
+================================================================================
+Date & Time: 2026-09-04 (Local Time)
+Target Platform: Linux (Ubuntu 24.04 LTS / Noble Numbat, Kernel x86_64)
+Hardware: Intel TigerLake-LP GT2 [Iris Xe Graphics], Intel Core i5
+Application Stack: Tauri v2 (Rust) + WebKit2GTK 4.1 + Python 3.12 Engine + go2rtc
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+The reported failure behavior ("whatever cameras I try to connect to, it just
+freezes, glitches, and then crashes") is caused by a chain of three distinct,
+interacting issues spanning the Frontend, the Streaming Protocol, and the
+Linux WebKitGTK Webview runtime:
+
+1. THE FREEZE (UI Main Thread Starvation & Layout Thrashing):
+   In edge/hub.html, the live MJPEG stream image element (<img id="live-camera-feed">)
+   executes `img.onload = function() { layoutVideoStage(); }` on EVERY single
+   received frame (15–25 FPS). Each call performs synchronous DOM layout reads
+   (clientWidth/clientHeight) and forces inline style recalculations on all bay
+   DOM overlays (syncBayDom). This locks up the browser JavaScript event loop,
+   causing severe UI unresponsiveness and freezing.
+
+2. THE GLITCH (Multipart Boundary Framing & WebKitGTK Hardware Compositing):
+   In edge/launcher.py (/api/stream), multipart MJPEG frames are written
+   without the standard HTTP `Content-Length` header. As a result, libsoup3 and
+   WebKitGTK have to heuristically scan TCP chunks for multipart delimiters.
+   Combined with WebKitGTK 2.42+/2.52+ known DMABUF / EGL hardware compositing
+   instabilities on Intel Iris Xe graphics under Wayland/X11, frames are
+   frequently torn, dropped, and visually glitched.
+
+3. THE FATAL CRASH (WebKitGTK Null Pointer Dereference Segfault):
+   A fatal segmentation fault occurs directly inside WebKit2GTK:
+   "kernel: WebKitWebProces[693835]: segfault at 38 ip 00007b2ff2d6e974 in libwebkit2gtk-4.1.so.0.21.10"
+   Disassembly reveals that instruction `cmpb $0x0, 0x38(%rsi)` at offset 0x316e974
+   attempts to dereference an offset of 0x38 from a NULL pointer (%rsi = 0).
+   This happens in WebKit's `SubresourceLoader.cpp` (around line 503) during
+   multipart/x-mixed-replace stream handling when `resourceData()` is null
+   (e.g., when a stream connects, resets, or receives rapid boundary headers).
+   When WebKitWebProcess segfaults, the Tauri webview window is destroyed,
+   triggering Tauri's window close handler in src-tauri/src/lib.rs, which
+   executes `kill_engine()` and terminates the entire application.
+
+--------------------------------------------------------------------------------
+2. DETAILED ROOT CAUSE ANALYSIS
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+A. THE CRASH: WebKit2GTK Segfault (SubresourceLoader & SharedBuffer)
+--------------------------------------------------------------------------------
+- Log Evidence from System Journal (captured during test run at 21:39:18):
+    kernel: WebKitWebProces[693835]: segfault at 38 ip 00007b2ff2d6e974 \
+    sp 00007fff804211e0 error 4 in libwebkit2gtk-4.1.so.0.21.10[316e974,7b2ff02f5000+3ba3000]
+
+- Binary Inspection & Disassembly:
+  File: /usr/lib/x86_64-linux-gnu/libwebkit2gtk-4.1.so.0.21.10
+  Version: 2.52.6-0ubuntu0.24.04.1
+  Faulting Instruction:
+    0x316e974: cmpb $0x0, 0x38(%rsi)
+  Caller stack:
+    0x2f1b337 in Source/WebCore/loader/SubresourceLoader.cpp:503
+
+- Upstream WebKit Code at Failure:
+  In SubresourceLoader::didReceiveResponse():
+    if (m_loadingMultipartContent) {
+        if (!m_previousPartResponse.isNull()) {
+            if (resource) {
+                resource->responseReceived(WTF::move(m_previousPartResponse));
+                resource->finishLoading(protect(resourceData())->copy().ptr(), { });
+            }
+        }
+        clearResourceData();
+        m_previousPartResponse = response;
+    }
+
+- Why it triggers on camera connection:
+  Whenever ANY camera connects or reconnects:
+  1. `connectAndStreamCamera()` in edge/hub.html calls `detachLiveFeed()`,
+     which alters or clears `img.src`.
+  2. It then immediately calls `showAnnotatedMjpeg()`, setting `img.src = '/api/stream?t=' + Date.now()`.
+  3. The browser cancels the in-flight subresource loader and creates a new one.
+  4. In WebKitGTK, when a multipart/x-mixed-replace response is received or
+     cancelled while headers arrive, `resourceData()` is NULL.
+  5. `protect(resourceData())->copy()` passes a NULL pointer (%rsi=0) into
+     SharedBuffer::copy(), which tries to read %rsi + 0x38.
+  6. The process crashes immediately with a SIGSEGV at address 0x38.
+  7. Tauri catches `WindowEvent::Destroyed` (src-tauri/src/lib.rs:142) and
+     calls `kill_engine()`, terminating Python and shutting down the app.
+
+--------------------------------------------------------------------------------
+B. THE FREEZE: Severe Main-Thread Layout Thrashing in edge/hub.html
+--------------------------------------------------------------------------------
+- Location: edge/hub.html (lines 1065, 2474, 3002–3060)
+- Mechanism:
+  1. In `showAnnotatedMjpeg()`:
+       img.onload = function () {
+         layoutVideoStage();
+       };
+  2. For a multipart/x-mixed-replace stream running at 15–25 FPS, the browser's
+     `<img>` element fires the `onload` event for EVERY SINGLE incoming frame.
+  3. Every 40–60 milliseconds, JavaScript executes `layoutVideoStage()`:
+     - Calls `visibleFeedMaxHeight(workspace)` (reads DOM heights).
+     - Modifies `viewport.style.height`, `stage.style.width`, `stage.style.height`.
+     - Calls `layoutRoiOverlay()`.
+     - Calls `syncBayDom()`, which iterates over all configured garage bays and
+       re-computes DOM elements, modifying inline CSS percentage styles.
+  4. At the same time, `pollTelemetry()` runs every 600ms and also calls `layoutVideoStage()`.
+  5. Reading layout properties right after modifying DOM styles forces synchronous
+     reflow (Layout Thrashing) 20+ times per second. The browser JavaScript thread
+     is 100% saturated with DOM recalculations, rendering UI buttons, sliders,
+     and tabs completely frozen.
+
+--------------------------------------------------------------------------------
+C. THE GLITCH: Missing Content-Length & WebKitGTK DMABUF Hardware Renderer
+--------------------------------------------------------------------------------
+- Location: edge/launcher.py (lines 1914–1918)
+- Protocol Defect:
+  The Python MJPEG endpoint writes:
+    self.wfile.write(b"--frame\r\n")
+    self.wfile.write(b"Content-Type: image/jpeg\r\n\r\n")
+    self.wfile.write(frame_bytes)
+    self.wfile.write(b"\r\n")
+  Standard HTTP multipart streams require:
+    --frame\r\n
+    Content-Type: image/jpeg\r\n
+    Content-Length: <byte_count>\r\n\r\n
+    <binary jpeg payload>\r\n
+  Without `Content-Length`:
+  - WebKit's network engine (libsoup3) cannot predict frame boundaries and must
+    parse TCP stream buffers on the fly.
+  - If a TCP packet split occurs across boundaries, the image chunk is rendered
+    partially, resulting in visible tearing, gray flashes, and glitching.
+  - It also drastically increases the likelihood of `resourceData()` being empty
+    when the next `--frame` boundary is encountered.
+
+- Hardware Acceleration Conflict:
+  - System GPU: Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]
+  - OS / Display: Ubuntu 24.04 on Wayland
+  - WebKitGTK 2.42+ on Linux uses the DMABUF renderer by default for hardware
+    compositing. On Intel Iris Xe graphics under Wayland, DMABUF buffer exchanges
+    frequently produce GPU buffer synchronization errors (logged concurrently in
+    system journal: `vaEndPicture failed, VA error: internal decoding error`).
+  - This hardware compositing defect manifests as UI flickering and glitching
+    right before the WebProcess terminates.
+
+--------------------------------------------------------------------------------
+D. SECONDARY CONTRIBUTOR: Unbounded Camera Gateway Spawning & Network Flood
+--------------------------------------------------------------------------------
+- Location: edge/launcher.py (line 614) & edge/hub.html (lines 1619–1660)
+- Mechanism:
+  1. When connecting to ANY camera in `connect_camera()`, line 614 starts:
+       threading.Thread(target=self.register_all_cameras_in_gateway, daemon=True).start()
+  2. This instructs go2rtc to simultaneously dial every camera saved in `config.yaml`,
+     including offline devices (e.g. `cam-php002996` at 192.168.100.99:554).
+  3. In `edge/go2rtc.log`, go2rtc is seen continuously throwing:
+       `connect: no route to host` / `dial tcp: connection refused`
+  4. In `edge/hub.html`, `renderMultiCamGrid()` simultaneously triggers polling
+     loops for snapshots (`/api/frame.jpeg`) every 400ms across all cameras.
+  5. The resulting socket timeouts and background thread contention contribute
+     directly to host stalls and delayed response times.
+
+--------------------------------------------------------------------------------
+3. RECOMMENDED RESOLUTION ROADMAP (FOR FUTURE IMPLEMENTATION)
+--------------------------------------------------------------------------------
+[Note: As instructed, no code has been modified. The following steps outline
+ the exact technical fixes required to eliminate the freeze, glitch, and crash.]
+
+1. Fix the Fatal WebKitGTK Crash (Streaming Method):
+   Option A (Recommended for WebKitGTK): Replace multipart/x-mixed-replace in
+   the desktop view with a decoupled Canvas/Image fetch loop or WebSocket frame
+   transfer. WebKitGTK on Linux has known CVEs and segfaults with long-lived
+   multipart <img> elements. Fetching discrete JPEG blobs or drawing frames onto
+   an HTML5 <canvas> completely avoids WebKit's vulnerable multipart subresource
+   path.
+   Option B (If retaining MJPEG): Add `Content-Length: len(frame_bytes)` and
+   `X-Timestamp` headers to `/api/stream` in edge/launcher.py so WebKit's
+   libsoup buffer parser never experiences null resourceData on boundaries.
+
+2. Eliminate UI Freezing & Layout Thrashing:
+   - Remove `layoutVideoStage()` from `img.onload` in edge/hub.html. Sizing of
+     the video container should ONLY occur on window resize or when video stream
+     metadata (width/height) actually changes — never on every individual video frame.
+   - Decouple bay overlay DOM updates (`syncBayDom`) from frame rendering,
+     throttling it to run at most once every 500ms via `pollTelemetry`.
+
+3. Mitigate Linux WebKitGTK Hardware Glitching:
+   - In `scripts/ensure-dev-sidecar.mjs` and Tauri launcher / environment:
+     Export `WEBKIT_DISABLE_DMABUF_RENDERER=1`
+     Export `WEBKIT_DISABLE_COMPOSITING_MODE=1`
+     This prevents Intel Iris Xe graphics driver lockups and EGL/DMABUF segfaults
+     in WebKitWebProcess on Linux.
+
+4. Guard Camera Gateway Registration:
+   - Do not call `register_all_cameras_in_gateway()` unconditionally on single-camera
+     connect. Only register the specific camera being activated.
+   - In `renderMultiCamGrid()`, throttle snapshot polling and pause polling for
+     any camera that returns a connection failure.
+
+================================================================================
+END OF REPORT
+================================================================================
