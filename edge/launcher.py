@@ -1371,7 +1371,7 @@ class LiveStreamEngine:
 
         # Background camera: query CameraStreamPool worker
         worker = self.camera_pool.get_worker(cid)
-        if worker is None and self.running:
+        if worker is None:
             with self.lock:
                 cams = list(self.cfg.get("cameras") or [])
             self.camera_pool.sync_cameras(cams)
@@ -2346,9 +2346,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/frame.jpeg" or parsed.path.startswith("/api/camera/"):
             cam_id = None
             if parsed.path.startswith("/api/camera/"):
-                parts = parsed.path.strip("/").split("/")
-                if len(parts) >= 2:
-                    cam_id = parts[1]
+                parts = [p for p in parsed.path.strip("/").split("/") if p]
+                if len(parts) >= 3 and parts[2] != "frame.jpeg":
+                    cam_id = urllib.parse.unquote(parts[2])
+                elif len(parts) >= 2 and parts[1] not in ("camera", "frame.jpeg"):
+                    cam_id = urllib.parse.unquote(parts[1])
             if not cam_id and parsed.query:
                 q = dict(urllib.parse.parse_qsl(parsed.query))
                 cam_id = q.get("camera_id") or q.get("src") or q.get("id")

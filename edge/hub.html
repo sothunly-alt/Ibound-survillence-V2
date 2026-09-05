@@ -147,6 +147,32 @@
       height: auto;
       flex: 0 0 auto;
     }
+    /* Multi-camera grid expands viewport to maximum screen space, keeping
+       connection settings scrollable below or collapsible. */
+    #workspace.is-grid-mode #feed-column {
+      flex: 1 0 auto;
+      min-height: 0;
+    }
+    #workspace.is-grid-mode #video-viewport {
+      flex: 1 0 auto;
+      width: 100%;
+      min-height: max(560px, calc(100dvh - 12rem));
+      height: calc(100dvh - 12rem);
+    }
+    #workspace.is-grid-mode #multi-cam-grid {
+      width: 100%;
+      height: 100%;
+    }
+    #workspace.is-grid-mode #config-panel {
+      width: 100%;
+      max-height: none;
+      height: auto;
+      flex: 0 0 auto;
+    }
+    #workspace.is-grid-mode.is-maximized #video-viewport {
+      min-height: max(680px, calc(100dvh - 7.5rem));
+      height: calc(100dvh - 7.5rem);
+    }
     #video-stage {
       position: relative;
       max-width: 100%;
@@ -415,6 +441,14 @@
               <option value="3x3">3x3 (9-Cam)</option>
               <option value="4x4">4x4 (16-Cam)</option>
             </select>
+            <button id="btn-grid-fit" type="button" class="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors" title="Toggle aspect ratio: Fit (100% view) vs Stretch (fill box)" onclick="toggleGridFit()">
+              <span class="material-symbols-outlined text-[15px]">fit_screen</span>
+              <span id="label-grid-fit">Fit</span>
+            </button>
+            <button id="btn-toggle-config" type="button" class="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors" title="Collapse / Expand Settings Panel for maximum grid size" onclick="toggleConfigPanel()">
+              <span class="material-symbols-outlined text-[15px]" id="icon-toggle-config">expand_more</span>
+              <span id="label-toggle-config">Hide Settings</span>
+            </button>
           </div>
         </div>
 
@@ -1856,6 +1890,40 @@
       }
     }
 
+    let gridFitMode = 'contain'; // 'contain' | 'fill'
+    function toggleGridFit() {
+      gridFitMode = (gridFitMode === 'contain') ? 'fill' : 'contain';
+      const label = document.getElementById('label-grid-fit');
+      if (label) {
+        label.textContent = (gridFitMode === 'fill') ? 'Stretch' : 'Fit';
+      }
+      const grid = document.getElementById('multi-cam-grid');
+      if (grid) {
+        grid.querySelectorAll('.grid-cam-tile img').forEach((img) => {
+          img.style.objectFit = gridFitMode;
+        });
+      }
+    }
+
+    function toggleConfigPanel() {
+      const panel = document.getElementById('config-panel');
+      const icon = document.getElementById('icon-toggle-config');
+      const label = document.getElementById('label-toggle-config');
+      const workspace = document.getElementById('workspace');
+      if (!panel) return;
+      const isHidden = panel.classList.toggle('hidden');
+      if (workspace) {
+        workspace.classList.toggle('is-maximized', isHidden);
+      }
+      if (icon) icon.textContent = isHidden ? 'expand_less' : 'expand_more';
+      if (label) label.textContent = isHidden ? 'Show Settings' : 'Hide Settings';
+      if (currentLayoutMode === 'grid') {
+        renderMultiCamGrid();
+      } else {
+        requestAnimationFrame(layoutVideoStage);
+      }
+    }
+
     function setLayoutMode(mode) {
       currentLayoutMode = mode;
       const btnSingle = document.getElementById('btn-layout-single');
@@ -1866,9 +1934,14 @@
       const clockPanel = document.getElementById('overlay-clock-panel');
       const overlayCam = document.getElementById('overlay-cam');
       const overlayBadges = document.getElementById('overlay-protocol');
+      const workspace = document.getElementById('workspace');
 
       if (mode === 'grid' && cameras.length > 1) {
         clearNativeFeedLayout();
+        if (workspace) {
+          workspace.classList.remove('is-native-feed');
+          workspace.classList.add('is-grid-mode');
+        }
         const viewport = document.getElementById('video-viewport');
         if (viewport) {
           viewport.style.height = '';
@@ -1887,6 +1960,9 @@
         }
       } else {
         currentLayoutMode = 'single';
+        if (workspace) {
+          workspace.classList.remove('is-grid-mode');
+        }
         if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 bg-primary text-black transition-colors';
         if (btnGrid) btnGrid.className = 'px-2.5 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors';
         if (gridStage) gridStage.style.display = 'none';
@@ -1984,11 +2060,12 @@
           img.style.height = '100%';
           img.style.maxWidth = '100%';
           img.style.maxHeight = '100%';
-          img.style.objectFit = 'contain';
-          img.style.display = 'block';
+          img.style.objectFit = gridFitMode;
+          img.style.display = 'none';
 
           const fallback = document.createElement('div');
           fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
+          fallback.style.display = 'flex';
           fallback.innerHTML = `
             <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
             <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
@@ -2017,10 +2094,8 @@
 
           img.onerror = () => {
             failCount += 1;
-            if (failCount >= 8) {
-              img.style.display = 'none';
-              fallback.style.display = 'flex';
-            }
+            img.style.display = 'none';
+            fallback.style.display = 'flex';
             const backoff = Math.min(2000, 350 + failCount * 200);
             timer = setTimeout(poll, backoff);
           };
@@ -2060,6 +2135,10 @@
           tile.style.height = '100%';
           tile.style.minWidth = '0';
           tile.style.minHeight = '0';
+          const existingImg = tile.querySelector('img');
+          if (existingImg) {
+            existingImg.style.objectFit = gridFitMode;
+          }
           const badgeDot = tile.querySelector('.cam-badge-dot');
           if (badgeDot) {
             badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}`;
@@ -3598,7 +3677,12 @@
     function clearNativeFeedLayout() {
       const workspace = document.getElementById('workspace');
       const viewport = document.getElementById('video-viewport');
-      if (workspace) workspace.classList.remove('is-native-feed');
+      if (workspace) {
+        workspace.classList.remove('is-native-feed');
+        if (currentLayoutMode !== 'grid') {
+          workspace.classList.remove('is-grid-mode');
+        }
+      }
       if (viewport) viewport.style.height = '';
       lastLayoutKey = '';
     }

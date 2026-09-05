@@ -324,6 +324,56 @@ def test_camera_stream_pool_sync_and_webcam_zero() -> None:
     print("ok CameraStreamPool webcam 0 and concurrent workers test")
 
 
+def test_camera_stream_route_and_background_frame() -> None:
+    from launcher import DashboardRequestHandler, GLOBAL_ENGINE
+
+    class StreamTestHandler(DashboardRequestHandler):
+        def __init__(self, method: str, path: str, headers: dict | None = None, body: bytes = b""):
+            self.command = method
+            self.path = path
+            self.headers = headers or {}
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.response_status = None
+            self.response_headers = {}
+
+        def send_response(self, code: int, message: str | None = None):
+            self.response_status = code
+
+        def send_header(self, keyword: str, value: str):
+            self.response_headers[keyword] = value
+
+        def end_headers(self):
+            pass
+
+    # Populate cache for a specific background camera
+    fake_frame = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xff\xdb"
+    cid = "test_phone_cam"
+    GLOBAL_ENGINE._camera_frame_cache[cid] = (fake_frame, "image/jpeg", time.time())
+
+    # Request /api/camera/test_phone_cam/frame.jpeg
+    handler = StreamTestHandler("GET", f"/api/camera/{cid}/frame.jpeg")
+    handler.do_GET()
+
+    assert handler.response_status == 200, f"Expected 200, got {handler.response_status}"
+    assert handler.wfile.getvalue() == fake_frame
+    assert handler.response_headers.get("Content-Type") == "image/jpeg"
+
+    # Also test URL-encoded camera ID
+    cid_encoded = "cam%20space"
+    GLOBAL_ENGINE._camera_frame_cache["cam space"] = (fake_frame, "image/jpeg", time.time())
+    handler_enc = StreamTestHandler("GET", f"/api/camera/{cid_encoded}/frame.jpeg")
+    handler_enc.do_GET()
+    assert handler_enc.response_status == 200
+    assert handler_enc.wfile.getvalue() == fake_frame
+
+    # Request for non-existent camera should return 204
+    handler_none = StreamTestHandler("GET", "/api/camera/non_existent_camera_id/frame.jpeg")
+    handler_none.do_GET()
+    assert handler_none.response_status == 204
+    print("ok /api/camera/<id>/frame.jpeg background camera stream route")
+
+
 if __name__ == "__main__":
     test_path_resolution()
     test_routing_and_gateway_bypass()
@@ -332,4 +382,5 @@ if __name__ == "__main__":
     test_async_frame_grabber_integration()
     test_launcher_video_api()
     test_camera_stream_pool_sync_and_webcam_zero()
+    test_camera_stream_route_and_background_frame()
     print("\nALL VIDEO FILE STREAMING TESTS PASSED!")
