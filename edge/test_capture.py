@@ -306,6 +306,31 @@ def test_request_still_uses_gateway_jpeg() -> None:
     print("ok request_still jpeg")
 
 
+def test_phone_http_adapter_connect_and_read() -> None:
+    from unittest.mock import MagicMock, patch
+    from adapters.phone_http import HttpMjpegCapture, PhoneHttpAdapter
+
+    # Test HttpMjpegCapture creation and time reference
+    with patch("requests.Session.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"Content-Type": "image/jpeg"}
+        mock_resp.iter_content = MagicMock(return_value=iter([]))
+        mock_get.return_value = mock_resp
+
+        cap = HttpMjpegCapture("http://192.168.1.50:8080/video")
+        assert cap.isOpened() is True
+        assert hasattr(cap, "_last_connect_try")
+        assert isinstance(cap._last_connect_try, float)
+
+        adapter = PhoneHttpAdapter("http://192.168.1.50:8080/video")
+        with patch.object(adapter, "connect", return_value=True):
+            adapter._cap = cap
+            # Ensure read_frame runs without NameError: name 'time' is not defined
+            _ = adapter.read_frame()
+    print("ok phone_http adapter connect and read")
+
+
 if __name__ == "__main__":
     test_create_adapter_routing()
     test_latest_frame_does_not_accumulate_lag()
@@ -315,4 +340,5 @@ if __name__ == "__main__":
     test_failed_connect_does_not_leave_adapter()
     test_rapid_switch_ten_times_no_deadlock()
     test_request_still_uses_gateway_jpeg()
+    test_phone_http_adapter_connect_and_read()
     print("all capture tests passed")

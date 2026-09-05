@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import urllib.parse
 from typing import Any, Optional
 
@@ -98,8 +99,7 @@ class HttpMjpegCapture:
             pass
 
     def read(self) -> tuple[bool, Any]:
-        import time as _t
-        now = _t.time()
+        now = time.time()
         if not self._opened:
             if (now - getattr(self, "_last_connect_try", 0.0)) >= 2.0:
                 self._last_connect_try = now
@@ -116,7 +116,7 @@ class HttpMjpegCapture:
         except Exception:
             self._close_body()
             self._opened = False
-            self._last_connect_try = _t.time()
+            self._last_connect_try = time.time()
             if self._connect() is None:
                 self._opened = True
                 try:
@@ -287,8 +287,7 @@ class PhoneHttpAdapter(BaseCameraAdapter):
             self._pending_first = None
             return packet_from_bgr(frame)
         if self._cap is None or not self._cap.isOpened():
-            import time as _t
-            now = _t.time()
+            now = time.time()
             if (now - getattr(self, "_last_adapter_reconnect", 0.0)) >= 2.5:
                 self._last_adapter_reconnect = now
                 self.connect()

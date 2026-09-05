@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any, Optional
 
 from adapters.base import (
@@ -104,8 +105,7 @@ class GatewayAdapter(BaseCameraAdapter):
         return True
 
     def read_frame(self) -> Optional[FramePacket]:
-        import time as _t
-        now = _t.time()
+        now = time.time()
         if self._inner is None or not self._inner.is_connected():
             if (now - getattr(self, "_last_gw_reconnect", 0.0)) >= 2.5:
                 self._last_gw_reconnect = now
