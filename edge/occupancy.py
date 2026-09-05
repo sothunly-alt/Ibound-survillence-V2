@@ -639,7 +639,9 @@ class BaySnapshot:
             "badge": bay_badge(
                 self.state,
                 self.mechanic_name,
-                self.wrench_time_today,
+                self.technicians_times[self.mechanic_name]
+                if (self.mechanic_name and self.technicians_times and self.mechanic_name in self.technicians_times)
+                else (self.wrench_seconds if (self.wrench_seconds > 0.0 or not self.wrench_time_today) else self.wrench_time_today),
                 self.technicians_times,
                 self.queue_seconds,
                 not_working_reason=self.not_working_reason,

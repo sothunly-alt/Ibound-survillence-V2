@@ -287,6 +287,12 @@
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      flex: 1;
+      min-height: 0;
+      overflow-x: clip;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-bottom: 2rem;
     }
     .identity-card { transition: border-color 0.15s ease, background 0.15s ease; }
     .identity-card:hover { border-color: #00FF66; background: #1C1C1C; box-shadow: 0 0 12px rgba(11, 131, 58, 0.35); }
@@ -544,7 +550,7 @@
               <input id="source-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" value="0" placeholder="0, rtsp://…, or http://PHONE_IP:8080/video"/>
               <p id="source-hint" class="text-xs text-on-surface-variant leading-relaxed"></p>
             </div>
-            <div id="video-upload-wrap" class="flex flex-col gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container">
+            <div id="video-upload-wrap" class="flex flex-col gap-2 p-3 rounded-lg border border-outline-variant bg-surface-container hidden">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-semibold text-on-surface flex items-center gap-1.5">
                   <span class="material-symbols-outlined text-[16px] text-primary">upload_file</span>
@@ -736,7 +742,7 @@
     </div>
 
     <footer class="flex justify-between items-center px-container-padding h-8 bg-surface-container-lowest border-t border-outline-variant shrink-0 z-10 w-full gap-4">
-      <div class="font-mono-data text-mono-data text-primary truncate">
+      <div id="telem-footer-stats" class="font-mono-data text-mono-data text-primary truncate">
         FPS: <span id="telem-fps">—</span> | Ingest: <span id="telem-ingest-fps">—</span> | Infer: <span id="telem-infer-ms">—</span> | Protocol: <span id="telem-protocol">—</span> | Main: <span id="telem-main-stream">—</span> | Detections: <span id="telem-people">—</span> | Identified: <span id="telem-identities">—</span> | Stream Health: <span id="telem-health">Standby</span>
         <span class="text-on-surface-variant"> | Floor <span id="telem-status">STANDBY</span> · Bays <span id="telem-elapsed">—</span></span>
       </div>
@@ -872,6 +878,10 @@
       document.getElementById('workspace').classList.toggle('hidden', name === 'identity' || name === 'scorecards');
       document.getElementById('identity-workspace').classList.toggle('hidden', name !== 'identity');
       document.getElementById('scorecard-workspace').classList.toggle('hidden', name !== 'scorecards');
+      const telemStats = document.getElementById('telem-footer-stats');
+      if (telemStats) {
+        telemStats.style.visibility = (name === 'identity' || name === 'scorecards') ? 'hidden' : 'visible';
+      }
       if (name === 'identity') {
         if (identityView === 'detail' && identityName) openIdentity(identityName);
         else showIdentityList();
@@ -1524,6 +1534,7 @@
       if (mainWrap) mainWrap.classList.toggle('hidden', tab === 'webcam' || tab === 'video');
       const videoUploadWrap = document.getElementById('video-upload-wrap');
       if (videoUploadWrap) {
+        videoUploadWrap.classList.toggle('hidden', tab !== 'video');
         videoUploadWrap.classList.toggle('ring-1', tab === 'video');
         videoUploadWrap.classList.toggle('ring-primary', tab === 'video');
       }
@@ -1835,7 +1846,11 @@
         nameEl.textContent = cam.name;
         const statusEl = document.createElement('p');
         statusEl.dataset.camStatus = cam.id;
-        if (cam.id === activeCameraId && isStreamActive) {
+        const isClosed = cam.enabled === false;
+        if (isClosed) {
+          statusEl.className = 'font-mono-data text-mono-data text-amber-400';
+          statusEl.textContent = 'Port Closed';
+        } else if (cam.id === activeCameraId && isStreamActive) {
           statusEl.className = 'font-mono-data text-mono-data text-green-400';
           statusEl.textContent = liveStatusText;
         } else if (cam.id === lastFailedId) {
@@ -1850,6 +1865,18 @@
         btn.appendChild(thumb);
         btn.appendChild(meta);
 
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.title = isClosed ? 'Reconnect camera port' : 'Close camera port';
+        toggleBtn.className = isClosed
+          ? 'shrink-0 px-2 rounded-lg text-amber-400 hover:text-green-400 hover:bg-surface-container-high transition-colors'
+          : 'shrink-0 px-2 rounded-lg text-on-surface-variant hover:text-amber-400 hover:bg-surface-container-high transition-colors';
+        toggleBtn.addEventListener('click', (ev) => toggleCameraPort(cam.id, ev));
+        const toggleIcon = document.createElement('span');
+        toggleIcon.className = 'material-symbols-outlined text-[16px]';
+        toggleIcon.textContent = isClosed ? 'power_off' : 'power_settings_new';
+        toggleBtn.appendChild(toggleIcon);
+
         const del = document.createElement('button');
         del.type = 'button';
         del.title = 'Remove camera';
@@ -1861,6 +1888,7 @@
         del.appendChild(delIcon);
 
         row.appendChild(btn);
+        row.appendChild(toggleBtn);
         row.appendChild(del);
         root.appendChild(row);
       });
@@ -2063,19 +2091,37 @@
           img.style.objectFit = gridFitMode;
           img.style.display = 'none';
 
+          const isClosed = cam.enabled === false;
           const fallback = document.createElement('div');
-          fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
+          fallback.className = 'grid-cam-fallback absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
           fallback.style.display = 'flex';
-          fallback.innerHTML = `
-            <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
-            <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
-            <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
-          `;
+          if (isClosed) {
+            fallback.innerHTML = `
+              <span class="material-symbols-outlined text-3xl mb-1 text-amber-400">power_off</span>
+              <span class="text-xs font-semibold text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
+              <span class="cam-badge-sub text-[10px] font-mono-data text-amber-400 mt-0.5 mb-2">PORT CLOSED</span>
+              <button type="button" class="px-2.5 py-1 bg-primary hover:bg-green-400 text-black text-xs font-semibold rounded transition-colors pointer-events-auto flex items-center gap-1 shadow" onclick="event.stopPropagation(); toggleCameraPort('${escapeHtml(cam.id)}', event)">
+                <span class="material-symbols-outlined text-[14px]">power_settings_new</span> Reconnect
+              </button>
+            `;
+          } else {
+            fallback.innerHTML = `
+              <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
+              <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
+              <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
+            `;
+          }
 
           let failCount = 0;
           let timer = null;
           const poll = () => {
             if (!img.isConnected) return;
+            const currentCam = cameras.find((c) => c.id === cam.id) || cam;
+            if (currentCam.enabled === false) {
+              img.style.display = 'none';
+              fallback.style.display = 'flex';
+              return;
+            }
             const isCurrentlyFocus = cam.id === activeCameraId;
             const srcUrl = (isCurrentlyFocus && isStreamActive)
               ? '/api/frame.jpeg'
@@ -2085,6 +2131,12 @@
 
           img.onload = () => {
             failCount = 0;
+            const currentCam = cameras.find((c) => c.id === cam.id) || cam;
+            if (currentCam.enabled === false) {
+              img.style.display = 'none';
+              fallback.style.display = 'flex';
+              return;
+            }
             img.style.display = 'block';
             fallback.style.display = 'none';
             const isCurrentlyFocus = cam.id === activeCameraId;
@@ -2103,9 +2155,19 @@
           const badge = document.createElement('div');
           badge.className = 'absolute top-2 left-2 glass-panel px-2.5 py-1 rounded-full z-10 flex items-center gap-1.5 pointer-events-none';
           badge.innerHTML = `
-            <span class="cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}"></span>
+            <span class="cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70')}"></span>
             <span class="text-[11px] font-semibold text-on-surface truncate max-w-[140px]">${escapeHtml(cam.name)}</span>
           `;
+
+          const portBtn = document.createElement('button');
+          portBtn.type = 'button';
+          portBtn.className = 'cam-port-btn absolute top-2 right-9 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity hover:text-amber-400 text-on-surface';
+          portBtn.title = isClosed ? 'Reconnect Camera Port' : 'Close Camera Port';
+          portBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isClosed ? 'power_off' : 'power_settings_new'}</span>`;
+          portBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            toggleCameraPort(cam.id, ev);
+          });
 
           const maxBtn = document.createElement('button');
           maxBtn.type = 'button';
@@ -2121,6 +2183,7 @@
           tile.appendChild(img);
           tile.appendChild(fallback);
           tile.appendChild(badge);
+          tile.appendChild(portBtn);
           tile.appendChild(maxBtn);
 
           tile.addEventListener('click', () => {
@@ -2128,24 +2191,56 @@
           });
 
           grid.appendChild(tile);
-          poll();
+          if (!isClosed) {
+            poll();
+          }
         } else {
           tile.className = `grid-cam-tile ${isFocus ? 'active-focus ring-2 ring-primary' : ''} flex items-center justify-center relative rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
           tile.style.width = '100%';
           tile.style.height = '100%';
           tile.style.minWidth = '0';
           tile.style.minHeight = '0';
+          const isClosed = cam.enabled === false;
           const existingImg = tile.querySelector('img');
+          const existingFallback = tile.querySelector('.grid-cam-fallback') || tile.querySelector('.absolute.inset-0');
           if (existingImg) {
             existingImg.style.objectFit = gridFitMode;
+            if (isClosed) {
+              existingImg.style.display = 'none';
+            }
+          }
+          if (existingFallback) {
+            if (isClosed) {
+              existingFallback.style.display = 'flex';
+              existingFallback.innerHTML = `
+                <span class="material-symbols-outlined text-3xl mb-1 text-amber-400">power_off</span>
+                <span class="text-xs font-semibold text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
+                <span class="cam-badge-sub text-[10px] font-mono-data text-amber-400 mt-0.5 mb-2">PORT CLOSED</span>
+                <button type="button" class="px-2.5 py-1 bg-primary hover:bg-green-400 text-black text-xs font-semibold rounded transition-colors pointer-events-auto flex items-center gap-1 shadow" onclick="event.stopPropagation(); toggleCameraPort('${escapeHtml(cam.id)}', event)">
+                  <span class="material-symbols-outlined text-[14px]">power_settings_new</span> Reconnect
+                </button>
+              `;
+            } else if (existingImg && existingImg.style.display === 'none') {
+              existingFallback.style.display = 'flex';
+              existingFallback.innerHTML = `
+                <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
+                <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
+                <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
+              `;
+            }
           }
           const badgeDot = tile.querySelector('.cam-badge-dot');
           if (badgeDot) {
-            badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}`;
+            badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70')}`;
           }
           const badgeText = tile.querySelector('.cam-badge-sub');
-          if (badgeText) {
+          if (badgeText && !isClosed) {
             badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
+          }
+          const portBtn = tile.querySelector('.cam-port-btn');
+          if (portBtn) {
+            portBtn.title = isClosed ? 'Reconnect Camera Port' : 'Close Camera Port';
+            portBtn.innerHTML = `<span class="material-symbols-outlined text-[16px]">${isClosed ? 'power_off' : 'power_settings_new'}</span>`;
           }
         }
       });
@@ -2689,6 +2784,37 @@
       }
     }
 
+    async function toggleCameraPort(id, ev) {
+      if (ev) ev.stopPropagation();
+      const cam = cameras.find((c) => c.id === id);
+      if (!cam) return;
+      const targetState = !(cam.enabled !== false);
+      try {
+        const res = await fetch('/api/cameras/toggle-port', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, enabled: targetState })
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.cameras)) {
+          cameras = data.cameras;
+          if (cam.id === activeCameraId && !targetState) {
+            detachLiveFeed();
+            isStreamActive = false;
+            setLiveChrome(false, 'PORT CLOSED');
+          } else if (cam.id === activeCameraId && targetState) {
+            connectAndStreamCamera();
+          }
+          renderCameraList();
+          if (currentLayoutMode === 'grid') {
+            renderMultiCamGrid();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to toggle camera port:', err);
+      }
+    }
+
     function setLiveChrome(on, label) {
       document.getElementById('live-dot').className = 'w-2 h-2 rounded-full ' + (on ? 'bg-green-500 animate-pulse' : (label === 'Offline' ? 'bg-error' : 'bg-outline'));
       document.getElementById('live-label').className = 'font-label-upper text-label-upper ' + (on ? 'text-green-400' : 'text-on-surface-variant');
@@ -3042,7 +3168,8 @@
     }
 
     function applyGarageHeader(data) {
-      const garage = data.garage || {};
+      if (!data) return;
+      const garage = data.garage || data;
       const bays = data.bays || liveBays;
       const active = garage.active_bay_count != null
         ? garage.active_bay_count
@@ -3050,18 +3177,19 @@
       const total = garage.total_bays != null ? garage.total_bays : bays.length;
       const countEl = document.getElementById('header-bay-count');
       if (countEl) countEl.textContent = active + ' / ' + total + ' bays';
-      const open = garage.shop_open;
+      const open = (garage.shop_open !== undefined) ? garage.shop_open : data.shop_open;
       const dot = document.getElementById('shop-status-dot');
       const label = document.getElementById('shop-status-label');
-      if (dot && label) {
+      if (dot && label && open !== undefined && open !== null) {
         dot.className = 'w-2 h-2 rounded-full ' + (open ? 'bg-green-500' : 'bg-outline');
         label.textContent = open ? 'SHOP OPEN' : 'SHOP CLOSED';
         label.className = 'font-label-upper text-label-upper ' + (open ? 'text-green-400' : 'text-on-surface-variant');
       }
-      if (garage.name) {
+      const vName = garage.name || garage.garage_name;
+      if (vName) {
         const crumb = document.getElementById('crumb-venue');
         if (crumb && !document.getElementById('venue-input').matches(':focus')) {
-          crumb.textContent = garage.name;
+          crumb.textContent = vName;
         }
       }
     }
@@ -3463,7 +3591,10 @@
       const live = bayLive[bay.id] || {};
       const state = live.state || 'EMPTY';
       const name = live.mechanic_name || '';
-      const timeStr = formatSecs(live.wrench_seconds || live.wrench_time_today || 0);
+      const techTime = (live.technicians_times && name && live.technicians_times[name] != null)
+        ? live.technicians_times[name]
+        : (live.wrench_seconds != null ? live.wrench_seconds : (live.wrench_time_today || 0));
+      const timeStr = formatSecs(techTime);
       if (state === 'WORKING') {
         return '🟢 WORKING' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
       }

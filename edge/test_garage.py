@@ -947,6 +947,69 @@ class GarageApiTests(unittest.TestCase):
         self.assertEqual(f2_active, b"AI_ACTIVE_FRAME_2")
         self.assertEqual(f1_bg, b"BACKGROUND_LIVE_FRAME_1")
 
+    def test_toggle_camera_port_closes_and_reconnects_worker(self):
+        from launcher import LiveStreamEngine, CameraStreamWorker
+        engine = LiveStreamEngine()
+        engine.cfg["cameras"] = [
+            {"id": "cam-1", "name": "Bay 1", "source": "0", "enabled": True},
+            {"id": "cam-2", "name": "Bay 2", "source": "1", "enabled": True},
+        ]
+        worker_1 = CameraStreamWorker("cam-1", engine.cfg["cameras"][0])
+        worker_2 = CameraStreamWorker("cam-2", engine.cfg["cameras"][1])
+        engine.camera_pool._workers["cam-1"] = worker_1
+        engine.camera_pool._workers["cam-2"] = worker_2
+
+        # Close port on cam-2
+        res = engine.toggle_camera_port("cam-2", False)
+        self.assertTrue(res["success"])
+        self.assertFalse(res["enabled"])
+        self.assertNotIn("cam-2", engine.camera_pool._workers)
+
+        # Closed camera frame returns None (204)
+        frame, _ = engine.get_camera_frame("cam-2")
+        self.assertIsNone(frame)
+
+        # Reopen port on cam-2
+        res2 = engine.toggle_camera_port("cam-2", True)
+        self.assertTrue(res2["success"])
+        self.assertTrue(res2["enabled"])
+        # Pool now syncs cam-2 back
+        self.assertIn("cam-2", engine.camera_pool._workers)
+
+    def test_garage_telemetry_includes_nested_garage_object(self):
+        from launcher import LiveStreamEngine
+        engine = LiveStreamEngine()
+        telem = engine.garage_telemetry()
+        self.assertIn("garage", telem)
+        self.assertIn("shop_open", telem["garage"])
+        self.assertEqual(telem["garage"]["shop_open"], telem["shop_open"])
+        self.assertEqual(telem["garage"]["name"], telem["garage_name"])
+
+    def test_bay_badge_uses_active_technician_time_matching_hud(self):
+        from occupancy import BaySnapshot
+        snap = BaySnapshot(
+            bay_id="bay_1",
+            name="Lift Bay 1",
+            type="vehicle_bay",
+            roi=[0.1, 0.2, 0.3, 0.4],
+            state="WORKING",
+            mechanic_name="HourMeng",
+            wrench_seconds=428.0,  # 7m 08s
+            idle_seconds=0.0,
+            under_vehicle_seconds=0.0,
+            break_seconds=0.0,
+            wrench_time_today=711.0,  # 11m 51s
+            idle_time_today=0.0,
+            under_vehicle_today=0.0,
+            break_time_today=0.0,
+            is_working=True,
+            technicians_times={"HourMeng": 428.0},
+        )
+        badge = snap.as_dict()["badge"]
+        # Badge should show HourMeng (7m 08s), not today's (11m 51s)
+        self.assertIn("HourMeng (7m 08s)", badge)
+        self.assertNotIn("11m 51s", badge)
+
 
 if __name__ == "__main__":
     unittest.main()

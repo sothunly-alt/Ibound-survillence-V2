@@ -284,6 +284,7 @@ def _normalize_cameras(raw: Any) -> list[dict[str, Any]]:
                 "flip": str(item.get("flip") or "none"),
                 "roi": cam_roi,
                 "bays": cam_bays,
+                "enabled": bool(item.get("enabled", True)),
             }
         )
     return out
@@ -339,6 +340,7 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
         "flip": str(fields.get("flip") or existing.get("flip") or cfg.get("flip") or "none"),
         "roi": roi,
         "bays": bays,
+        "enabled": bool(fields.get("enabled", existing.get("enabled", True))),
     }
     for i, cam in enumerate(cameras):
         if cam["id"] == cid:
@@ -650,6 +652,8 @@ class CameraStreamPool:
             for cam in cameras:
                 cid = str(cam.get("id") or "").strip()
                 src = cam.get("source")
+                if not cam.get("enabled", True):
+                    continue
                 if not cid or src is None or str(src).strip() == "":
                     continue
                 configured_ids.add(cid)
@@ -1179,6 +1183,8 @@ class LiveStreamEngine:
             mapped["xaddrs"] = fields.get("xaddrs")
         if "bays" in fields:
             mapped["bays"] = fields.get("bays")
+        if "enabled" in fields:
+            mapped["enabled"] = bool(fields.get("enabled"))
         with self.lock:
             entry = upsert_camera(self.cfg, mapped)
             save_config(self.cfg)
@@ -1218,6 +1224,37 @@ class LiveStreamEngine:
                 pass
         return {
             "success": True,
+            "cameras": cameras,
+            "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
+        }
+
+    def toggle_camera_port(self, camera_id: Any, enabled: bool | None = None) -> dict[str, Any]:
+        cid = str(camera_id or "").strip()
+        if not cid:
+            return {"success": False, "error": "Camera id is required."}
+        with self.lock:
+            cameras = _normalize_cameras(self.cfg.get("cameras"))
+            target = None
+            for cam in cameras:
+                if cam["id"] == cid:
+                    target = cam
+                    break
+            if target is None:
+                return {"success": False, "error": f"Camera '{cid}' not found."}
+            current = target.get("enabled", True)
+            new_state = (not current) if enabled is None else bool(enabled)
+            target["enabled"] = new_state
+            self.cfg["cameras"] = cameras
+            save_config(self.cfg)
+        if self.running or bool(self.camera_pool._workers):
+            try:
+                self.camera_pool.sync_cameras(cameras)
+            except Exception:
+                pass
+        return {
+            "success": True,
+            "camera_id": cid,
+            "enabled": new_state,
             "cameras": cameras,
             "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
         }
@@ -1351,6 +1388,12 @@ class LiveStreamEngine:
         """
         cid = str(camera_id or "").strip()
         active_id = str(self.cfg.get("active_camera_id") or "").strip()
+        target_id = cid or active_id
+        with self.lock:
+            cams = list(self.cfg.get("cameras") or [])
+        target_cam = next((c for c in cams if str(c.get("id")) == target_id), None)
+        if target_cam and not target_cam.get("enabled", True):
+            return None, "image/jpeg"
         now = time.time()
 
         if not cid or cid == active_id:
@@ -1453,11 +1496,19 @@ class LiveStreamEngine:
             bay["presence"] = presence_status(face_recent, wifi_on)
             bay["wifi_connected"] = wifi_on
         active = sum(1 for bay in bays if bay.get("state") != "EMPTY")
+        gname = garage_name_of(cfg)
+        gopen = shop_is_open(cfg)
         return {
             "bays": bays,
             "fps": fps,
-            "garage_name": garage_name_of(cfg),
-            "shop_open": shop_is_open(cfg),
+            "garage_name": gname,
+            "shop_open": gopen,
+            "garage": {
+                "name": gname,
+                "shop_open": gopen,
+                "active_bay_count": active,
+                "total_bays": len(bays),
+            },
             "open_time": str(cfg.get("open_time") or "08:00"),
             "close_time": str(cfg.get("close_time") or "18:00"),
             "active_bay_count": active,
@@ -2492,6 +2543,13 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/cameras/delete":
             result = GLOBAL_ENGINE.delete_camera(payload.get("id"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode("utf-8"))
+
+        elif parsed.path in ("/api/cameras/toggle-port", "/api/cameras/toggle"):
+            result = GLOBAL_ENGINE.toggle_camera_port(payload.get("id"), payload.get("enabled"))
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
