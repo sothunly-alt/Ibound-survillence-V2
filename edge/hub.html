@@ -459,6 +459,25 @@
         </div>
 
         <div class="video-stage w-full flex-1 min-h-0 bg-black rounded-xl border border-outline-variant relative overflow-hidden shadow-2xl flex items-center justify-center" id="video-viewport">
+          <!-- Auto Switch Alert Banner with Countdown -->
+          <div id="auto-switch-banner" class="absolute top-4 inset-x-4 z-40 flex items-center justify-between px-4 py-2.5 rounded-xl border border-amber-500/50 bg-surface-container-highest/95 backdrop-blur-md shadow-2xl transition-all hidden">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                <span class="material-symbols-outlined text-[20px] animate-pulse">notifications_active</span>
+              </div>
+              <div>
+                <p class="text-xs font-bold text-on-surface" id="auto-switch-msg">Auto-switched to Camera: Activity detected</p>
+                <p class="text-[11px] text-on-surface-variant">Returning to <span id="auto-switch-prev-name" class="font-semibold text-on-surface">Previous Camera</span> in <span id="auto-switch-countdown" class="font-mono text-amber-400 font-bold">12s</span></p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" class="px-3 py-1.5 rounded-lg bg-surface-bright hover:bg-amber-500/20 text-on-surface hover:text-amber-300 text-xs font-semibold border border-outline-variant transition-colors" onclick="cancelAutoSwitchReturn()">Stay Here</button>
+              <button type="button" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold transition-colors flex items-center gap-1 shadow-md" onclick="revertAutoSwitchImmediately()">
+                <span class="material-symbols-outlined text-[15px]">undo</span> Return Now
+              </button>
+            </div>
+          </div>
+
           <div class="absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest z-20" id="stream-placeholder">
             <span class="material-symbols-outlined text-5xl text-on-surface-variant mb-4">videocam_off</span>
             <h3 class="text-on-surface font-medium mb-1">No camera connected</h3>
@@ -585,6 +604,17 @@
                 <label class="font-label-upper text-label-upper text-on-surface-variant" for="password-input">Password</label>
                 <input id="password-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" value="" placeholder="optional" autocomplete="off"/>
               </div>
+            </div>
+            <div id="trigger-mode-wrap" class="flex flex-col gap-1.5">
+              <div class="flex items-center justify-between">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="camera-trigger-mode-input">Background ML Auto-Switch</label>
+                <span class="text-[10px] text-primary font-medium">Spotlight Trigger</span>
+              </div>
+              <select id="camera-trigger-mode-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner">
+                <option value="roi_state_change">Bay ROI Activity Only (Default - State Changes)</option>
+                <option value="any_detection">Any Person or Vehicle in Frame</option>
+              </select>
+              <p class="text-[11px] text-on-surface-variant leading-relaxed">Auto-switches to this camera when this event condition occurs while in background.</p>
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
               <button type="button" id="btn-save-camera" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-5 rounded-lg font-medium transition-colors text-sm border border-outline-variant disabled:opacity-60" onclick="saveCameraOnly()">
@@ -2025,6 +2055,9 @@
         if (badgeText) {
           badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
         }
+        const isTriggered = lastAutoSwitchEvent && lastAutoSwitchEvent.camera_id === camId && (Date.now() - lastAutoSwitchEventTime < 15000);
+        tile.classList.toggle('ring-amber-400', Boolean(isTriggered && !isFocus));
+        tile.classList.toggle('animate-pulse', Boolean(isTriggered && !isFocus));
       });
     }
 
@@ -2377,6 +2410,8 @@
       }
       if (rotateDeg !== 'auto' && cam.flip) flipMode = cam.flip;
       if (rotateDeg === 'auto') flipMode = 'none';
+      const trigEl = document.getElementById('camera-trigger-mode-input');
+      if (trigEl) trigEl.value = cam.trigger_mode || 'roi_state_change';
       paintOrient();
       onProtocolChange();
     }
@@ -2392,6 +2427,8 @@
       document.getElementById('source-input').value = '';
       const mainEl = document.getElementById('main-source-input');
       if (mainEl) mainEl.value = '';
+      const trigEl = document.getElementById('camera-trigger-mode-input');
+      if (trigEl) trigEl.value = 'roi_state_change';
       pendingXaddrs = [];
       rotateDeg = 'auto';
       flipMode = 'none';
@@ -2437,6 +2474,7 @@
       const username = document.getElementById('username-input').value.trim();
       const password = document.getElementById('password-input').value;
       const mainEl = document.getElementById('main-source-input');
+      const trigEl = document.getElementById('camera-trigger-mode-input');
       return {
         id: activeCameraId || '',
         name: document.getElementById('camera-name-input').value.trim(),
@@ -2451,7 +2489,8 @@
         rotate: document.getElementById('rotate-input').value,
         flip: document.getElementById('flip-input').value,
         roi: liveRoi,
-        bays: liveBays
+        bays: liveBays,
+        trigger_mode: trigEl ? trigEl.value : 'roi_state_change'
       };
     }
 
@@ -3108,12 +3147,96 @@
       el.className = 'font-mono-data text-mono-data ' + cls;
     }
 
+    let handledAutoSwitchEventIds = new Set();
+    let autoSwitchTimer = null;
+    let autoSwitchCountdownVal = 12;
+    let autoSwitchReturnCamId = null;
+    let lastAutoSwitchEvent = null;
+    let lastAutoSwitchEventTime = 0;
+
+    function checkAutoSwitchEvent(data) {
+      if (!data || !data.latest_camera_event) return;
+      const evt = data.latest_camera_event;
+      if (evt.handled) return;
+      if (handledAutoSwitchEventIds.has(evt.event_id)) return;
+
+      lastAutoSwitchEvent = evt;
+      lastAutoSwitchEventTime = Date.now();
+
+      if (evt.camera_id && evt.camera_id !== activeCameraId) {
+        handledAutoSwitchEventIds.add(evt.event_id);
+        triggerAutoSwitch(evt);
+      }
+    }
+
+    async function triggerAutoSwitch(evt) {
+      if (!autoSwitchReturnCamId) {
+        autoSwitchReturnCamId = activeCameraId;
+      }
+      const prevId = autoSwitchReturnCamId;
+      const prevCam = (cameras || []).find((c) => c.id === prevId);
+      const prevName = prevCam ? prevCam.name : 'Previous Camera';
+
+      await selectCamera(evt.camera_id);
+
+      const banner = document.getElementById('auto-switch-banner');
+      if (banner) {
+        const msgEl = document.getElementById('auto-switch-msg');
+        const prevNameEl = document.getElementById('auto-switch-prev-name');
+        const cdEl = document.getElementById('auto-switch-countdown');
+        if (msgEl) msgEl.textContent = `Auto-switched to ${evt.camera_name || 'Camera'}: ${evt.event}`;
+        if (prevNameEl) prevNameEl.textContent = prevName;
+        autoSwitchCountdownVal = 12;
+        if (cdEl) cdEl.textContent = autoSwitchCountdownVal + 's';
+        banner.classList.remove('hidden');
+
+        if (autoSwitchTimer) clearInterval(autoSwitchTimer);
+        autoSwitchTimer = setInterval(() => {
+          autoSwitchCountdownVal--;
+          const cd = document.getElementById('auto-switch-countdown');
+          if (cd) cd.textContent = autoSwitchCountdownVal + 's';
+          if (autoSwitchCountdownVal <= 0) {
+            revertAutoSwitchImmediately();
+          }
+        }, 1000);
+      }
+
+      try {
+        fetch('/api/cameras/acknowledge-event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: evt.event_id })
+        });
+      } catch (e) { /* ignore */ }
+    }
+
+    function cancelAutoSwitchReturn() {
+      if (autoSwitchTimer) clearInterval(autoSwitchTimer);
+      autoSwitchTimer = null;
+      autoSwitchReturnCamId = null;
+      const banner = document.getElementById('auto-switch-banner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    async function revertAutoSwitchImmediately() {
+      if (autoSwitchTimer) clearInterval(autoSwitchTimer);
+      autoSwitchTimer = null;
+      const banner = document.getElementById('auto-switch-banner');
+      if (banner) banner.classList.add('hidden');
+      if (autoSwitchReturnCamId && autoSwitchReturnCamId !== activeCameraId) {
+        const target = autoSwitchReturnCamId;
+        autoSwitchReturnCamId = null;
+        await selectCamera(target);
+      }
+    }
+
     async function pollGarage() {
       try {
         const res = await fetch('/api/garage/telemetry');
         if (!res.ok) return;
         const data = await res.json();
         applyGarageHeader(data);
+        checkAutoSwitchEvent(data);
         if (!roiDragging && Array.isArray(data.bays) && data.bays.length) mergeBayTelemetry(data.bays);
       } catch (err) { /* ignore */ }
     }
@@ -3158,6 +3281,7 @@
         const prevH = streamH;
         parseResolution(data.resolution);
         applyGarageHeader(data);
+        checkAutoSwitchEvent(data);
         if (!roiDragging && Array.isArray(data.bays) && data.bays.length) {
           mergeBayTelemetry(data.bays);
         }
