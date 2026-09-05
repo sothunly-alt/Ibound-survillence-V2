@@ -947,6 +947,51 @@ class GarageApiTests(unittest.TestCase):
         self.assertEqual(f2_active, b"AI_ACTIVE_FRAME_2")
         self.assertEqual(f1_bg, b"BACKGROUND_LIVE_FRAME_1")
 
+    def test_connect_camera_does_not_reregister_live_grid(self):
+        from unittest.mock import patch
+        from launcher import LiveStreamEngine, CameraStreamWorker
+
+        engine = LiveStreamEngine()
+        cam = {
+            "id": "cam-rtsp",
+            "name": "Bay Cam",
+            "source": "rtsp://192.168.1.10/stream",
+            "protocol": "rtsp",
+            "enabled": True,
+        }
+        engine.cfg["cameras"] = [cam]
+        engine.cfg["source"] = cam["source"]
+        engine.cfg["active_camera_id"] = "cam-rtsp"
+        engine.running = True
+
+        worker = CameraStreamWorker("cam-rtsp", cam)
+        worker.grabber.connection_state = "CONNECTED"
+        worker.latest_jpeg = b"LIVE_JPEG"
+        engine.camera_pool._workers["cam-rtsp"] = worker
+
+        register_calls = []
+        bind_calls = []
+        switch_calls = []
+        engine.register_all_cameras_in_gateway = lambda: register_calls.append("all")
+        engine._bind_gateway = lambda *a, **k: bind_calls.append(a) or "cam-rtsp"
+        engine.grabber.switch_source = lambda adapter: switch_calls.append(adapter)
+
+        with patch("launcher.save_config"):
+            result = engine.connect_camera({
+                "camera_id": "cam-rtsp",
+                "camera_name": "Bay Cam",
+                "source": "rtsp://192.168.1.10/stream",
+                "protocol": "rtsp",
+            })
+
+        self.assertTrue(result["success"])
+        self.assertEqual(register_calls, [])
+        self.assertEqual(bind_calls, [])
+        self.assertEqual(switch_calls, [])
+        self.assertEqual(engine.camera_pool.active_camera_id, "cam-rtsp")
+        frame, _ = engine.get_camera_frame("cam-rtsp")
+        self.assertEqual(frame, b"LIVE_JPEG")
+
     def test_toggle_camera_port_closes_and_reconnects_worker(self):
         from launcher import LiveStreamEngine, CameraStreamWorker
         engine = LiveStreamEngine()

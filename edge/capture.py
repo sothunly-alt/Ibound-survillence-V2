@@ -134,6 +134,17 @@ class AsyncFrameGrabber:
             self._ready.clear()
         _RELEASE_QUEUE.submit(old_pending)
 
+    def peek_latest_frame(self) -> Optional[FramePacket]:
+        """Return the newest packet without consuming it.
+
+        Grid JPEG workers must not call ``get_latest_frame`` — that clears
+        ``_ready`` and starves the AI loop (or vice versa), freezing tiles.
+        """
+        if self._stop.is_set():
+            return None
+        with self._lock:
+            return self._latest
+
     def get_latest_frame(self, timeout: float = 0.1) -> Optional[FramePacket]:
         """Wait up to ``timeout`` seconds for a frame newer than the last consume.
 

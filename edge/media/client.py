@@ -54,13 +54,24 @@ class Go2RtcClient:
         except requests.RequestException:
             return False
 
-    def register_stream(self, stream_id: str, source_url: str) -> bool:
-        """Bind ``source_url`` as a named stream. Returns True on success."""
+    def register_stream(self, stream_id: str, source_url: str, *, replace: bool = False) -> bool:
+        """Bind ``source_url`` as a named stream. Returns True on success.
+
+        Re-PUT/PATCH of a live stream restarts the go2rtc producer and drops
+        every OpenCV consumer — that freezes every grid tile except the
+        laptop webcam (which never uses the gateway). Leave an existing
+        producer in place unless ``replace`` is set or the URL clearly changed.
+        """
         if not stream_id or not source_url:
             return False
         params = {"src": source_url, "name": stream_id}
         existing = self.get_stream_info(stream_id)
-        if existing and source_url in str(existing):
+        if existing and not replace:
+            if source_url in str(existing):
+                return True
+            producers = existing.get("producers") or []
+            if isinstance(producers, list) and producers:
+                return True
             return True
         methods = ("PATCH", "PUT", "POST") if existing else ("PUT", "POST", "PATCH")
         for method in methods:

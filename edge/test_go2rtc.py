@@ -250,6 +250,7 @@ class _FakeGo2rtcHandler(BaseHTTPRequestHandler):
             "producers": [{"url": src, "type": "HTTP/RTSP"}],
             "consumers": [],
         }
+        _FakeGo2rtcHandler.put_count = int(getattr(_FakeGo2rtcHandler, "put_count", 0) or 0) + 1
         self._send({"ok": True})
 
     def do_DELETE(self) -> None:
@@ -261,6 +262,7 @@ class _FakeGo2rtcHandler(BaseHTTPRequestHandler):
 
 def test_client_register_and_delete() -> None:
     _FakeGo2rtcHandler.streams = {}
+    _FakeGo2rtcHandler.put_count = 0
     server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeGo2rtcHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
@@ -281,6 +283,10 @@ def test_client_register_and_delete() -> None:
         jpeg = client.snapshot_jpeg("snap")
         assert jpeg == b"\xff\xd8\xff\xd9"
         assert client.snapshot_jpeg("missing") is None
+        first_puts = int(getattr(_FakeGo2rtcHandler, "put_count", 0) or 0)
+        assert client.register_stream("snap", "rtsp://192.168.1.10/main")
+        after_puts = int(getattr(_FakeGo2rtcHandler, "put_count", 0) or 0)
+        assert after_puts == first_puts, "re-registering a live stream must not restart the producer"
         print(f"ok REST client on :{port}")
     finally:
         server.shutdown()

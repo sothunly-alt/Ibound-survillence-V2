@@ -114,6 +114,27 @@ def test_latest_frame_does_not_accumulate_lag() -> None:
         assert adapter.release_calls >= 1
 
 
+def test_peek_does_not_consume_ready_slot() -> None:
+    grabber = AsyncFrameGrabber()
+    adapter = FakeAdapter(fps=8.0)
+    grabber.start()
+    try:
+        grabber.switch_source(adapter)
+        deadline = time.time() + 2.0
+        peeked = None
+        while time.time() < deadline:
+            peeked = grabber.peek_latest_frame()
+            if peeked is not None:
+                break
+            time.sleep(0.02)
+        assert peeked is not None, "peek never saw a frame"
+        consumed = grabber.get_latest_frame(0.05)
+        assert consumed is not None, "peek must leave the ready slot for the AI consumer"
+        print("ok peek_latest_frame does not consume ready slot")
+    finally:
+        grabber.stop()
+
+
 def test_switch_source_returns_immediately() -> None:
     grabber = AsyncFrameGrabber()
     slow = SlowConnectAdapter(delay=2.0)
@@ -334,6 +355,7 @@ def test_phone_http_adapter_connect_and_read() -> None:
 if __name__ == "__main__":
     test_create_adapter_routing()
     test_latest_frame_does_not_accumulate_lag()
+    test_peek_does_not_consume_ready_slot()
     test_switch_source_returns_immediately()
     test_http_telemetry_stays_responsive_during_connect()
     test_rtsp_unreachable_fails_fast()

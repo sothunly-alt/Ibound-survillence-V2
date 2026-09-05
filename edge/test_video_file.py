@@ -324,6 +324,55 @@ def test_camera_stream_pool_sync_and_webcam_zero() -> None:
     print("ok CameraStreamPool webcam 0 and concurrent workers test")
 
 
+def test_worker_keeps_encoding_while_active_ai() -> None:
+    from adapters.base import BaseCameraAdapter, FramePacket
+    from launcher import CameraStreamWorker
+
+    class PulseAdapter(BaseCameraAdapter):
+        def __init__(self):
+            self.error = None
+            self._n = 0
+            self._ok = False
+
+        def connect(self) -> bool:
+            self._ok = True
+            return True
+
+        def read_frame(self):
+            if not self._ok:
+                return None
+            time.sleep(0.03)
+            self._n += 1
+            frame = np.full((16, 16, 3), self._n % 255, dtype=np.uint8)
+            return FramePacket(frame, time.time(), 16, 16)
+
+        def release(self) -> None:
+            self._ok = False
+
+        def is_connected(self) -> bool:
+            return self._ok
+
+    worker = CameraStreamWorker("cam_rtsp", {"id": "cam_rtsp", "source": "rtsp://192.168.1.10/s"})
+    pulse = PulseAdapter()
+    worker._build_adapter = lambda: pulse
+    worker.is_active_ai = True
+    worker.start()
+    try:
+        deadline = time.time() + 3.0
+        jpegs = []
+        while time.time() < deadline:
+            if worker.latest_jpeg:
+                jpegs.append(worker.latest_jpeg)
+            if len(jpegs) >= 3 and jpegs[0] != jpegs[-1]:
+                break
+            time.sleep(0.05)
+        assert worker.latest_jpeg, "active-AI worker must keep publishing JPEG frames"
+        assert len(jpegs) >= 2 and jpegs[0] != jpegs[-1], "JPEG cache must keep changing while selected"
+        print("ok CameraStreamWorker encodes JPEG while is_active_ai")
+    finally:
+        worker.stop()
+
+
 def test_camera_stream_route_and_background_frame() -> None:
     from launcher import DashboardRequestHandler, GLOBAL_ENGINE
 
@@ -382,5 +431,6 @@ if __name__ == "__main__":
     test_async_frame_grabber_integration()
     test_launcher_video_api()
     test_camera_stream_pool_sync_and_webcam_zero()
+    test_worker_keeps_encoding_while_active_ai()
     test_camera_stream_route_and_background_frame()
     print("\nALL VIDEO FILE STREAMING TESTS PASSED!")

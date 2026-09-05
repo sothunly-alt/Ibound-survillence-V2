@@ -76,6 +76,7 @@ from adapters.base import (
     protocol_from_source,
     redact_source,
     unwrap_local_video_source,
+    webcam_index,
 )
 from adapters.onvif import onvif_xaddr
 from adapters.webcam import open_webcam_index as _open_webcam_index
@@ -624,17 +625,13 @@ class CameraStreamWorker:
     def _loop(self) -> None:
         last_encode_time = 0.0
         last_reconnect_time = time.time()
-        was_active_ai = False
+        last_packet_ts = 0.0
         while not self._stop_event.is_set():
             now = time.time()
-            if self.is_active_ai:
-                was_active_ai = True
-                time.sleep(0.06)
-                continue
-
-            if was_active_ai:
-                was_active_ai = False
-                last_reconnect_time = 0.0
+            # Keep encoding even when this camera is the AI spotlight.
+            # Skipping JPEG here made the selected tile depend on /api/frame.jpeg
+            # alone; combined with a go2rtc re-register on select, every RTSP
+            # grid tile froze while the laptop webcam kept moving.
 
             # If grabber failed or lost adapter, attempt periodic reconnection
             if (
@@ -645,8 +642,15 @@ class CameraStreamWorker:
                 last_reconnect_time = now
                 self._reconnect()
 
-            packet = self.grabber.get_latest_frame(timeout=0.15)
+            packet = self.grabber.peek_latest_frame()
+            if packet is None:
+                packet = self.grabber.get_latest_frame(timeout=0.12)
             if packet is not None and packet.frame is not None:
+                pkt_ts = float(getattr(packet, "timestamp", 0.0) or 0.0)
+                if pkt_ts and pkt_ts == last_packet_ts:
+                    time.sleep(0.04)
+                    continue
+                last_packet_ts = pkt_ts
                 rot = int(self.cfg.get("rotate") or 0)
                 flp = str(self.cfg.get("flip") or "none")
                 frame = packet.frame
@@ -987,6 +991,10 @@ class LiveStreamEngine:
             self.cfg.update(payload)
             recovered = unwrap_local_video_source(self.cfg.get("source"))
             proto_hint = str(camera_fields.get("protocol") or self.cfg.get("protocol") or "").lower()
+            if proto_hint == "webcam" or ingest_kind(self.cfg.get("source"), proto_hint) == "webcam":
+                self.cfg["source"] = webcam_index(self.cfg.get("source"))
+                self.cfg["protocol"] = "webcam"
+                camera_fields["protocol"] = "webcam"
             if recovered or proto_hint in ("video", "file"):
                 if recovered:
                     self.cfg["source"] = recovered
@@ -1022,19 +1030,30 @@ class LiveStreamEngine:
                 self.cfg.get("telegram_bot_token", ""),
                 self.cfg.get("telegram_chat_id", ""),
             )
+            source = self.cfg.get("source", 0)
+            existing_worker = self.camera_pool.get_worker(active_id)
+            worker_live = (
+                existing_worker is not None
+                and existing_worker.grabber.connection_state in ("CONNECTED", "CONNECTING", "RECONNECTING")
+                and str(existing_worker.cfg.get("source")) == str(source)
+            )
             self.error_message = None
             self.is_streaming = True
             self.current_frame_jpeg = None
-            self.mjpeg_generation += 1
             self.fps = 0.0
             self.is_occupied = False
             self.person_count = 0
             self.staff_names = []
             self.identities = []
-            self.status_text = "CONNECTING"
-            self.connection_state = "CONNECTING"
+            if worker_live:
+                grabber_state = existing_worker.grabber.connection_state
+                self.connection_state = grabber_state if grabber_state == "CONNECTED" else "CONNECTING"
+                self.status_text = "CONNECTED" if grabber_state == "CONNECTED" else "CONNECTING"
+            else:
+                self.mjpeg_generation += 1
+                self.status_text = "CONNECTING"
+                self.connection_state = "CONNECTING"
             self.new_frame_event.set()
-            source = self.cfg.get("source", 0)
             active_bays = list(active.get("bays") or [])
             if not active_bays:
                 active_roi = parse_roi(active.get("roi")) or parse_roi(self.cfg.get("roi")) or [0.30, 0.20, 0.40, 0.60]
@@ -1052,12 +1071,15 @@ class LiveStreamEngine:
 
         # Perform disk write and network/gateway operations outside self.lock to avoid deadlock
         save_config(cfg_to_save)
-        try:
-            self.register_all_cameras_in_gateway()
-        except Exception:
-            pass
 
-        if _needs_onvif_onboard(protocol, source, xaddrs):
+        existing = self.camera_pool.get_worker(active_id)
+        worker_live = (
+            existing is not None
+            and existing.grabber.connection_state in ("CONNECTED", "CONNECTING", "RECONNECTING")
+            and str(existing.cfg.get("source")) == str(source)
+        )
+
+        if _needs_onvif_onboard(protocol, source, xaddrs) and not worker_live:
             self.grabber.mark_connecting()
             threading.Thread(
                 target=self._onboard_onvif,
@@ -1089,7 +1111,11 @@ class LiveStreamEngine:
                 "media": media,
             }
 
-        stream_id = self._bind_gateway(source, active_id, main_source=main_source)
+        kind = ingest_kind(source, protocol)
+        if kind in ("webcam", "video") or worker_live:
+            stream_id = None
+        else:
+            stream_id = self._bind_gateway(source, active_id, main_source=main_source)
         self.camera_pool.set_active_camera(active_id)
         if self.running:
             self.camera_pool.sync_cameras(cameras)
@@ -1119,12 +1145,17 @@ class LiveStreamEngine:
             )
             self.grabber.switch_source(adapter)
         media = self.media.status(stream_id) if stream_id else {"ready": self.media.is_ready()}
+        connected = worker_live and self.connection_state == "CONNECTED"
         return {
             "success": True,
-            "pending": True,
-            "connection": "CONNECTING",
-            "status": "CONNECTING",
-            "message": f"Connecting to '{redact_source(source)}'…",
+            "pending": not connected,
+            "connection": "CONNECTED" if connected else "CONNECTING",
+            "status": "CONNECTED" if connected else "CONNECTING",
+            "message": (
+                f"Switched to '{redact_source(source)}'."
+                if connected
+                else f"Connecting to '{redact_source(source)}'…"
+            ),
             "roi": roi,
             "bays": bays,
             "rotate": rotate,
@@ -1499,8 +1530,7 @@ class LiveStreamEngine:
 
         Returns (jpeg_bytes, content_type).
         - If camera_id is None, empty, or active_camera_id: returns the active AI-annotated frame.
-        - If another camera: pulls directly from CameraStreamPool, falling back to go2rtc or request_still.
-        Uses in-memory cache to prevent blocking and stream drops across concurrent grid tiles.
+        - If another camera: pulls from CameraStreamPool JPEG cache (never a competing RTSP open).
         """
         cid = str(camera_id or "").strip()
         active_id = str(self.cfg.get("active_camera_id") or "").strip()
@@ -1528,7 +1558,9 @@ class LiveStreamEngine:
                 return cached[0], cached[1]
             return None, "image/jpeg"
 
-        # Background camera: query CameraStreamPool worker
+        # Background camera: serve the worker JPEG cache only.
+        # Do not steal grabber frames or open a competing RTSP capture from
+        # the HTTP thread — both freeze every other network camera in the grid.
         worker = self.camera_pool.get_worker(cid)
         if worker is None:
             with self.lock:
@@ -1536,14 +1568,12 @@ class LiveStreamEngine:
             self.camera_pool.sync_cameras(cams)
             worker = self.camera_pool.get_worker(cid)
 
+        if worker and worker.latest_jpeg:
+            self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts or now)
+            return worker.latest_jpeg, "image/jpeg"
+
         if worker:
-            if worker.latest_jpeg:
-                if worker.latest_ts > 0 and (now - worker.latest_ts) >= 3.5:
-                    worker._reconnect()
-                self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
-                return worker.latest_jpeg, "image/jpeg"
-            # If latest_jpeg is missing, pull directly from grabber
-            pkt = worker.grabber.get_latest_frame(timeout=0.15)
+            pkt = worker.grabber.peek_latest_frame()
             if pkt is not None and pkt.frame is not None:
                 rot = int(worker.cfg.get("rotate") or 0)
                 flp = str(worker.cfg.get("flip") or "none")
@@ -1559,45 +1589,10 @@ class LiveStreamEngine:
                         worker.latest_packet = pkt
                     self._camera_frame_cache[cid] = (data, "image/jpeg", now)
                     return data, "image/jpeg"
-            else:
-                worker._reconnect()
 
         cached = self._camera_frame_cache.get(cid)
         if cached and (now - cached[2]) < 5.0:
             return cached[0], cached[1]
-
-        stream_id = sanitize_stream_id(cid)
-        if self.media.is_ready():
-            try:
-                resp = requests.get(
-                    f"{self.media.api_base}/api/frame.jpeg?src={urllib.parse.quote(stream_id, safe='')}",
-                    timeout=1.5,
-                )
-                if resp.status_code == 200 and resp.content and len(resp.content) > 100:
-                    self._camera_frame_cache[cid] = (resp.content, "image/jpeg", now)
-                    return resp.content, "image/jpeg"
-            except Exception:
-                pass
-
-        cam = None
-        with self.lock:
-            for c in self.cfg.get("cameras") or []:
-                if c.get("id") == cid:
-                    cam = dict(c)
-                    break
-        if cam and cam.get("source") is not None and str(cam.get("source")).strip() != "":
-            src = cam["source"]
-            try:
-                still = request_still(src, gateway=self.media, stream_id=stream_id, timeout=2.0)
-                if still is not None:
-                    ok, buf = cv2.imencode(".jpg", still, [cv2.IMWRITE_JPEG_QUALITY, 70])
-                    if ok:
-                        data = buf.tobytes()
-                        self._camera_frame_cache[cid] = (data, "image/jpeg", now)
-                        return data, "image/jpeg"
-            except Exception:
-                pass
-
         if cached:
             return cached[0], cached[1]
         return None, "image/jpeg"
@@ -2198,7 +2193,7 @@ class LiveStreamEngine:
                             if bg_worker is None or not bg_worker.cfg.get("ml_enabled", True):
                                 self.active_roi_cameras.pop(bg_cid, None)
                                 continue
-                            bg_pkt = bg_worker.grabber.get_latest_frame(timeout=0.04)
+                            bg_pkt = bg_worker.grabber.peek_latest_frame()
                             if bg_pkt is None or bg_pkt.frame is None:
                                 bg_pkt = bg_worker.latest_packet
                             if bg_pkt is None or bg_pkt.frame is None:

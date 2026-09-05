@@ -2020,6 +2020,7 @@
 
       if (mode === 'grid' && cameras.length > 1) {
         clearNativeFeedLayout();
+        stopJpegPump();
         if (workspace) {
           workspace.classList.remove('is-native-feed');
           workspace.classList.add('is-grid-mode');
@@ -2213,10 +2214,7 @@
               fallback.style.display = 'flex';
               return;
             }
-            const isCurrentlyFocus = cam.id === activeCameraId;
-            const srcUrl = (isCurrentlyFocus && isStreamActive)
-              ? '/api/frame.jpeg'
-              : `/api/camera/${encodeURIComponent(cam.id)}/frame.jpeg`;
+            const srcUrl = `/api/camera/${encodeURIComponent(cam.id)}/frame.jpeg`;
             img.src = srcUrl + (srcUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
           };
 
@@ -2231,7 +2229,7 @@
             img.style.display = 'block';
             fallback.style.display = 'none';
             const isCurrentlyFocus = cam.id === activeCameraId;
-            const pollMs = (isCurrentlyFocus && isStreamActive) ? 100 : 250;
+            const pollMs = isCurrentlyFocus ? 120 : 250;
             timer = setTimeout(poll, pollMs);
           };
 
@@ -3089,7 +3087,7 @@
             if (isFailedConnection(data)) {
               return { failed: true, error: data.error || 'Connection failed.', data: data };
             }
-            if ((data.connection || data.status) === 'CONNECTED') {
+            if (data.connection === 'CONNECTED') {
               return { connected: true, data: data };
             }
           }

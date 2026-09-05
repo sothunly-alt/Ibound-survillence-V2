@@ -73,6 +73,24 @@ def parse_source(value: Any) -> int | str:
     return text
 
 
+def webcam_index(value: Any) -> int:
+    """Coerce a webcam source to a device index.
+
+    Saved configs have produced values like ``0vi`` that are not pure digits,
+    so ``int(source)`` raises and the laptop camera never opens.
+    """
+    parsed = parse_source(value)
+    if isinstance(parsed, int):
+        return parsed
+    text = str(parsed or "").strip()
+    if text.isdigit():
+        return int(text)
+    match = re.search(r"(?:video\s*)?(\d+)", text, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return 0
+
+
 def source_has_video_ext(text: str) -> bool:
     path = str(text or "").split("?", 1)[0].rstrip("/").lower()
     return path.endswith(_VIDEO_EXTS)

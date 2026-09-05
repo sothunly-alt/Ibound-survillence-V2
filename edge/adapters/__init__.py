@@ -11,6 +11,7 @@ from adapters.base import (
     protocol_from_source,
     redact_source,
     unwrap_local_video_source,
+    webcam_index,
 )
 from adapters.gateway import GatewayAdapter
 from adapters.onvif import ONVIFAdapter
@@ -39,6 +40,7 @@ __all__ = [
     "protocol_from_source",
     "redact_source",
     "unwrap_local_video_source",
+    "webcam_index",
 ]
 
 
@@ -49,6 +51,8 @@ def ingest_kind(source: Any, protocol: str | None = None) -> str:
         return "webcam"
     text = str(parsed).strip().lower()
     kind = str(protocol or "").strip().lower()
+    if kind == "webcam":
+        return "webcam"
     if kind in ("video", "file") or unwrap_local_video_source(parsed) is not None:
         return "video"
     if text.startswith("rtsp://"):
@@ -82,7 +86,7 @@ def create_direct_adapter(
     parsed = parse_source(source)
     kind = ingest_kind(parsed, protocol)
     if kind == "webcam":
-        return WebcamAdapter(int(parsed))
+        return WebcamAdapter(webcam_index(parsed))
     if kind == "video":
         from adapters.video_file import VideoFileAdapter
 
@@ -144,7 +148,7 @@ def create_adapter(
     parsed = parse_source(source)
     kind = ingest_kind(parsed, protocol)
     if kind == "webcam":
-        return WebcamAdapter(int(parsed))
+        return WebcamAdapter(webcam_index(parsed))
     if kind == "video":
         return create_direct_adapter(parsed, protocol="video")
     if kind in ("onvif", "tapo", "webrtc"):
