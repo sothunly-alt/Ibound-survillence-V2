@@ -347,6 +347,7 @@ def upsert_camera(cfg: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]
         "roi": roi,
         "bays": bays,
         "enabled": bool(fields.get("enabled", existing.get("enabled", True))),
+        "ml_enabled": bool(fields.get("ml_enabled", existing.get("ml_enabled", True))),
         "trigger_mode": trigger_mode,
     }
     for i, cam in enumerate(cameras):
@@ -623,58 +624,67 @@ class CameraStreamWorker:
     def _loop(self) -> None:
         last_encode_time = 0.0
         last_reconnect_time = time.time()
+        was_active_ai = False
         while not self._stop_event.is_set():
             now = time.time()
-            if not self.is_active_ai:
-                # If grabber failed or lost adapter, attempt periodic reconnection
-                if (
-                    self.grabber.connection_state in ("FAILED", "STANDBY")
-                    or getattr(self.grabber, "_adapter", None) is None
-                ) and (now - last_reconnect_time >= 3.0):
-                    last_reconnect_time = now
-                    self._reconnect()
-
-                packet = self.grabber.get_latest_frame(timeout=0.15)
-                if packet is not None and packet.frame is not None:
-                    rot = int(self.cfg.get("rotate") or 0)
-                    flp = str(self.cfg.get("flip") or "none")
-                    frame = packet.frame
-                    if rot != 0 or flp != "none":
-                        frame = orient_frame(frame, rot, flp)
-
-                    if (now - last_encode_time) >= 0.09:
-                        last_encode_time = now
-                        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
-                        if ok:
-                            data = buf.tobytes()
-                            with self._lock:
-                                self.latest_jpeg = data
-                                self.latest_ts = now
-                                self.latest_packet = packet
-
-                    # Two-Stage Motion Gating for Background ML (~1 FPS)
-                    if self.eval_callback is not None and (now - self._last_bg_eval >= 1.2):
-                        try:
-                            small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
-                            if self._prev_gray is not None:
-                                diff = cv2.absdiff(self._prev_gray, small_gray)
-                                motion_score = float(cv2.mean(diff)[0])
-                            else:
-                                motion_score = 0.0
-                            self._prev_gray = small_gray
-                        except Exception:
-                            motion_score = 0.0
-
-                        if motion_score > 1.2:
-                            self._last_bg_eval = now
-                            try:
-                                self.eval_callback(self.camera_id, frame, self.cfg)
-                            except Exception as exc:
-                                print(f"[CameraStreamWorker:{self.camera_id}] Eval error: {exc}", flush=True)
-                else:
-                    time.sleep(0.04)
-            else:
+            if self.is_active_ai:
+                was_active_ai = True
                 time.sleep(0.06)
+                continue
+
+            if was_active_ai:
+                was_active_ai = False
+                last_reconnect_time = 0.0
+
+            # If grabber failed or lost adapter, attempt periodic reconnection
+            if (
+                self.grabber.connection_state in ("FAILED", "STANDBY", "RECONNECTING")
+                or getattr(self.grabber, "_adapter", None) is None
+                or (now - self.latest_ts >= 3.5 and self.grabber.connection_state != "CONNECTED")
+            ) and (now - last_reconnect_time >= 2.5):
+                last_reconnect_time = now
+                self._reconnect()
+
+            packet = self.grabber.get_latest_frame(timeout=0.15)
+            if packet is not None and packet.frame is not None:
+                rot = int(self.cfg.get("rotate") or 0)
+                flp = str(self.cfg.get("flip") or "none")
+                frame = packet.frame
+                if rot != 0 or flp != "none":
+                    frame = orient_frame(frame, rot, flp)
+
+                if (now - last_encode_time) >= 0.09:
+                    last_encode_time = now
+                    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                    if ok:
+                        data = buf.tobytes()
+                        with self._lock:
+                            self.latest_jpeg = data
+                            self.latest_ts = now
+                            self.latest_packet = packet
+
+                # Two-Stage Motion Gating for Background ML (~1 FPS)
+                ml_on = bool(self.cfg.get("ml_enabled", True))
+                if ml_on and self.eval_callback is not None and (now - self._last_bg_eval >= 1.0):
+                    try:
+                        small_gray = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (160, 120))
+                        if self._prev_gray is not None:
+                            diff = cv2.absdiff(self._prev_gray, small_gray)
+                            motion_score = float(cv2.mean(diff)[0])
+                        else:
+                            motion_score = 0.0
+                        self._prev_gray = small_gray
+                    except Exception:
+                        motion_score = 0.0
+
+                    if motion_score > 1.2:
+                        self._last_bg_eval = now
+                        try:
+                            self.eval_callback(self.camera_id, frame, self.cfg)
+                        except Exception as exc:
+                            print(f"[CameraStreamWorker:{self.camera_id}] Eval error: {exc}", flush=True)
+            else:
+                time.sleep(0.04)
 
 
 class CameraStreamPool:
@@ -760,6 +770,7 @@ class LiveStreamEngine:
         self.infer_lock = threading.Lock()
         self.latest_camera_event: dict[str, Any] | None = None
         self._bg_camera_state: dict[str, dict[str, Any]] = {}
+        self.active_roi_cameras: dict[str, float] = {}
         self.media = Go2RtcManager()
         self.camera_pool = CameraStreamPool(
             gateway=self.media, eval_callback=self._evaluate_background_camera
@@ -970,6 +981,8 @@ class LiveStreamEngine:
             camera_fields["xaddrs"] = payload.pop("xaddrs")
         if "trigger_mode" in payload:
             camera_fields["trigger_mode"] = payload.pop("trigger_mode")
+        if "ml_enabled" in payload:
+            camera_fields["ml_enabled"] = bool(payload.pop("ml_enabled"))
         with self.lock:
             self.cfg.update(payload)
             recovered = unwrap_local_video_source(self.cfg.get("source"))
@@ -1331,6 +1344,37 @@ class LiveStreamEngine:
             "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
         }
 
+    def toggle_camera_ml(self, camera_id: Any, enabled: bool | None = None) -> dict[str, Any]:
+        cid = str(camera_id or "").strip()
+        if not cid:
+            return {"success": False, "error": "Camera id is required."}
+        with self.lock:
+            cameras = _normalize_cameras(self.cfg.get("cameras"))
+            target = None
+            for cam in cameras:
+                if cam["id"] == cid:
+                    target = cam
+                    break
+            if target is None:
+                return {"success": False, "error": f"Camera '{cid}' not found."}
+            current = target.get("ml_enabled", True)
+            new_state = (not current) if enabled is None else bool(enabled)
+            target["ml_enabled"] = new_state
+            self.cfg["cameras"] = cameras
+            save_config(self.cfg)
+            if not new_state:
+                self.active_roi_cameras.pop(cid, None)
+        worker = self.camera_pool.get_worker(cid)
+        if worker is not None:
+            worker.update_cfg({"ml_enabled": new_state})
+        return {
+            "success": True,
+            "camera_id": cid,
+            "ml_enabled": new_state,
+            "cameras": cameras,
+            "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
+        }
+
     def set_roi(self, roi_value: Any) -> dict[str, Any]:
         parsed = parse_roi(roi_value)
         if parsed is None:
@@ -1475,7 +1519,7 @@ class LiveStreamEngine:
                 self._camera_frame_cache[cid or active_id] = (frame_data, "image/jpeg", now)
                 return frame_data, "image/jpeg"
             cached = self._camera_frame_cache.get(cid or active_id)
-            if cached and (now - cached[2]) < 60.0:
+            if cached and (now - cached[2]) < 2.5:
                 return cached[0], cached[1]
             worker = self.camera_pool.get_worker(cid or active_id)
             if worker and worker.latest_jpeg:
@@ -1494,17 +1538,32 @@ class LiveStreamEngine:
 
         if worker:
             if worker.latest_jpeg:
+                if worker.latest_ts > 0 and (now - worker.latest_ts) >= 3.5:
+                    worker._reconnect()
                 self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
                 return worker.latest_jpeg, "image/jpeg"
-            # Allow brief moment for initial frame acquisition
-            for _ in range(8):
-                if worker.latest_jpeg:
-                    self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
-                    return worker.latest_jpeg, "image/jpeg"
-                time.sleep(0.05)
+            # If latest_jpeg is missing, pull directly from grabber
+            pkt = worker.grabber.get_latest_frame(timeout=0.15)
+            if pkt is not None and pkt.frame is not None:
+                rot = int(worker.cfg.get("rotate") or 0)
+                flp = str(worker.cfg.get("flip") or "none")
+                fr = pkt.frame
+                if rot != 0 or flp != "none":
+                    fr = orient_frame(fr, rot, flp)
+                ok, buf = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                if ok:
+                    data = buf.tobytes()
+                    with worker._lock:
+                        worker.latest_jpeg = data
+                        worker.latest_ts = now
+                        worker.latest_packet = pkt
+                    self._camera_frame_cache[cid] = (data, "image/jpeg", now)
+                    return data, "image/jpeg"
+            else:
+                worker._reconnect()
 
         cached = self._camera_frame_cache.get(cid)
-        if cached and (now - cached[2]) < 60.0:
+        if cached and (now - cached[2]) < 5.0:
             return cached[0], cached[1]
 
         stream_id = sanitize_stream_id(cid)
@@ -1553,6 +1612,8 @@ class LiveStreamEngine:
     def _evaluate_background_camera(
         self, camera_id: str, frame: np.ndarray, cam_cfg: dict[str, Any]
     ) -> None:
+        if not cam_cfg.get("ml_enabled", True):
+            return
         if self.model is None or not self.running:
             return
         if not self.infer_lock.acquire(blocking=False):
@@ -1568,8 +1629,6 @@ class LiveStreamEngine:
                     "last_vehicle_count": 0,
                 },
             )
-            if (now - state["last_trigger_ts"]) < 20.0:
-                return
 
             h, w = frame.shape[:2]
             trigger_mode = str(cam_cfg.get("trigger_mode") or "roi_state_change")
@@ -1611,9 +1670,12 @@ class LiveStreamEngine:
 
             if trigger_mode == "any_detection":
                 if persons:
-                    triggered = True
-                    event_desc = f"{len(persons)} person{'s' if len(persons) > 1 else ''} detected"
-                elif vehicles:
+                    with self.lock:
+                        self.active_roi_cameras[camera_id] = now
+                    if (now - state["last_trigger_ts"]) >= 20.0:
+                        triggered = True
+                        event_desc = f"{len(persons)} person{'s' if len(persons) > 1 else ''} detected"
+                elif vehicles and (now - state["last_trigger_ts"]) >= 20.0:
                     triggered = True
                     event_desc = f"{len(vehicles)} vehicle{'s' if len(vehicles) > 1 else ''} detected"
             else:
@@ -1641,17 +1703,22 @@ class LiveStreamEngine:
                             break
 
                 now_occupied = bool(persons_in_bays or vehicles_in_bays)
-                if now_occupied and not state["was_occupied"]:
-                    triggered = True
-                    if persons_in_bays:
-                        bay_name = persons_in_bays[0][1].get("name") or "Bay"
-                        event_desc = f"Movement in {bay_name}"
-                    else:
-                        bay_name = vehicles_in_bays[0][1].get("name") or "Bay"
-                        event_desc = f"Vehicle entered {bay_name}"
-                elif now_occupied and (now - state["last_trigger_ts"] > 60.0):
-                    triggered = True
-                    event_desc = f"Active presence in {bays[0].get('name') or 'Bay'}"
+                if persons_in_bays:
+                    with self.lock:
+                        self.active_roi_cameras[camera_id] = now
+
+                if (now - state["last_trigger_ts"]) >= 20.0:
+                    if now_occupied and not state["was_occupied"]:
+                        triggered = True
+                        if persons_in_bays:
+                            bay_name = persons_in_bays[0][1].get("name") or "Bay"
+                            event_desc = f"Movement in {bay_name}"
+                        else:
+                            bay_name = vehicles_in_bays[0][1].get("name") or "Bay"
+                            event_desc = f"Vehicle entered {bay_name}"
+                    elif now_occupied and (now - state["last_trigger_ts"] > 60.0):
+                        triggered = True
+                        event_desc = f"Active presence in {bays[0].get('name') or 'Bay'}"
 
                 state["was_occupied"] = now_occupied
                 state["last_person_count"] = len(persons_in_bays)
@@ -1727,6 +1794,7 @@ class LiveStreamEngine:
             "wifi_devices": wifi_rows,
             "roi": list(cfg.get("roi") or [0.30, 0.20, 0.40, 0.60]),
             "active_camera_id": str(cfg.get("active_camera_id") or ""),
+            "active_roi_cameras": list(self.active_roi_cameras.keys()),
             "latest_camera_event": latest_event,
         }
 
@@ -1749,8 +1817,12 @@ class LiveStreamEngine:
         live = {b.get("mechanic_name"): b for b in self.garage_telemetry().get("bays") or [] if b.get("mechanic_name")}
         now = time.time()
         technicians = []
+        seen_names: set[str] = set()
         for tech in summary["technicians"]:
-            name = tech["staff_name"]
+            name = str(tech.get("staff_name") or "").strip()
+            if not name or name.lower() in seen_names:
+                continue
+            seen_names.add(name.lower())
             wifi = wifi_by.get(name.lower(), {})
             face_recent = (now - self.last_face_seen.get(name, 0)) < 45
             wifi_on = bool(wifi.get("connected"))
@@ -2019,7 +2091,14 @@ class LiveStreamEngine:
             else:
                 dynamic_interval = 3.0  # Idle Sleep Mode (wakes up instantly on motion)
 
-            if now - last_infer >= dynamic_interval:
+            active_cam_cfg = next((c for c in (self.cfg.get("cameras") or []) if c.get("id") == active_cid), {})
+            active_ml_enabled = bool(active_cam_cfg.get("ml_enabled", True))
+
+            if not active_ml_enabled:
+                self.status_text = "AI DISABLED"
+                last_accepted = []
+                last_rejected = []
+            elif now - last_infer >= dynamic_interval:
                 last_infer = now
                 try:
                     t_pred = time.perf_counter()
@@ -2109,6 +2188,59 @@ class LiveStreamEngine:
                     with self.lock:
                         self.bay_telemetry = [s.as_dict() for s in snapshots]
 
+                    # Multi-Camera Concurrent ROI Tracking
+                    if self.active_roi_cameras:
+                        bg_cids = list(self.active_roi_cameras.keys())
+                        for bg_cid in bg_cids:
+                            if bg_cid == active_cid:
+                                continue
+                            bg_worker = self.camera_pool.get_worker(bg_cid)
+                            if bg_worker is None or not bg_worker.cfg.get("ml_enabled", True):
+                                self.active_roi_cameras.pop(bg_cid, None)
+                                continue
+                            bg_pkt = bg_worker.grabber.get_latest_frame(timeout=0.04)
+                            if bg_pkt is None or bg_pkt.frame is None:
+                                bg_pkt = bg_worker.latest_packet
+                            if bg_pkt is None or bg_pkt.frame is None:
+                                continue
+                            bg_frame = bg_pkt.frame
+                            bg_h, bg_w = bg_frame.shape[:2]
+                            bg_bays = bg_worker.cfg.get("bays") or []
+                            if not bg_bays:
+                                bg_roi = parse_roi(bg_worker.cfg.get("roi")) or [0.3, 0.2, 0.4, 0.6]
+                                bg_bays = [{"id": f"{bg_cid}_bay", "name": "Bay 1", "roi": bg_roi}]
+                            try:
+                                with self.infer_lock:
+                                    bg_res = self.model.predict(
+                                        bg_frame,
+                                        imgsz=imgsz,
+                                        conf=person_conf,
+                                        device=self.runtime_profile.yolo_device if self.runtime_profile else None,
+                                        verbose=False,
+                                    )[0]
+                                bg_persons, _ = person_detections(
+                                    bg_res,
+                                    bg_h,
+                                    conf_min=person_conf,
+                                    min_height_frac=min_person_height,
+                                    min_aspect=min_aspect,
+                                    min_keypoints=min_keypoints,
+                                    kpt_conf=kpt_conf,
+                                )
+                                bg_in_roi = [
+                                    det for det in bg_persons
+                                    if any(detection_in_bay(det, b, bg_w, bg_h, kpt_conf=kpt_conf) for b in bg_bays)
+                                ]
+                                if bg_in_roi:
+                                    self.active_roi_cameras[bg_cid] = now
+                                else:
+                                    last_seen = self.active_roi_cameras.get(bg_cid, 0.0)
+                                    if (now - last_seen) >= 3.0:
+                                        self.active_roi_cameras.pop(bg_cid, None)
+                                        print(f"[MultiCamROI] Person exited ROI on {bg_cid}. Remaining active: {list(self.active_roi_cameras.keys())}", flush=True)
+                            except Exception as ex:
+                                print(f"[MultiCamROI] Worker infer error on {bg_cid}: {ex}", flush=True)
+
                     if self.conn is not None:
                         upsert_minute(
                             self.conn,
@@ -2168,10 +2300,17 @@ class LiveStreamEngine:
 
             success, buffer = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if success:
+                jpeg_bytes = buffer.tobytes()
                 with self.lock:
-                    self.current_frame_jpeg = buffer.tobytes()
+                    self.current_frame_jpeg = jpeg_bytes
                     self.frame_seq += 1
                 self.new_frame_event.set()
+                active_worker = self.camera_pool.get_worker(active_cid)
+                if active_worker is not None:
+                    with active_worker._lock:
+                        active_worker.latest_jpeg = jpeg_bytes
+                        active_worker.latest_ts = now
+                        active_worker.latest_packet = packet
 
         if self.conn is not None:
             self.conn.close()
@@ -2521,6 +2660,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 "stream_id": sid,
                 "media": GLOBAL_ENGINE.media.status(sid),
                 "active_camera_id": str(GLOBAL_ENGINE.cfg.get("active_camera_id") or ""),
+                "active_roi_cameras": list(GLOBAL_ENGINE.active_roi_cameras.keys()),
                 "latest_camera_event": GLOBAL_ENGINE.latest_camera_event,
             }
             self.send_response(200)
@@ -2768,6 +2908,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
+
+        elif parsed.path in ("/api/cameras/toggle-ml", "/api/cameras/ml-toggle"):
+            cid = payload.get("id") or payload.get("camera_id")
+            result = GLOBAL_ENGINE.toggle_camera_ml(cid, payload.get("ml_enabled"))
+            self._send_json(result)
 
         elif parsed.path in ("/api/cameras/acknowledge-event", "/api/cameras/ack-event"):
             GLOBAL_ENGINE.acknowledge_event(payload.get("event_id"))

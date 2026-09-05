@@ -75,6 +75,7 @@ class HttpMjpegCapture:
         self._buf = bytearray()
         self._mode = "mjpeg"
         self._opened = False
+        self._last_connect_try = time.time()
         err = self._connect()
         if err:
             self.error = err
@@ -97,15 +98,27 @@ class HttpMjpegCapture:
             pass
 
     def read(self) -> tuple[bool, Any]:
+        import time as _t
+        now = _t.time()
         if not self._opened:
-            return False, None
+            if (now - getattr(self, "_last_connect_try", 0.0)) >= 2.0:
+                self._last_connect_try = now
+                if self._connect() is None:
+                    self._opened = True
+                else:
+                    return False, None
+            else:
+                return False, None
         try:
             frame = self._next_frame()
             if frame is not None:
                 return True, frame
         except Exception:
             self._close_body()
+            self._opened = False
+            self._last_connect_try = _t.time()
             if self._connect() is None:
+                self._opened = True
                 try:
                     frame = self._next_frame()
                     if frame is not None:
@@ -273,8 +286,14 @@ class PhoneHttpAdapter(BaseCameraAdapter):
             frame = self._pending_first
             self._pending_first = None
             return packet_from_bgr(frame)
-        if self._cap is None:
-            return None
+        if self._cap is None or not self._cap.isOpened():
+            import time as _t
+            now = _t.time()
+            if (now - getattr(self, "_last_adapter_reconnect", 0.0)) >= 2.5:
+                self._last_adapter_reconnect = now
+                self.connect()
+            if self._cap is None:
+                return None
         ok, frame = self._cap.read()
         if not ok or frame is None:
             return None

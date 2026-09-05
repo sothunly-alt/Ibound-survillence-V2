@@ -451,26 +451,63 @@ def get_daily_garage_summary(
     bay_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     now = datetime.now()
-    technicians: list[dict[str, Any]] = []
+    techs_by_name: dict[str, dict[str, Any]] = {}
     for row in conn.execute(
         "SELECT * FROM technician_shifts WHERE day = ? ORDER BY clock_in_time ASC",
         (day.isoformat(),),
     ):
+        raw_name = str(row["staff_name"] or "").strip()
+        if not raw_name:
+            continue
+        key = raw_name.lower()
         shift_min = _shift_minutes(row["clock_in_time"], row["clock_out_time"], now)
         wrench = float(row["wrench_minutes"] or 0)
         idle = float(row["idle_minutes"] or 0)
-        score = _performance_score(wrench, shift_min)
-        technicians.append(
-            {
-                "staff_name": row["staff_name"],
+        wifi = float(row["wifi_active_minutes"] or 0)
+        is_clocked_in = row["clock_in_time"] is not None and not row["clock_out_time"]
+
+        if key not in techs_by_name:
+            techs_by_name[key] = {
+                "staff_name": raw_name,
                 "clock_in_time": row["clock_in_time"],
                 "clock_out_time": row["clock_out_time"],
-                "total_shift_minutes": round(shift_min, 2),
+                "total_shift_minutes": shift_min,
+                "wrench_minutes": wrench,
+                "idle_minutes": idle,
+                "wifi_active_minutes": wifi,
+                "clocked_in": is_clocked_in,
+            }
+        else:
+            agg = techs_by_name[key]
+            agg["total_shift_minutes"] += shift_min
+            agg["wrench_minutes"] += wrench
+            agg["idle_minutes"] += idle
+            agg["wifi_active_minutes"] += wifi
+            if is_clocked_in:
+                agg["clocked_in"] = True
+                agg["clock_out_time"] = None
+            elif not agg["clocked_in"]:
+                if row["clock_out_time"] and (not agg["clock_out_time"] or row["clock_out_time"] > agg["clock_out_time"]):
+                    agg["clock_out_time"] = row["clock_out_time"]
+            if row["clock_in_time"] and (not agg["clock_in_time"] or row["clock_in_time"] < agg["clock_in_time"]):
+                agg["clock_in_time"] = row["clock_in_time"]
+
+    technicians: list[dict[str, Any]] = []
+    for agg in techs_by_name.values():
+        total = agg["total_shift_minutes"]
+        wrench = agg["wrench_minutes"]
+        score = _performance_score(wrench, total)
+        technicians.append(
+            {
+                "staff_name": agg["staff_name"],
+                "clock_in_time": agg["clock_in_time"],
+                "clock_out_time": agg["clock_out_time"],
+                "total_shift_minutes": round(total, 2),
                 "wrench_minutes": round(wrench, 2),
-                "idle_minutes": round(idle, 2),
-                "wifi_active_minutes": round(float(row["wifi_active_minutes"] or 0), 2),
+                "idle_minutes": round(agg["idle_minutes"], 2),
+                "wifi_active_minutes": round(agg["wifi_active_minutes"], 2),
                 "performance_score": score,
-                "clocked_in": row["clock_in_time"] is not None and not row["clock_out_time"],
+                "clocked_in": agg["clocked_in"],
             }
         )
 

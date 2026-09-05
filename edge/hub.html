@@ -616,6 +616,16 @@
               </select>
               <p class="text-[11px] text-on-surface-variant leading-relaxed">Auto-switches to this camera when this event condition occurs while in background.</p>
             </div>
+            <div id="ml-enabled-wrap" class="flex items-center justify-between p-3 rounded-lg bg-surface-container-highest border border-outline-variant/30">
+              <div class="flex flex-col">
+                <span class="text-xs font-semibold text-on-surface">AI Person & Vehicle Detection</span>
+                <span class="text-[11px] text-on-surface-variant">Track bay presence, ROI occupancy & wrench time for this camera</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="camera-ml-input" class="sr-only peer" checked>
+                <div class="w-9 h-5 bg-surface-container-high peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
             <div class="flex flex-wrap gap-2 mt-2">
               <button type="button" id="btn-save-camera" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-5 rounded-lg font-medium transition-colors text-sm border border-outline-variant disabled:opacity-60" onclick="saveCameraOnly()">
                 Save Camera
@@ -1882,18 +1892,31 @@
           statusEl.textContent = 'Port Closed';
         } else if (cam.id === activeCameraId && isStreamActive) {
           statusEl.className = 'font-mono-data text-mono-data text-green-400';
-          statusEl.textContent = liveStatusText;
+          statusEl.textContent = (cam.ml_enabled === false ? 'AI Off · ' : '') + liveStatusText;
         } else if (cam.id === lastFailedId) {
           statusEl.className = 'font-mono-data text-mono-data text-error';
           statusEl.textContent = 'Connection Lost';
         } else {
           statusEl.className = 'font-mono-data text-mono-data text-on-surface-variant';
-          statusEl.textContent = 'Saved';
+          statusEl.textContent = cam.ml_enabled === false ? 'AI Off · Saved' : 'Saved';
         }
         meta.appendChild(nameEl);
         meta.appendChild(statusEl);
         btn.appendChild(thumb);
         btn.appendChild(meta);
+
+        const isMlOff = cam.ml_enabled === false;
+        const mlToggleBtn = document.createElement('button');
+        mlToggleBtn.type = 'button';
+        mlToggleBtn.title = isMlOff ? 'Enable AI Detection' : 'Disable AI Detection';
+        mlToggleBtn.className = isMlOff
+          ? 'shrink-0 px-2 rounded-lg text-neutral-500 hover:text-primary hover:bg-surface-container-high transition-colors'
+          : 'shrink-0 px-2 rounded-lg text-primary hover:text-neutral-400 hover:bg-surface-container-high transition-colors';
+        mlToggleBtn.addEventListener('click', (ev) => toggleCameraML(cam.id, ev));
+        const mlIcon = document.createElement('span');
+        mlIcon.className = 'material-symbols-outlined text-[16px]';
+        mlIcon.textContent = 'smart_toy';
+        mlToggleBtn.appendChild(mlIcon);
 
         const toggleBtn = document.createElement('button');
         toggleBtn.type = 'button';
@@ -1918,6 +1941,7 @@
         del.appendChild(delIcon);
 
         row.appendChild(btn);
+        row.appendChild(mlToggleBtn);
         row.appendChild(toggleBtn);
         row.appendChild(del);
         root.appendChild(row);
@@ -2038,26 +2062,57 @@
       }
     }
 
+    let latestActiveRoiCameras = [];
+
     function updateMultiCamGridFocus() {
       const grid = document.getElementById('multi-cam-grid');
       if (!grid) return;
       grid.querySelectorAll('.grid-cam-tile').forEach((tile) => {
         const camId = tile.dataset.camId;
         const isFocus = camId === activeCameraId;
+        const currentCam = (cameras || []).find((c) => c.id === camId) || {};
+        const isClosed = currentCam.enabled === false;
+        const isMlOff = currentCam.ml_enabled === false;
+        const isRoiActive = Array.isArray(latestActiveRoiCameras) && latestActiveRoiCameras.includes(camId);
+
         tile.classList.toggle('active-focus', isFocus);
-        tile.classList.toggle('ring-2', isFocus);
-        tile.classList.toggle('ring-primary', isFocus);
+        tile.classList.toggle('ring-2', isFocus || isRoiActive);
+        tile.classList.toggle('ring-primary', isFocus && !isRoiActive);
+        tile.classList.toggle('ring-emerald-400', isRoiActive && !isFocus);
+
         const badgeDot = tile.querySelector('.cam-badge-dot');
         if (badgeDot) {
-          badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70'}`;
+          if (isClosed) {
+            badgeDot.className = 'cam-badge-dot w-2 h-2 rounded-full bg-amber-400';
+          } else if (isFocus && isStreamActive) {
+            badgeDot.className = 'cam-badge-dot w-2 h-2 rounded-full bg-primary';
+          } else if (isRoiActive) {
+            badgeDot.className = 'cam-badge-dot w-2 h-2 rounded-full bg-emerald-400 animate-ping';
+          } else if (isMlOff) {
+            badgeDot.className = 'cam-badge-dot w-2 h-2 rounded-full bg-neutral-500';
+          } else {
+            badgeDot.className = 'cam-badge-dot w-2 h-2 rounded-full bg-primary/70';
+          }
         }
         const badgeText = tile.querySelector('.cam-badge-sub');
-        if (badgeText) {
-          badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
+        if (badgeText && !isClosed) {
+          if (isFocus) {
+            badgeText.textContent = isMlOff ? 'ACTIVE (AI OFF)' : 'ACTIVE (AI SPOTLIGHT)';
+          } else if (isRoiActive) {
+            badgeText.textContent = 'AI TRACKING (PERSON IN ROI)';
+          } else {
+            badgeText.textContent = isMlOff ? 'LIVE CCTV (AI OFF)' : 'LIVE CCTV';
+          }
+        }
+        const mlBtn = tile.querySelector('.cam-ml-btn');
+        if (mlBtn) {
+          mlBtn.title = isMlOff ? 'Enable AI Detection' : 'Disable AI Detection';
+          mlBtn.className = `cam-ml-btn absolute top-2 right-16 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity ${isMlOff ? 'text-neutral-400' : 'text-primary'} hover:scale-110`;
+          mlBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">smart_toy</span>';
         }
         const isTriggered = lastAutoSwitchEvent && lastAutoSwitchEvent.camera_id === camId && (Date.now() - lastAutoSwitchEventTime < 15000);
-        tile.classList.toggle('ring-amber-400', Boolean(isTriggered && !isFocus));
-        tile.classList.toggle('animate-pulse', Boolean(isTriggered && !isFocus));
+        tile.classList.toggle('ring-amber-400', Boolean(isTriggered && !isFocus && !isRoiActive));
+        tile.classList.toggle('animate-pulse', Boolean((isTriggered && !isFocus) || (isRoiActive && !isFocus)));
       });
     }
 
@@ -2103,11 +2158,14 @@
       activeCams.forEach((cam) => {
         let tile = grid.querySelector(`.grid-cam-tile[data-cam-id="${CSS.escape(cam.id)}"]`);
         const isFocus = cam.id === activeCameraId;
+        const isClosed = cam.enabled === false;
+        const isMlOff = cam.ml_enabled === false;
+        const isRoiActive = Array.isArray(latestActiveRoiCameras) && latestActiveRoiCameras.includes(cam.id);
 
         if (!tile) {
           tile = document.createElement('div');
           tile.dataset.camId = cam.id;
-          tile.className = `grid-cam-tile ${isFocus ? 'active-focus ring-2 ring-primary' : ''} flex items-center justify-center relative rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
+          tile.className = `grid-cam-tile ${isFocus ? 'active-focus ring-2 ring-primary' : (isRoiActive ? 'ring-2 ring-emerald-400 animate-pulse' : '')} flex items-center justify-center relative rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
           tile.style.width = '100%';
           tile.style.height = '100%';
           tile.style.minWidth = '0';
@@ -2124,7 +2182,6 @@
           img.style.objectFit = gridFitMode;
           img.style.display = 'none';
 
-          const isClosed = cam.enabled === false;
           const fallback = document.createElement('div');
           fallback.className = 'grid-cam-fallback absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
           fallback.style.display = 'flex';
@@ -2138,10 +2195,11 @@
               </button>
             `;
           } else {
+            const subLabel = isFocus ? (isMlOff ? 'ACTIVE (AI OFF)' : 'ACTIVE (AI SPOTLIGHT)') : (isRoiActive ? 'AI TRACKING (PERSON IN ROI)' : (isMlOff ? 'LIVE CCTV (AI OFF)' : 'LIVE CCTV'));
             fallback.innerHTML = `
               <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
               <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
-              <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
+              <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${subLabel}</span>
             `;
           }
 
@@ -2188,9 +2246,19 @@
           const badge = document.createElement('div');
           badge.className = 'absolute top-2 left-2 glass-panel px-2.5 py-1 rounded-full z-10 flex items-center gap-1.5 pointer-events-none';
           badge.innerHTML = `
-            <span class="cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70')}"></span>
+            <span class="cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : (isRoiActive ? 'bg-emerald-400' : (isMlOff ? 'bg-neutral-500' : 'bg-primary/70')))}"></span>
             <span class="text-[11px] font-semibold text-on-surface truncate max-w-[140px]">${escapeHtml(cam.name)}</span>
           `;
+
+          const mlBtn = document.createElement('button');
+          mlBtn.type = 'button';
+          mlBtn.className = `cam-ml-btn absolute top-2 right-16 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity ${isMlOff ? 'text-neutral-400' : 'text-primary'} hover:scale-110`;
+          mlBtn.title = isMlOff ? 'Enable AI Detection' : 'Disable AI Detection';
+          mlBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">smart_toy</span>';
+          mlBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            toggleCameraML(cam.id, ev);
+          });
 
           const portBtn = document.createElement('button');
           portBtn.type = 'button';
@@ -2216,6 +2284,7 @@
           tile.appendChild(img);
           tile.appendChild(fallback);
           tile.appendChild(badge);
+          tile.appendChild(mlBtn);
           tile.appendChild(portBtn);
           tile.appendChild(maxBtn);
 
@@ -2228,12 +2297,11 @@
             poll();
           }
         } else {
-          tile.className = `grid-cam-tile ${isFocus ? 'active-focus ring-2 ring-primary' : ''} flex items-center justify-center relative rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
+          tile.className = `grid-cam-tile ${isFocus ? 'active-focus ring-2 ring-primary' : (isRoiActive ? 'ring-2 ring-emerald-400 animate-pulse' : '')} flex items-center justify-center relative rounded-lg border border-outline-variant bg-black overflow-hidden group cursor-pointer`;
           tile.style.width = '100%';
           tile.style.height = '100%';
           tile.style.minWidth = '0';
           tile.style.minHeight = '0';
-          const isClosed = cam.enabled === false;
           const existingImg = tile.querySelector('img');
           const existingFallback = tile.querySelector('.grid-cam-fallback') || tile.querySelector('.absolute.inset-0');
           if (existingImg) {
@@ -2255,20 +2323,26 @@
               `;
             } else if (existingImg && existingImg.style.display === 'none') {
               existingFallback.style.display = 'flex';
+              const subLabel = isFocus ? (isMlOff ? 'ACTIVE (AI OFF)' : 'ACTIVE (AI SPOTLIGHT)') : (isRoiActive ? 'AI TRACKING (PERSON IN ROI)' : (isMlOff ? 'LIVE CCTV (AI OFF)' : 'LIVE CCTV'));
               existingFallback.innerHTML = `
                 <span class="material-symbols-outlined text-2xl mb-1">videocam</span>
                 <span class="text-xs font-medium text-on-surface truncate max-w-[160px]">${escapeHtml(cam.name)}</span>
-                <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV'}</span>
+                <span class="cam-badge-sub text-[10px] font-mono-data text-outline mt-0.5">${subLabel}</span>
               `;
             }
           }
           const badgeDot = tile.querySelector('.cam-badge-dot');
           if (badgeDot) {
-            badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : 'bg-primary/70')}`;
+            badgeDot.className = `cam-badge-dot w-2 h-2 rounded-full ${isClosed ? 'bg-amber-400' : (isFocus && isStreamActive ? 'bg-primary' : (isRoiActive ? 'bg-emerald-400' : (isMlOff ? 'bg-neutral-500' : 'bg-primary/70')))}`;
           }
           const badgeText = tile.querySelector('.cam-badge-sub');
           if (badgeText && !isClosed) {
-            badgeText.textContent = isFocus ? 'ACTIVE (AI SPOTLIGHT)' : 'LIVE CCTV';
+            badgeText.textContent = isFocus ? (isMlOff ? 'ACTIVE (AI OFF)' : 'ACTIVE (AI SPOTLIGHT)') : (isRoiActive ? 'AI TRACKING (PERSON IN ROI)' : (isMlOff ? 'LIVE CCTV (AI OFF)' : 'LIVE CCTV'));
+          }
+          const mlBtn = tile.querySelector('.cam-ml-btn');
+          if (mlBtn) {
+            mlBtn.title = isMlOff ? 'Enable AI Detection' : 'Disable AI Detection';
+            mlBtn.className = `cam-ml-btn absolute top-2 right-16 glass-panel p-1 rounded-full z-10 opacity-0 group-hover:opacity-100 transition-opacity ${isMlOff ? 'text-neutral-400' : 'text-primary'} hover:scale-110`;
           }
           const portBtn = tile.querySelector('.cam-port-btn');
           if (portBtn) {
@@ -2412,6 +2486,8 @@
       if (rotateDeg === 'auto') flipMode = 'none';
       const trigEl = document.getElementById('camera-trigger-mode-input');
       if (trigEl) trigEl.value = cam.trigger_mode || 'roi_state_change';
+      const mlEl = document.getElementById('camera-ml-input');
+      if (mlEl) mlEl.checked = cam.ml_enabled !== false;
       paintOrient();
       onProtocolChange();
     }
@@ -2429,6 +2505,8 @@
       if (mainEl) mainEl.value = '';
       const trigEl = document.getElementById('camera-trigger-mode-input');
       if (trigEl) trigEl.value = 'roi_state_change';
+      const mlEl = document.getElementById('camera-ml-input');
+      if (mlEl) mlEl.checked = true;
       pendingXaddrs = [];
       rotateDeg = 'auto';
       flipMode = 'none';
@@ -2475,6 +2553,7 @@
       const password = document.getElementById('password-input').value;
       const mainEl = document.getElementById('main-source-input');
       const trigEl = document.getElementById('camera-trigger-mode-input');
+      const mlEl = document.getElementById('camera-ml-input');
       return {
         id: activeCameraId || '',
         name: document.getElementById('camera-name-input').value.trim(),
@@ -2490,7 +2569,8 @@
         flip: document.getElementById('flip-input').value,
         roi: liveRoi,
         bays: liveBays,
-        trigger_mode: trigEl ? trigEl.value : 'roi_state_change'
+        trigger_mode: trigEl ? trigEl.value : 'roi_state_change',
+        ml_enabled: mlEl ? Boolean(mlEl.checked) : true
       };
     }
 
@@ -2851,6 +2931,34 @@
         }
       } catch (err) {
         console.error('Failed to toggle camera port:', err);
+      }
+    }
+
+    async function toggleCameraML(id, ev) {
+      if (ev) ev.stopPropagation();
+      const cam = cameras.find((c) => c.id === id);
+      if (!cam) return;
+      const targetState = !(cam.ml_enabled !== false);
+      try {
+        const res = await fetch('/api/cameras/toggle-ml', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, ml_enabled: targetState })
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.cameras)) {
+          cameras = data.cameras;
+          if (cam.id === activeCameraId) {
+            const mlEl = document.getElementById('camera-ml-input');
+            if (mlEl) mlEl.checked = targetState;
+          }
+          renderCameraList();
+          if (currentLayoutMode === 'grid') {
+            renderMultiCamGrid();
+          }
+        }
+      } catch (err) {
+        console.error('Failed to toggle camera ML:', err);
       }
     }
 
@@ -3237,6 +3345,10 @@
         const data = await res.json();
         applyGarageHeader(data);
         checkAutoSwitchEvent(data);
+        if (Array.isArray(data.active_roi_cameras)) {
+          latestActiveRoiCameras = data.active_roi_cameras;
+          if (currentLayoutMode === 'grid') updateMultiCamGridFocus();
+        }
         if (!roiDragging && Array.isArray(data.bays) && data.bays.length) mergeBayTelemetry(data.bays);
       } catch (err) { /* ignore */ }
     }
@@ -3282,6 +3394,10 @@
         parseResolution(data.resolution);
         applyGarageHeader(data);
         checkAutoSwitchEvent(data);
+        if (Array.isArray(data.active_roi_cameras)) {
+          latestActiveRoiCameras = data.active_roi_cameras;
+          if (currentLayoutMode === 'grid') updateMultiCamGridFocus();
+        }
         if (!roiDragging && Array.isArray(data.bays) && data.bays.length) {
           mergeBayTelemetry(data.bays);
         }
@@ -4320,7 +4436,15 @@
         const shop = data.shop || {};
         const util = document.getElementById('scorecard-util');
         if (util) util.textContent = 'Utilization ' + (shop.utilization_pct != null ? shop.utilization_pct + '%' : '—');
-        const techs = data.technicians || data.attendance_logs || [];
+        const rawTechs = data.technicians || data.attendance_logs || [];
+        const seenStaff = new Set();
+        const techs = [];
+        for (const t of rawTechs) {
+          const norm = String(t.staff_name || '').trim().toLowerCase();
+          if (!norm || seenStaff.has(norm)) continue;
+          seenStaff.add(norm);
+          techs.push(t);
+        }
         const wifi = {};
         (data.wifi_devices || []).forEach((d) => { wifi[d.name] = d; });
         let html = '';

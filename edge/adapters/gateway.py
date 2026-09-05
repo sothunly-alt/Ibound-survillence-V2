@@ -104,9 +104,22 @@ class GatewayAdapter(BaseCameraAdapter):
         return True
 
     def read_frame(self) -> Optional[FramePacket]:
-        if self._inner is None:
-            return None
-        return self._inner.read_frame()
+        import time as _t
+        now = _t.time()
+        if self._inner is None or not self._inner.is_connected():
+            if (now - getattr(self, "_last_gw_reconnect", 0.0)) >= 2.5:
+                self._last_gw_reconnect = now
+                self.connect()
+            if self._inner is None:
+                return None
+        packet = self._inner.read_frame()
+        if packet is None and self.via == "gateway":
+            if (now - getattr(self, "_last_gw_fallback", 0.0)) >= 3.0:
+                self._last_gw_fallback = now
+                self._connect_fallback()
+                if self._inner is not None:
+                    packet = self._inner.read_frame()
+        return packet
 
     def release(self, unregister: bool = False) -> None:
         """Close the local consumer. Stream registration is owned by the engine."""

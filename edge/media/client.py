@@ -60,6 +60,8 @@ class Go2RtcClient:
             return False
         params = {"src": source_url, "name": stream_id}
         existing = self.get_stream_info(stream_id)
+        if existing and source_url in str(existing):
+            return True
         methods = ("PATCH", "PUT", "POST") if existing else ("PUT", "POST", "PATCH")
         for method in methods:
             try:

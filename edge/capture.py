@@ -176,6 +176,8 @@ class AsyncFrameGrabber:
 
     def _loop(self) -> None:
         active_generation = 0
+        consecutive_nulls = 0
+        null_start_ts = 0.0
         while not self._stop.is_set():
             pending, generation = self._take_pending()
             if pending is not None:
@@ -231,10 +233,25 @@ class AsyncFrameGrabber:
                 continue
 
             if packet is None:
+                now = time.time()
+                if consecutive_nulls == 0:
+                    null_start_ts = now
+                consecutive_nulls += 1
                 if self.connection_state != "FAILED":
-                    self._set_state("RECONNECTING", adapter.error)
+                    self._set_state("RECONNECTING", getattr(adapter, "error", None))
+                if (now - null_start_ts) >= 2.5 and consecutive_nulls >= 20:
+                    null_start_ts = now
+                    try:
+                        if hasattr(adapter, "connect") and adapter.connect():
+                            self._set_state("CONNECTING", None)
+                        else:
+                            self._set_state("FAILED", getattr(adapter, "error", "Stream disconnected"))
+                    except Exception:
+                        self._set_state("FAILED", getattr(adapter, "error", "Stream disconnected"))
                 self._stop.wait(0.05)
                 continue
+            consecutive_nulls = 0
+            null_start_ts = 0.0
 
             # Copy so YOLO can hold this array while the next grab overwrites the slot.
             try:
