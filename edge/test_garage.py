@@ -905,7 +905,50 @@ class GarageApiTests(unittest.TestCase):
         frame_bytes, ctype = engine.get_camera_frame(None)
         self.assertEqual(frame_bytes, b"FAKE_JPEG_ACTIVE")
 
+    def test_camera_stream_pool_and_concurrent_frames(self):
+        from launcher import LiveStreamEngine, CameraStreamWorker
+
+        engine = LiveStreamEngine()
+        engine.current_frame_jpeg = b"AI_ACTIVE_FRAME"
+        engine.cfg["active_camera_id"] = "cam-1"
+        engine.cfg["cameras"] = [
+            {"id": "cam-1", "name": "Camera 1", "source": "0"},
+            {"id": "cam-2", "name": "Camera 2", "source": "rtsp://192.168.1.100/stream"},
+        ]
+
+        # Simulate background worker for cam-2 in the pool
+        worker_2 = CameraStreamWorker("cam-2", engine.cfg["cameras"][1])
+        worker_2.latest_jpeg = b"BACKGROUND_LIVE_FRAME_2"
+        worker_2.latest_ts = 1234567890.0
+        engine.camera_pool._workers["cam-2"] = worker_2
+
+        # Active camera cam-1 returns AI frame
+        f1, c1 = engine.get_camera_frame("cam-1")
+        self.assertEqual(f1, b"AI_ACTIVE_FRAME")
+
+        # Concurrent background camera cam-2 returns its worker frame without dropping
+        f2, c2 = engine.get_camera_frame("cam-2")
+        self.assertEqual(f2, b"BACKGROUND_LIVE_FRAME_2")
+
+        # Switch active camera to cam-2
+        engine.camera_pool.set_active_camera("cam-2")
+        engine.cfg["active_camera_id"] = "cam-2"
+        engine.current_frame_jpeg = b"AI_ACTIVE_FRAME_2"
+
+        # Worker for cam-1 now has background frames
+        worker_1 = CameraStreamWorker("cam-1", engine.cfg["cameras"][0])
+        worker_1.latest_jpeg = b"BACKGROUND_LIVE_FRAME_1"
+        worker_1.latest_ts = 1234567891.0
+        engine.camera_pool._workers["cam-1"] = worker_1
+
+        # Now cam-2 is active (AI spotlight), cam-1 is background live CCTV
+        f2_active, _ = engine.get_camera_frame("cam-2")
+        f1_bg, _ = engine.get_camera_frame("cam-1")
+        self.assertEqual(f2_active, b"AI_ACTIVE_FRAME_2")
+        self.assertEqual(f1_bg, b"BACKGROUND_LIVE_FRAME_1")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

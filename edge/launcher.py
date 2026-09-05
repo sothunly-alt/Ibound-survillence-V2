@@ -493,6 +493,176 @@ class _ConnectErrorAdapter(BaseCameraAdapter):
         return False
 
 
+class CameraStreamWorker:
+    """Maintains a background grabber and latest-frame cache for a single camera.
+
+    Keeps the camera stream alive across layout switches and active-camera changes,
+    enabling all cameras in the multi-camera grid to stream simultaneously.
+    """
+
+    def __init__(self, camera_id: str, camera_cfg: dict[str, Any], gateway: Any = None):
+        self.camera_id = str(camera_id)
+        self.cfg = dict(camera_cfg)
+        self.gateway = gateway
+        self.grabber = AsyncFrameGrabber()
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.latest_jpeg: bytes | None = None
+        self.latest_ts: float = 0.0
+        self.latest_packet: FramePacket | None = None
+        self.is_active_ai: bool = False
+
+    def update_cfg(self, new_cfg: dict[str, Any]) -> bool:
+        """Update config. Reconnects adapter if source, credentials, or protocol changed."""
+        with self._lock:
+            old_src = self.cfg.get("source")
+            old_proto = self.cfg.get("protocol")
+            old_user = self.cfg.get("username")
+            old_pass = self.cfg.get("password")
+            old_main = self.cfg.get("main_source")
+            self.cfg.update(new_cfg)
+            need_reconnect = (
+                old_src != self.cfg.get("source")
+                or old_proto != self.cfg.get("protocol")
+                or old_user != self.cfg.get("username")
+                or old_pass != self.cfg.get("password")
+                or old_main != self.cfg.get("main_source")
+            )
+        if need_reconnect and self._thread and self._thread.is_alive():
+            self._reconnect()
+            return True
+        return False
+
+    def _build_adapter(self) -> BaseCameraAdapter:
+        src = self.cfg.get("source")
+        proto = self.cfg.get("protocol")
+        user = str(self.cfg.get("username") or "")
+        pwd = str(self.cfg.get("password") or "")
+        xaddrs = self.cfg.get("xaddrs") or []
+        main_src = str(self.cfg.get("main_source") or "")
+        stream_id = sanitize_stream_id(self.camera_id)
+        return create_adapter(
+            src,
+            gateway=self.gateway if stream_id else None,
+            stream_id=stream_id,
+            protocol=proto,
+            username=user,
+            password=pwd,
+            xaddrs=xaddrs,
+            main_source=main_src,
+        )
+
+    def _reconnect(self) -> None:
+        try:
+            adapter = self._build_adapter()
+            self.grabber.switch_source(adapter)
+        except Exception as exc:
+            print(f"[CameraStreamWorker:{self.camera_id}] Reconnect error: {exc}", flush=True)
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self.grabber.start()
+        self._reconnect()
+        self._thread = threading.Thread(
+            target=self._loop,
+            name=f"CamWorker-{self.camera_id}",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self.grabber.stop()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=1.5)
+        self._thread = None
+
+    def _loop(self) -> None:
+        last_encode_time = 0.0
+        while not self._stop_event.is_set():
+            if not self.is_active_ai:
+                packet = self.grabber.get_latest_frame(timeout=0.15)
+                if packet is not None and packet.frame is not None:
+                    now = time.time()
+                    if (now - last_encode_time) >= 0.09:
+                        last_encode_time = now
+                        frame = packet.frame
+                        rot = int(self.cfg.get("rotate") or 0)
+                        flp = str(self.cfg.get("flip") or "none")
+                        if rot != 0 or flp != "none":
+                            frame = orient_frame(frame, rot, flp)
+                        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
+                        if ok:
+                            data = buf.tobytes()
+                            with self._lock:
+                                self.latest_jpeg = data
+                                self.latest_ts = now
+                                self.latest_packet = packet
+                else:
+                    time.sleep(0.04)
+            else:
+                time.sleep(0.06)
+
+
+class CameraStreamPool:
+    """Manages concurrent CameraStreamWorkers for all configured cameras."""
+
+    def __init__(self, gateway: Any = None):
+        self.gateway = gateway
+        self._workers: dict[str, CameraStreamWorker] = {}
+        self._lock = threading.Lock()
+        self.active_camera_id: str = ""
+
+    def set_active_camera(self, camera_id: str | None) -> None:
+        cid = str(camera_id or "").strip()
+        with self._lock:
+            self.active_camera_id = cid
+            for wid, worker in self._workers.items():
+                worker.is_active_ai = (wid == cid)
+
+    def get_worker(self, camera_id: str | None) -> CameraStreamWorker | None:
+        cid = str(camera_id or "").strip()
+        with self._lock:
+            return self._workers.get(cid)
+
+    def get_latest_jpeg(self, camera_id: str | None) -> tuple[bytes | None, str]:
+        worker = self.get_worker(camera_id)
+        if worker and worker.latest_jpeg:
+            return worker.latest_jpeg, "image/jpeg"
+        return None, "image/jpeg"
+
+    def sync_cameras(self, cameras: list[dict[str, Any]]) -> None:
+        active_id = self.active_camera_id
+        configured_ids = set()
+        with self._lock:
+            for cam in cameras:
+                cid = str(cam.get("id") or "").strip()
+                if not cid or not cam.get("source"):
+                    continue
+                configured_ids.add(cid)
+                if cid not in self._workers:
+                    worker = CameraStreamWorker(cid, cam, gateway=self.gateway)
+                    worker.is_active_ai = (cid == active_id)
+                    self._workers[cid] = worker
+                    worker.start()
+                else:
+                    self._workers[cid].update_cfg(cam)
+
+            to_remove = [wid for wid in self._workers if wid not in configured_ids]
+            for wid in to_remove:
+                worker = self._workers.pop(wid)
+                worker.stop()
+
+    def stop(self) -> None:
+        with self._lock:
+            for worker in self._workers.values():
+                worker.stop()
+            self._workers.clear()
+
+
 class LiveStreamEngine:
     """Background engine that captures video, performs YOLO11 pose inference,
 
@@ -509,8 +679,9 @@ class LiveStreamEngine:
         self.mjpeg_generation = 0
         self.frame_seq = 0
         self.new_frame_event = threading.Event()
-        self.grabber = AsyncFrameGrabber()
         self.media = Go2RtcManager()
+        self.camera_pool = CameraStreamPool(gateway=self.media)
+        self._fallback_grabber = AsyncFrameGrabber()
         self.discovery = DiscoveryEngine()
         self._gateway_stream_id: str | None = None
         self._gateway_main_stream_id: str | None = None
@@ -549,6 +720,13 @@ class LiveStreamEngine:
         self.wifi = WifiTracker(self.cfg.get("wifi_devices"))
         self.bay_telemetry = self.bay_manager.telemetry()
 
+    @property
+    def grabber(self) -> AsyncFrameGrabber:
+        worker = self.camera_pool.get_worker(self.cfg.get("active_camera_id"))
+        if worker is not None:
+            return worker.grabber
+        return self._fallback_grabber
+
     def start(self):
         with self.lock:
             if self.running:
@@ -559,7 +737,9 @@ class LiveStreamEngine:
                 self.register_all_cameras_in_gateway()
             except Exception as exc:
                 print(f"[go2rtc] start failed: {exc}", flush=True)
-            self.grabber.start()
+            self._fallback_grabber.start()
+            self.camera_pool.set_active_camera(self.cfg.get("active_camera_id") or "")
+            self.camera_pool.sync_cameras(list(self.cfg.get("cameras") or []))
             self.wifi.start()
             self.thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.thread.start()
@@ -569,7 +749,8 @@ class LiveStreamEngine:
             self.running = False
             self.is_streaming = False
             self._drop_gateway_stream()
-        self.grabber.stop()
+        self._fallback_grabber.stop()
+        self.camera_pool.stop()
         try:
             self.wifi.stop()
         except Exception:
@@ -811,17 +992,34 @@ class LiveStreamEngine:
             }
 
         stream_id = self._bind_gateway(source, active_id, main_source=main_source)
-        adapter = create_adapter(
-            source,
-            gateway=self.media if stream_id else None,
-            stream_id=stream_id,
-            protocol=protocol,
-            username=username,
-            password=password,
-            xaddrs=xaddrs,
-            main_source=main_source,
-        )
-        self.grabber.switch_source(adapter)
+        self.camera_pool.set_active_camera(active_id)
+        if self.running:
+            self.camera_pool.sync_cameras(cameras)
+            worker = self.camera_pool.get_worker(active_id)
+            if worker is None:
+                adapter = create_adapter(
+                    source,
+                    gateway=self.media if stream_id else None,
+                    stream_id=stream_id,
+                    protocol=protocol,
+                    username=username,
+                    password=password,
+                    xaddrs=xaddrs,
+                    main_source=main_source,
+                )
+                self.grabber.switch_source(adapter)
+        else:
+            adapter = create_adapter(
+                source,
+                gateway=self.media if stream_id else None,
+                stream_id=stream_id,
+                protocol=protocol,
+                username=username,
+                password=password,
+                xaddrs=xaddrs,
+                main_source=main_source,
+            )
+            self.grabber.switch_source(adapter)
         media = self.media.status(stream_id) if stream_id else {"ready": self.media.is_ready()}
         return {
             "success": True,
@@ -977,6 +1175,11 @@ class LiveStreamEngine:
             self.register_all_cameras_in_gateway()
         except Exception:
             pass
+        if self.running:
+            try:
+                self.camera_pool.sync_cameras(list(self.cfg.get("cameras") or []))
+            except Exception:
+                pass
         return {
             "success": True,
             "camera": entry,
@@ -997,11 +1200,16 @@ class LiveStreamEngine:
             if self._gateway_stream_id == sanitize_stream_id(cid):
                 self._drop_gateway_stream()
             save_config(self.cfg)
-            return {
-                "success": True,
-                "cameras": cameras,
-                "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
-            }
+        if self.running:
+            try:
+                self.camera_pool.sync_cameras(cameras)
+            except Exception:
+                pass
+        return {
+            "success": True,
+            "cameras": cameras,
+            "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
+        }
 
     def set_roi(self, roi_value: Any) -> dict[str, Any]:
         parsed = parse_roi(roi_value)
@@ -1127,26 +1335,35 @@ class LiveStreamEngine:
 
         Returns (jpeg_bytes, content_type).
         - If camera_id is None, empty, or active_camera_id: returns the active AI-annotated frame.
-        - If another camera: attempts to pull a JPEG snapshot from go2rtc, falling back to request_still.
+        - If another camera: pulls directly from CameraStreamPool, falling back to go2rtc or request_still.
         Uses in-memory cache to prevent blocking and stream drops across concurrent grid tiles.
         """
         cid = str(camera_id or "").strip()
         active_id = str(self.cfg.get("active_camera_id") or "").strip()
+        now = time.time()
+
         if not cid or cid == active_id:
             with self.lock:
                 frame_data = self.current_frame_jpeg
             if frame_data:
-                self._camera_frame_cache[cid or active_id] = (frame_data, "image/jpeg", time.time())
+                self._camera_frame_cache[cid or active_id] = (frame_data, "image/jpeg", now)
                 return frame_data, "image/jpeg"
             cached = self._camera_frame_cache.get(cid or active_id)
-            if cached:
+            if cached and (now - cached[2]) < 15.0:
                 return cached[0], cached[1]
+            worker = self.camera_pool.get_worker(cid or active_id)
+            if worker and worker.latest_jpeg:
+                return worker.latest_jpeg, "image/jpeg"
             return None, "image/jpeg"
 
-        now = time.time()
+        # Background camera: query CameraStreamPool worker
+        worker = self.camera_pool.get_worker(cid)
+        if worker and worker.latest_jpeg:
+            self._camera_frame_cache[cid] = (worker.latest_jpeg, "image/jpeg", worker.latest_ts)
+            return worker.latest_jpeg, "image/jpeg"
+
         cached = self._camera_frame_cache.get(cid)
-        # If cached within last 400ms, return immediately to keep HTTP throughput high
-        if cached and (now - cached[2]) < 0.40:
+        if cached and (now - cached[2]) < 15.0:
             return cached[0], cached[1]
 
         stream_id = sanitize_stream_id(cid)
@@ -1154,7 +1371,7 @@ class LiveStreamEngine:
             try:
                 resp = requests.get(
                     f"{self.media.api_base}/api/frame.jpeg?src={urllib.parse.quote(stream_id, safe='')}",
-                    timeout=2.5,
+                    timeout=1.5,
                 )
                 if resp.status_code == 200 and resp.content and len(resp.content) > 100:
                     self._camera_frame_cache[cid] = (resp.content, "image/jpeg", now)
@@ -1181,7 +1398,6 @@ class LiveStreamEngine:
             except Exception:
                 pass
 
-        # Fallback to cached frame if available within 15s to avoid black tile flicker
         if cached and (now - cached[2]) < 15.0:
             return cached[0], cached[1]
         return None, "image/jpeg"
@@ -1423,8 +1639,10 @@ class LiveStreamEngine:
                 continue
 
             generation = self.grabber.generation
-            if generation != session_gen:
+            active_cid = str(self.cfg.get("active_camera_id") or "")
+            if generation != session_gen or active_cid != getattr(self, "_last_worker_cam_id", None):
                 session_gen = generation
+                self._last_worker_cam_id = active_cid
                 source = parse_source(cfg.get("source", 0))
                 absent = float(cfg.get("absent_seconds") or 10)
                 cooldown = float(cfg.get("cooldown_seconds") or 30)

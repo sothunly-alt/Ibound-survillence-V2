@@ -160,6 +160,25 @@
     #live-webrtc { display: none; }
     .glass-panel { background: rgba(18, 18, 18, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(11, 131, 58, 0.25); }
     .roi-overlay { position: absolute; z-index: 8; user-select: none; touch-action: none; }
+    .bay-chip {
+      position: absolute;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 10px;
+      line-height: 16px;
+      padding: 1px 6px;
+      color: #000000;
+      background: #00FF66;
+      font-weight: 700;
+      white-space: nowrap;
+      max-width: min(480px, 90vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 2px;
+      pointer-events: auto;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+      z-index: 25;
+      transition: top 0.05s ease, left 0.05s ease;
+    }
     .roi-box { position: absolute; box-sizing: border-box; }
     .roi-box.selected { z-index: 10; }
     .roi-box .bay-chip {
@@ -1783,7 +1802,7 @@
 
           const img = document.createElement('img');
           img.alt = cam.name;
-          img.className = 'w-full h-full object-cover';
+          img.className = 'w-full h-full object-contain';
 
           const fallback = document.createElement('div');
           fallback.className = 'absolute inset-0 flex flex-col items-center justify-center bg-surface-container-lowest text-on-surface-variant p-2 text-center';
@@ -1809,15 +1828,17 @@
             img.style.display = 'block';
             fallback.style.display = 'none';
             const isCurrentlyFocus = cam.id === activeCameraId;
-            const pollMs = (isCurrentlyFocus && isStreamActive) ? 120 : 600;
+            const pollMs = (isCurrentlyFocus && isStreamActive) ? 100 : 250;
             timer = setTimeout(poll, pollMs);
           };
 
           img.onerror = () => {
             failCount += 1;
-            img.style.display = 'none';
-            fallback.style.display = 'flex';
-            const backoff = Math.min(3000, 700 + failCount * 300);
+            if (failCount >= 3) {
+              img.style.display = 'none';
+              fallback.style.display = 'flex';
+            }
+            const backoff = Math.min(2000, 350 + failCount * 250);
             timer = setTimeout(poll, backoff);
           };
 
@@ -3440,18 +3461,56 @@
       layoutRoiOverlay();
     }
 
+    function getMediaRenderedRect(mediaEl, stageEl) {
+      if (!stageEl) return { left: 0, top: 0, width: 640, height: 480 };
+      const sRect = stageEl.getBoundingClientRect();
+      if (!mediaEl) return { left: 0, top: 0, width: sRect.width, height: sRect.height };
+      const nw = mediaEl.videoWidth || mediaEl.naturalWidth || 0;
+      const nh = mediaEl.videoHeight || mediaEl.naturalHeight || 0;
+      if (nw <= 0 || nh <= 0 || sRect.width <= 0 || sRect.height <= 0) {
+        return { left: 0, top: 0, width: sRect.width, height: sRect.height };
+      }
+      const stageRatio = sRect.width / sRect.height;
+      const mediaRatio = nw / nh;
+      let renderW = sRect.width;
+      let renderH = sRect.height;
+      let renderLeft = 0;
+      let renderTop = 0;
+      if (stageRatio > mediaRatio) {
+        // Pillarboxed: stage is wider than media
+        renderW = sRect.height * mediaRatio;
+        renderLeft = (sRect.width - renderW) / 2;
+      } else {
+        // Letterboxed: stage is taller than media
+        renderH = sRect.width / mediaRatio;
+        renderTop = (sRect.height - renderH) / 2;
+      }
+      return {
+        left: Math.round(renderLeft),
+        top: Math.round(renderTop),
+        width: Math.round(renderW),
+        height: Math.round(renderH)
+      };
+    }
+
     function layoutRoiOverlay() {
       const overlay = document.getElementById('roi-overlay');
       const stage = document.getElementById('video-stage');
+      const img = document.getElementById('live-camera-feed');
+      const video = document.getElementById('live-webrtc');
       if (!overlay || !isStreamActive) return;
-      overlay.style.left = '0';
-      overlay.style.top = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
+
+      const mediaEl = (video && video.style.display !== 'none') ? video : img;
+      const rect = getMediaRenderedRect(mediaEl, stage);
+      overlay.style.left = rect.left + 'px';
+      overlay.style.top = rect.top + 'px';
+      overlay.style.width = rect.width + 'px';
+      overlay.style.height = rect.height + 'px';
+
       syncBayDom();
 
-      const stageW = (stage && stage.clientWidth) || overlay.clientWidth || 640;
-      const stageH = (stage && stage.clientHeight) || overlay.clientHeight || 480;
+      const stageW = rect.width || 640;
+      const stageH = rect.height || 480;
 
       liveBays.forEach((bay) => {
         const poly = ensureBayPolygon(bay);
@@ -3472,8 +3531,11 @@
           const shouldInside = boxTopPx < 26;
           const shouldAlignRight = maxX > 0.85 || minX > 0.65;
 
-          const topPct = shouldInside ? (minY * 100 + 0.5) : Math.max(0, (minY * 100) - 4.5);
-          chip.style.top = topPct + '%';
+          if (shouldInside) {
+            chip.style.top = (minY * 100 + 0.5) + '%';
+          } else {
+            chip.style.top = 'calc(' + (minY * 100) + '% - 22px)';
+          }
           if (shouldAlignRight) {
             chip.style.left = 'auto';
             chip.style.right = Math.max(0, (1 - maxX) * 100) + '%';
