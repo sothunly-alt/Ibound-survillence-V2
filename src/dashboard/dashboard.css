@@ -22,6 +22,10 @@
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --rail: 72px;
   --chat: min(360px, 34vw);
+  --page-wash:
+    radial-gradient(ellipse 80% 55% at 0% 0%, rgba(74, 222, 128, 0.22), transparent 58%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(34, 197, 94, 0.16), transparent 55%),
+    linear-gradient(165deg, #0a0a0a 0%, #102016 45%, #0a0a0a 100%);
 }
 
 *,
@@ -30,7 +34,9 @@
 
 html, body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--page-wash);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-body);
   letter-spacing: -0.01em;
@@ -58,6 +64,8 @@ a { color: inherit; text-decoration: none; }
 img { display: block; max-width: 100%; }
 
 .ops {
+  position: relative;
+  z-index: 1;
   min-height: 100svh;
   display: grid;
   grid-template-rows: auto auto 1fr;
