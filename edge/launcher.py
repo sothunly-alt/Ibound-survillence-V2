@@ -112,6 +112,7 @@ from face_id import (
     till_status_label,
     try_create_face_recognizer,
 )
+from ai_auditor import AIAuditorQueue, AIAuditVerdict
 from occupancy import (
     DEFAULT_BAYS,
     BayZoneManager,
@@ -809,9 +810,15 @@ class LiveStreamEngine:
         self.cfg = read_config()
         self.conn = None
         self.bot = TelegramOut(self.cfg.get("telegram_bot_token", ""), self.cfg.get("telegram_chat_id", ""))
+        proofs_audit_dir = Path(__file__).parent / "proofs" / "ai_audits"
+        self.ai_auditor = AIAuditorQueue(
+            save_crops_dir=proofs_audit_dir,
+            on_verdict_callback=self._on_ai_verdict_received,
+        )
         self.bay_manager = BayZoneManager(
             self.cfg.get("bays"),
             fallback_roi=parse_roi(self.cfg.get("roi")),
+            ai_auditor=self.ai_auditor,
         )
         self.wifi = WifiTracker(self.cfg.get("wifi_devices"))
         self.bay_telemetry = self.bay_manager.telemetry()
@@ -822,6 +829,24 @@ class LiveStreamEngine:
         if worker is not None:
             return worker.grabber
         return self._fallback_grabber
+
+
+    def _on_ai_verdict_received(self, verdict: AIAuditVerdict) -> None:
+        try:
+            if self.conn is not None:
+                record_ai_audit_verdict(
+                    self.conn,
+                    bay_id=verdict.bay_id,
+                    technician_name=verdict.technician_id,
+                    action=verdict.action,
+                    category=verdict.category,
+                    confidence=verdict.confidence,
+                    explanation=verdict.explanation,
+                    crop_path=verdict.crop_path,
+                    ts=verdict.timestamp,
+                )
+        except Exception as e:
+            print(f"[AI Auditor DB Error] {e}", flush=True)
 
     def start(self):
         with self.lock:
@@ -2213,7 +2238,7 @@ class LiveStreamEngine:
                     elif self.face_rec is not None:
                         self.face_rec.annotate_detections(frame, last_accepted)
                     snapshots = self.bay_manager.update(
-                        last_accepted, w, h, now, kpt_conf=kpt_conf
+                        last_accepted, w, h, now, kpt_conf=kpt_conf, frame=frame
                     )
                     any_occupied = any(s.state != "EMPTY" for s in snapshots)
                     last_state = ghost.update(any_occupied, now)

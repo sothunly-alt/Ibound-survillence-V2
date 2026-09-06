@@ -112,6 +112,22 @@ def connect(db_path: Path, *, check_same_thread: bool = True) -> sqlite3.Connect
         """
     )
     conn.commit()
+    
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ai_audit_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            bay_id TEXT NOT NULL,
+            technician_name TEXT,
+            action TEXT NOT NULL,
+            category TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.0,
+            explanation TEXT,
+            crop_path TEXT
+        )
+        """
+    )
     return conn
 
 
@@ -756,3 +772,42 @@ def get_vehicle_job_history(conn: sqlite3.Connection | None, job_id: str) -> dic
     res["total_active_hours"] = round(float(job["total_active_seconds"] or 0) / 3600.0, 2)
     return res
 
+
+
+def record_ai_audit_verdict(
+    conn: sqlite3.Connection | None,
+    bay_id: str,
+    technician_name: str | None,
+    action: str,
+    category: str,
+    confidence: float,
+    explanation: str = "",
+    crop_path: str | None = None,
+    ts: str | None = None,
+) -> None:
+    if conn is None:
+        return
+    if ts is None:
+        ts = datetime.now().isoformat()
+    conn.execute(
+        """
+        INSERT INTO ai_audit_events (ts, bay_id, technician_name, action, category, confidence, explanation, crop_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (ts, bay_id, technician_name or "unknown", action, category, float(confidence), explanation, crop_path),
+    )
+    conn.commit()
+
+
+def get_recent_ai_audits(conn: sqlite3.Connection | None, bay_id: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
+    if conn is None:
+        return []
+    query = "SELECT * FROM ai_audit_events"
+    params: list[Any] = []
+    if bay_id:
+        query += " WHERE bay_id = ?"
+        params.append(bay_id)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, tuple(params)).fetchall()
+    return [dict(r) for r in rows]

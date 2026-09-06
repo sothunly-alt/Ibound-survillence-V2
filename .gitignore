@@ -34,3 +34,9 @@ edge/go2rtc.yaml
 
 edge/videos/
 tools/virtual-camera/videos/
+
+# Environment and Secrets
+.env
+.env.local
+edge/.env
+.vscode/

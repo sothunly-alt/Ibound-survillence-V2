@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from ai_auditor import AIAuditorQueue, AIAuditVerdict
+except ImportError:
+    from edge.ai_auditor import AIAuditorQueue, AIAuditVerdict
+
 import re
 from dataclasses import dataclass, field
 
@@ -751,8 +756,10 @@ class BayZoneManager:
         departure_grace_seconds: float = 15.0,
         motion_px: float = 14.0,
         fallback_roi: list[float] | None = None,
+        ai_auditor: AIAuditorQueue | None = None,
     ) -> None:
         self.idle_stationary_seconds = max(1.0, float(idle_stationary_seconds))
+        self.ai_auditor = ai_auditor
         self.confirm = occupy_confirm_seconds
         self.clear = occupy_clear_seconds
         self.under_car_grace_seconds = float(under_car_grace_seconds)
@@ -863,6 +870,7 @@ class BayZoneManager:
         frame_h: int,
         now: float,
         kpt_conf: float = 0.4,
+        frame: np.ndarray | None = None,
     ) -> list[BaySnapshot]:
         ticks: list[tuple[str, str | None, bool, float, str, str | None]] = []
         for bay in self._bays:
@@ -921,9 +929,33 @@ class BayZoneManager:
                 stationary_elapsed = (now - bay.stationary_since) if bay.stationary_since is not None else 0.0
                 is_idle = stationary_elapsed >= self.idle_stationary_seconds
 
+                # Check and query Tier 2 Cloud Vision AI Auditor if available
+                if self.ai_auditor is not None and frame is not None:
+                    trigger_pattern = (phone_elapsed >= 4.0) or (sitting_elapsed >= 4.0)
+                    target_det = inside[0] if inside else None
+                    if target_det is not None:
+                        kpts = getattr(target_det, "keypoints", None)
+                        bbox = (int(target_det.x1), int(target_det.y1), int(target_det.x2), int(target_det.y2))
+                        self.ai_auditor.maybe_audit_bay(
+                            bay_id=bay.id,
+                            technician_id=bay.technician or "technician",
+                            frame=frame,
+                            keypoints=kpts,
+                            bbox=bbox,
+                            pattern_matched=trigger_pattern,
+                            now=now,
+                        )
+
                 # INVERTED STATE LOGIC: Default to WORKING unless a negative state is confirmed
                 is_not_working = False
-                if phone_elapsed >= bay.phone_threshold_seconds:
+                # Apply AI Auditor Verdict Override if available
+                verdict = self.ai_auditor.get_latest_verdict(bay.id) if self.ai_auditor else None
+                if verdict is not None and verdict.is_work_activity and (phone_elapsed > 0 or sitting_elapsed > 0):
+                    # AI verified legitimate work (e.g. Diagnostic Scanner or Manual)
+                    bay.state = "WORKING"
+                    bay.not_working_reason = None
+                    is_not_working = False
+                elif phone_elapsed >= bay.phone_threshold_seconds:
                     bay.state = "NOT_WORKING"
                     bay.not_working_reason = "PHONE"
                     is_not_working = True
