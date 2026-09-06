@@ -1,13 +1,26 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyFileSync, mkdirSync } from "node:fs";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
+function copyLandingJs() {
+  return {
+    name: "copy-landing-js",
+    closeBundle() {
+      const from = path.resolve(root, "js/main.js");
+      const toDir = path.resolve(root, "dist/js");
+      mkdirSync(toDir, { recursive: true });
+      copyFileSync(from, path.resolve(toDir, "main.js"));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), copyLandingJs()],
   resolve: {
     alias: {
       "@": path.resolve(root, "src"),

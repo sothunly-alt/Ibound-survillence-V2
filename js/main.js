@@ -40,6 +40,7 @@ const bboxTimer = document.querySelector("[data-bbox-timer]");
 const phone = document.querySelector("[data-phone]");
 const demoSection = document.querySelector(".demo-section");
 const steps = [...document.querySelectorAll("[data-flow-step]")];
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let demoSeconds = 4 * 3600 + 11 * 60 + 55;
 let demoPhase = 0;
 
@@ -114,7 +115,6 @@ form?.addEventListener("submit", (e) => {
   success.hidden = false;
 });
 
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const heroImg = document.querySelector(".hero-media img");
 const finalImg = document.querySelector(".final-media img");
 const navLinks = [...document.querySelectorAll(".nav-desktop a[href^='#']")];
@@ -163,6 +163,7 @@ function onScrollFrame() {
 }
 
 window.addEventListener("scroll", onScrollFrame, { passive: true });
+window.addEventListener("resize", onScrollFrame, { passive: true });
 updateScroll();
 
 function initScrollReveal() {
