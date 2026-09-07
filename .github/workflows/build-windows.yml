@@ -19,6 +19,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup .env configuration
+        shell: bash
+        run: |
+          cat << 'EOF' > .env
+          VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || 'https://rmepwjywobowktdmkusu.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0.u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4' }}
+          EOF
+          cp .env edge/.env
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:

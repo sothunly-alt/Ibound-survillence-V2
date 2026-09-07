@@ -75,6 +75,12 @@ for name in (
     if src.exists():
         datas.append((str(src), "."))
 
+REPO = EDGE.parent
+for env_candidate in (EDGE / ".env", REPO / ".env"):
+    if env_candidate.is_file():
+        datas.append((str(env_candidate), "."))
+        break
+
 faces = EDGE / "faces"
 if faces.is_dir():
     datas.append((str(faces), "faces"))

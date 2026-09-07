@@ -49,9 +49,20 @@ DATA_DIR = data_dir()
 VIDEOS_DIR = ROOT / "videos"
 
 
+DEFAULT_SUPABASE_URL = "https://rmepwjywobowktdmkusu.supabase.co"
+DEFAULT_SUPABASE_ANON_KEY = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0."
+    "u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4"
+)
+
+
 def load_dotenv_files() -> None:
     """Load KEY=VALUE pairs from .env without overriding a real environment."""
     candidates = [
+        DATA_DIR / ".env",
+        Path(sys.executable).parent / ".env",
+        Path.cwd() / ".env",
         ROOT / ".env",
         ROOT.parent / ".env",
     ]
@@ -98,13 +109,13 @@ def public_supabase_config() -> dict[str, Any]:
     url = (
         os.environ.get("VITE_SUPABASE_URL")
         or os.environ.get("SUPABASE_URL")
-        or ""
+        or DEFAULT_SUPABASE_URL
     ).strip()
     key = (
         os.environ.get("VITE_SUPABASE_ANON_KEY")
         or os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
         or os.environ.get("SUPABASE_ANON_KEY")
-        or ""
+        or DEFAULT_SUPABASE_ANON_KEY
     ).strip()
     return {
         "supabaseUrl": url,
