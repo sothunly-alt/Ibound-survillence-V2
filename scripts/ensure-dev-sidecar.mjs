@@ -8,15 +8,24 @@
  * works after Tauri copies the file into target/debug/.
  */
 import { execSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const binaries = path.join(repo, "src-tauri", "binaries");
-const launcher = path.join(repo, "edge", "launcher.py");
-const venvPython = path.join(repo, "edge", ".venv", "bin", "python");
-const python = existsSync(venvPython) ? venvPython : "python3";
+function findPython() {
+  const candidates = [
+    path.join(repo, "edge", ".venv", "bin", "python"),
+    path.join(repo, "edge", ".venv", "Scripts", "python.exe"),
+    path.join(repo, "edge", ".venv", "python.exe"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return process.platform === "win32" ? "python" : "python3";
+}
+const python = findPython();
 
 function syncLinuxDesktopIcons() {
   if (process.platform !== "linux") return;
@@ -44,18 +53,11 @@ function syncLinuxDesktopIcons() {
     }
 
     mkdirSync(appsDir, { recursive: true });
-    const desktopFileContent = `[Desktop Entry]
-Categories=Utility;Development;
-Comment=Inbound Surveillance desktop application
-Exec=npm run desktop:dev
-StartupWMClass=inbound-surveillance
-Icon=inbound-surveillance
-Name=Inbound Surveillance
-Terminal=false
-Type=Application
-`;
-    writeFileSync(path.join(appsDir, "inbound-surveillance.desktop"), desktopFileContent);
-    writeFileSync(path.join(appsDir, "Inbound Surveillance.desktop"), desktopFileContent);
+    // Clean up duplicate old file if present
+    const legacyDesktopFile = path.join(appsDir, "Inbound Surveillance.desktop");
+    if (existsSync(legacyDesktopFile)) {
+      try { import("node:fs").then(fs => fs.unlinkSync(legacyDesktopFile)); } catch (_) {}
+    }
 
     try { execSync(`gtk-update-icon-cache -f -t ${JSON.stringify(iconsHicolor)}`, { stdio: "ignore" }); } catch (_) {}
     try { execSync(`update-desktop-database ${JSON.stringify(appsDir)}`, { stdio: "ignore" }); } catch (_) {}
@@ -110,11 +112,18 @@ function hostTriple() {
 
 function isFrozenBinary(file) {
   if (!existsSync(file)) return false;
-  const header = readFileSync(file).subarray(0, 4);
-  const elf = header[0] === 0x7f && header[1] === 0x45 && header[2] === 0x4c && header[3] === 0x46;
-  const pe = header[0] === 0x4d && header[1] === 0x5a;
-  const macho = header[0] === 0xcf && header[1] === 0xfa;
-  return elf || pe || macho;
+  try {
+    const fd = openSync(file, "r");
+    const buf = Buffer.alloc(4);
+    readSync(fd, buf, 0, 4, 0);
+    closeSync(fd);
+    const elf = buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46;
+    const pe = buf[0] === 0x4d && buf[1] === 0x5a;
+    const macho = buf[0] === 0xcf && buf[1] === 0xfa;
+    return elf || pe || macho;
+  } catch {
+    return false;
+  }
 }
 
 ensureIcons();
@@ -126,6 +135,9 @@ if (process.platform === "linux") {
   process.env.WEBKIT_DISABLE_COMPOSITING_MODE ||= "1";
 }
 
+const launcher = path.join(repo, "edge", "launcher.py");
+const isProduction = process.argv.includes("--require-frozen") || process.argv.includes("--production");
+
 const triple = hostTriple();
 const ext = process.platform === "win32" || triple.includes("windows") ? ".exe" : "";
 const dest = path.join(binaries, `inbound-engine-${triple}${ext}`);
@@ -134,6 +146,37 @@ mkdirSync(binaries, { recursive: true });
 
 if (isFrozenBinary(dest)) {
   console.log(`Using frozen sidecar: ${dest}`);
+  process.exit(0);
+}
+
+if (isProduction) {
+  console.log(`[build] Production build requested but frozen sidecar not found at: ${dest}`);
+  console.log(`[build] Building standalone sidecar using ${python} edge/build_sidecar.py...`);
+  const buildSidecarPy = path.join(repo, "edge", "build_sidecar.py");
+  try {
+    execSync(`${JSON.stringify(python)} ${JSON.stringify(buildSidecarPy)} --target ${triple}`, {
+      cwd: repo,
+      stdio: "inherit",
+    });
+  } catch (err) {
+    console.error(`\n[build] ERROR: Failed to build standalone sidecar binary: ${err.message}`);
+    console.error(`[build] Please ensure 'pyinstaller' is installed in your Python environment:`);
+    console.error(`        ${python} -m pip install pyinstaller\n`);
+    process.exit(1);
+  }
+
+  if (!isFrozenBinary(dest)) {
+    console.error(`\n[build] ERROR: Sidecar build did not produce a valid frozen binary at: ${dest}`);
+    console.error(`[build] Aborting production desktop build to prevent shipping broken binaries.\n`);
+    process.exit(1);
+  }
+
+  console.log(`[build] Successfully built frozen sidecar: ${dest}`);
+  process.exit(0);
+}
+
+if (process.platform === "win32") {
+  console.warn(`[dev] Notice: On Windows, please run 'npm run sidecar' to build the engine executable.`);
   process.exit(0);
 }
 

@@ -24,6 +24,7 @@ EDGE = Path(__file__).resolve().parent
 REPO = EDGE.parent
 SPEC = EDGE / "inbound-engine.spec"
 WEIGHTS = EDGE / "yolo11n-pose.pt"
+VEHICLE_WEIGHTS = EDGE / "yolo11n.pt"
 BINARIES = REPO / "src-tauri" / "binaries"
 
 
@@ -61,27 +62,30 @@ def detect_target_triple() -> str:
 
 
 def ensure_weights() -> None:
-    if WEIGHTS.exists() and WEIGHTS.stat().st_size > 1_000_000:
-        print(f"Using existing weights: {WEIGHTS}", flush=True)
-        return
-    print("Downloading yolo11n-pose.pt via ultralytics…", flush=True)
-    from ultralytics import YOLO
+    for model_name, target_file in [
+        ("yolo11n-pose.pt", WEIGHTS),
+        ("yolo11n.pt", VEHICLE_WEIGHTS),
+    ]:
+        if target_file.exists() and target_file.stat().st_size > 1_000_000:
+            print(f"Using existing weights: {target_file}", flush=True)
+            continue
+        print(f"Downloading {model_name} via ultralytics…", flush=True)
+        from ultralytics import YOLO
 
-    cwd = os.getcwd()
-    os.chdir(EDGE)
-    try:
-        YOLO("yolo11n-pose.pt")
-    finally:
-        os.chdir(cwd)
-    if not WEIGHTS.exists():
-        # Ultralytics may drop the file in the current working directory.
-        fallback = Path.cwd() / "yolo11n-pose.pt"
-        if fallback.exists():
-            shutil.copy2(fallback, WEIGHTS)
-    if not WEIGHTS.exists():
-        raise SystemExit(
-            "yolo11n-pose.pt was not downloaded. Place the weights in edge/ and retry."
-        )
+        cwd = os.getcwd()
+        os.chdir(EDGE)
+        try:
+            YOLO(model_name)
+        finally:
+            os.chdir(cwd)
+        if not target_file.exists():
+            fallback = Path.cwd() / model_name
+            if fallback.exists():
+                shutil.copy2(fallback, target_file)
+        if not target_file.exists():
+            raise SystemExit(
+                f"{model_name} was not downloaded. Place the weights in edge/ and retry."
+            )
 
 
 def exe_name() -> str:

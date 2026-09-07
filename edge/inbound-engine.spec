@@ -59,10 +59,15 @@ hiddenimports = [
     "media.go2rtc",
     "sensors",
     "sensors.wifi_tracker",
+    "ai_auditor",
+    "telegram_link",
+    "service_patterns",
+    "vehicle",
 ]
 
 for name in (
     "yolo11n-pose.pt",
+    "yolo11n.pt",
     "config.example.yaml",
     "hub.html",
 ):
