@@ -112,6 +112,14 @@ document.addEventListener("keydown", (e) => {
 const DEMO_INBOX = "inboundcrew82@gmail.com";
 const formspreeEndpoint = form?.dataset.formspree?.trim() || "";
 
+function resolveLeadEndpoint(raw) {
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  // Allow bare Formspree form IDs: xwqkzabc → https://formspree.io/f/xwqkzabc
+  if (/^[a-zA-Z0-9]+$/.test(raw)) return `https://formspree.io/f/${raw}`;
+  return raw;
+}
+
 function collectDemoPayload(formEl) {
   const data = new FormData(formEl);
   return {
@@ -180,11 +188,16 @@ form?.addEventListener("submit", async (e) => {
   }
 
   try {
-    if (formspreeEndpoint) {
-      const res = await fetch(formspreeEndpoint, {
+    const endpoint = resolveLeadEndpoint(formspreeEndpoint);
+    if (endpoint) {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, _subject: `Demo request — ${payload.shop || payload.name}` }),
+        body: JSON.stringify({
+          ...payload,
+          _subject: `Demo request — ${payload.shop || payload.name}`,
+          email: DEMO_INBOX,
+        }),
       });
       if (!res.ok) throw new Error(`Form endpoint returned ${res.status}`);
       if (success) {

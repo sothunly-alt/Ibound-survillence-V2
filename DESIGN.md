@@ -65,6 +65,21 @@
 - **Allowed:** Live indicator pulse, subtle HUD glow on active bay
 - **Forbidden:** Soft bounce, long parallax heroes, decorative blob motion
 
+## Interaction / Hick’s lock (marketing)
+Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **one** primary path so a garage owner does not stall.
+
+- **One primary action:** open the bay-demo modal. Nothing else is a “main” conversion.
+- **Canonical labels:**
+  - Hero / final CTA / sticky: **Book a Free Bay Demo**
+  - Header (space-constrained): **Book Demo**
+  - Modal submit: **Request Demo**
+- **One accent treatment:** only the primary path uses `btn-neon` / Terminal Green fill. All other actions are `btn-ghost` or quiet text links.
+- **Choice budget per viewport (hero):** brand + one headline + one support line + **one** CTA group — primary only, or primary + one ghost “See how it works” → `#architecture`. No second neon in the hero fold.
+- **Nav:** section anchors allowed; **never more than one neon control in the header**. Team / About / legal stay footer or quiet links — not competing neon.
+- **Pricing:** both plans visible for clarity; **only Turnkey** uses `btn-neon`. Software = `btn-ghost`. Both open the same demo modal with `data-plan`.
+- **Lead capture:** `#demo-form` `data-formspree` must be a live POST endpoint (Formspree `https://formspree.io/f/…`, bare Formspree ID, or FormSubmit AJAX). Prefer Formspree when the crew has a dashboard ID. Empty endpoint is forbidden for “silent success” UX — if unset, JS must fall back to mailto / loud failure, never fake a received lead.
+- **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path.
+
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
 
@@ -87,3 +102,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-04 | Bebas Neue + IBM Plex Sans + IBM Plex Mono | Matches monkey lockup; Plex = machine terminal, not Inter HR dashboard |
 | 2026-09-04 | Accent `#00FF41`, radius ≤4px | Reinstate grit/neon; override ClearView blue seed / soft radii / “no neon” |
 | 2026-09-04 | Pose/body primary; Face ID assist | Mechanics under cars / masked / facing away |
+| 2026-09-07 | Hick’s lock on marketing CTAs | One neon primary (Book a Free Bay Demo); kill decision fatigue before Thursday pitch |
