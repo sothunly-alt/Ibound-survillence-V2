@@ -40,3 +40,5 @@ tools/virtual-camera/videos/
 .env.local
 edge/.env
 .vscode/
+dataset/
+runs/
