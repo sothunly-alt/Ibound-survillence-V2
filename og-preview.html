@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OG Preview Studio // Inbound Surveillance</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #000000;
+        --surface: #0d0d0d;
+        --border: #1a1a1a;
+        --green: #00ff41;
+        --muted: #666666;
+        --font-display: "Bebas Neue", sans-serif;
+        --font-mono: "IBM Plex Mono", monospace;
+        --font-sans: "IBM Plex Sans", sans-serif;
+        --radius: 4px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--bg);
+        color: #ffffff;
+        font-family: var(--font-sans);
+        min-height: 100vh;
+        padding: 24px;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+
+      .shell {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 16px;
+        margin-bottom: 28px;
+        flex-wrap: wrap;
+      }
+
+      .brand {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.1em;
+        color: var(--green);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .topbar h1 {
+        font-family: var(--font-display);
+        font-size: 28px;
+        letter-spacing: 0.06em;
+        font-weight: 400;
+      }
+
+      .hint {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .preview-wrap {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        overflow: auto;
+      }
+
+      .preview-label {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        color: var(--muted);
+        letter-spacing: 0.08em;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+      }
+
+      .canvas-stage {
+        width: 100%;
+        overflow-x: auto;
+        display: flex;
+        justify-content: center;
+      }
+
+      #og-canvas {
+        width: min(100%, 1200px);
+        height: auto;
+        aspect-ratio: 1200 / 630;
+        max-width: 1200px;
+        background: #000;
+        border: 1px solid #222;
+        display: block;
+      }
+
+      .controls {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .controls h2 {
+        font-family: var(--font-display);
+        font-size: 20px;
+        letter-spacing: 0.06em;
+        font-weight: 400;
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.05em;
+      }
+
+      input[type="text"] {
+        background: #000;
+        border: 1px solid #222;
+        border-radius: 2px;
+        color: #fff;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        padding: 10px 12px;
+        outline: none;
+      }
+
+      input[type="text"]:focus {
+        border-color: var(--green);
+      }
+
+      .btn {
+        font-family: var(--font-display);
+        font-size: 18px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        border: none;
+        border-radius: var(--radius);
+        padding: 12px 16px;
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+      }
+
+      .btn-primary {
+        background: var(--green);
+        color: #000;
+      }
+
+      .btn-primary:hover {
+        background: #1aff53;
+      }
+
+      .btn-ghost {
+        background: transparent;
+        color: #ccc;
+        border: 1px solid #333;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+      }
+
+      .btn-ghost:hover {
+        border-color: var(--green);
+        color: var(--green);
+      }
+
+      .note {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .note code {
+        color: var(--green);
+        font-size: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <a class="brand" href="index.html">← INBOUND SURVEILLANCE</a>
+          <h1>OG PREVIEW STUDIO</h1>
+        </div>
+        <p class="hint">1200 × 630 // SOCIAL CARD EXPORT</p>
+      </header>
+
+      <div class="layout">
+        <section class="preview-wrap">
+          <p class="preview-label">Live canvas preview</p>
+          <div class="canvas-stage">
+            <canvas id="og-canvas" width="1200" height="630" aria-label="Open Graph preview card"></canvas>
+          </div>
+        </section>
+
+        <aside class="controls">
+          <h2>EXPORT</h2>
+          <label>
+            Headline
+            <input id="headline" type="text" value="WRENCH TIME. ON PREM." maxlength="48" />
+          </label>
+          <label>
+            Subline
+            <input
+              id="subline"
+              type="text"
+              value="Edge AI for performance garages"
+              maxlength="64"
+            />
+          </label>
+          <button type="button" class="btn btn-primary" id="download-btn">Download PNG</button>
+          <button type="button" class="btn btn-ghost" id="redraw-btn">Redraw</button>
+          <p class="note">
+            Save the PNG as <code>assets/og-preview.png</code> when you wire Open Graph meta on the
+            landing page. This studio does not inject meta tags.
+          </p>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("og-canvas");
+      const ctx = canvas.getContext("2d");
+      const headlineInput = document.getElementById("headline");
+      const sublineInput = document.getElementById("subline");
+
+      function drawGrid() {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,0.04)";
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= 1200; x += 40) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, 630);
+          ctx.stroke();
+        }
+        for (let y = 0; y <= 630; y += 40) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(1200, y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawScanlines() {
+        ctx.save();
+        for (let y = 0; y < 630; y += 3) {
+          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          ctx.fillRect(0, y, 1200, 1);
+        }
+        ctx.restore();
+      }
+
+      function drawCard() {
+        const headline = (headlineInput.value || "WRENCH TIME. ON PREM.").toUpperCase();
+        const subline = sublineInput.value || "Edge AI for performance garages";
+
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, 1200, 630);
+
+        // Atmospheric green glow
+        const glow = ctx.createRadialGradient(900, 180, 20, 900, 180, 420);
+        glow.addColorStop(0, "rgba(0,255,65,0.18)");
+        glow.addColorStop(1, "rgba(0,255,65,0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, 1200, 630);
+
+        drawGrid();
+
+        // Left accent bar
+        ctx.fillStyle = "#00FF41";
+        ctx.fillRect(0, 0, 8, 630);
+
+        // Brand
+        ctx.fillStyle = "#00FF41";
+        ctx.font = "600 22px 'IBM Plex Mono', monospace";
+        ctx.fillText("INBOUND SURVEILLANCE", 64, 78);
+
+        // Status chip
+        ctx.fillStyle = "#0D0D0D";
+        ctx.strokeStyle = "#1A1A1A";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.rect(980, 52, 156, 32);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#00FF41";
+        ctx.beginPath();
+        ctx.arc(1000, 68, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#AAAAAA";
+        ctx.font = "500 14px 'IBM Plex Mono', monospace";
+        ctx.fillText("EDGE LIVE", 1014, 73);
+
+        // Headline
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "400 92px 'Bebas Neue', sans-serif";
+        const lines = wrapText(headline, 1040);
+        let y = 260;
+        for (const line of lines.slice(0, 2)) {
+          ctx.fillText(line, 64, y);
+          y += 96;
+        }
+
+        // Subline
+        ctx.fillStyle = "#888888";
+        ctx.font = "400 28px 'IBM Plex Sans', sans-serif";
+        ctx.fillText(subline, 64, y + 16);
+
+        // Bottom meta
+        ctx.fillStyle = "#333333";
+        ctx.fillRect(64, 560, 1072, 1);
+        ctx.fillStyle = "#666666";
+        ctx.font = "500 16px 'IBM Plex Mono', monospace";
+        ctx.fillText("ON-PREM  ·  FACE + POSE  ·  ZERO CLOUD PIPELINE", 64, 592);
+
+        drawScanlines();
+      }
+
+      function wrapText(text, maxWidth) {
+        const words = text.split(/\s+/);
+        const lines = [];
+        let current = "";
+        for (const word of words) {
+          const next = current ? current + " " + word : word;
+          if (ctx.measureText(next).width > maxWidth && current) {
+            lines.push(current);
+            current = word;
+          } else {
+            current = next;
+          }
+        }
+        if (current) lines.push(current);
+        return lines.length ? lines : [text];
+      }
+
+      function downloadPng() {
+        drawCard();
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "og-preview.png";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+          },
+          "image/png"
+        );
+      }
+
+      function waitFontsThenDraw() {
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(drawCard);
+        } else {
+          drawCard();
+        }
+      }
+
+      headlineInput.addEventListener("input", drawCard);
+      sublineInput.addEventListener("input", drawCard);
+      document.getElementById("redraw-btn").addEventListener("click", drawCard);
+      document.getElementById("download-btn").addEventListener("click", downloadPng);
+
+      waitFontsThenDraw();
+    </script>
+  </body>
+</html>

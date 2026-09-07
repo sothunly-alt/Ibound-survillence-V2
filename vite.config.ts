@@ -18,6 +18,9 @@ export default defineConfig({
       input: {
         main: path.resolve(root, "index.html"),
         dashboard: path.resolve(root, "dashboard.html"),
+        privacy: path.resolve(root, "privacy.html"),
+        notFound: path.resolve(root, "404.html"),
+        ogPreview: path.resolve(root, "og-preview.html"),
       },
     },
   },

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 // SIGNAL_CORRUPTED</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #000000;
+        --surface: #0a0a0a;
+        --border: #181818;
+        --green: #00ff41;
+        --text-muted: #555555;
+        --font-display: "Bebas Neue", sans-serif;
+        --font-mono: "IBM Plex Mono", monospace;
+        --font-sans: "IBM Plex Sans", sans-serif;
+        --radius: 4px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: var(--bg);
+        color: #ffffff;
+        font-family: var(--font-mono);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 24px;
+        overflow-x: hidden;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 14px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #ffffff;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        background-color: var(--green);
+        border-radius: 50%;
+        box-shadow: 0 0 8px var(--green);
+        animation: pulse 1s infinite alternate;
+        flex-shrink: 0;
+      }
+
+      .stage {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 30px 0;
+        flex: 1;
+      }
+
+      .terminal-card {
+        width: 100%;
+        max-width: 520px;
+        background-color: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        box-shadow: 0 24px 48px rgba(0, 0, 0, 0.95);
+      }
+
+      .monitor-frame {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        min-height: 180px;
+        max-height: 240px;
+        background-color: #030303;
+        border: 1px solid #222222;
+        border-radius: 2px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+
+      #static-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.22;
+        pointer-events: none;
+      }
+
+      .monitor-frame::after {
+        content: " ";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.5) 50%);
+        background-size: 100% 4px;
+        pointer-events: none;
+        z-index: 3;
+      }
+
+      .monitor-hud-top,
+      .monitor-hud-bottom {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.6);
+        z-index: 4;
+        letter-spacing: 0.06em;
+      }
+
+      .monitor-hud-top {
+        top: 10px;
+      }
+
+      .monitor-hud-bottom {
+        bottom: 10px;
+      }
+
+      .hud-alert {
+        color: var(--green);
+        font-weight: 600;
+      }
+
+      .glitch-subject {
+        position: relative;
+        text-align: center;
+        z-index: 2;
+      }
+
+      .glitch-code {
+        font-family: var(--font-display);
+        font-size: clamp(64px, 18vw, 88px);
+        line-height: 0.9;
+        color: #ffffff;
+        letter-spacing: 0.04em;
+        position: relative;
+        display: inline-block;
+        text-transform: uppercase;
+      }
+
+      .glitch-code::before,
+      .glitch-code::after {
+        content: "404";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+      }
+
+      .glitch-code::before {
+        left: 2px;
+        text-shadow: -2px 0 var(--green);
+        clip: rect(24px, 550px, 90px, 0);
+        animation: glitch-slice 2.5s infinite linear alternate-reverse;
+      }
+
+      .glitch-code::after {
+        left: -2px;
+        text-shadow: 2px 0 #ffffff;
+        clip: rect(60px, 550px, 115px, 0);
+        animation: glitch-slice 1.8s infinite linear alternate;
+      }
+
+      .feed-state {
+        font-size: 11px;
+        color: var(--green);
+        letter-spacing: 0.12em;
+        margin-top: 4px;
+      }
+
+      .meta-box {
+        background-color: #000000;
+        border: 1px solid #141414;
+        border-left: 2px solid var(--green);
+        border-radius: 2px;
+        padding: 12px 16px;
+        font-size: 11px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .meta-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .meta-line .key {
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+
+      .meta-line .val {
+        color: #cccccc;
+        word-break: break-all;
+        text-align: right;
+      }
+
+      .meta-line .val.strike {
+        text-decoration: line-through;
+        color: #777777;
+      }
+
+      .meta-line .val.active {
+        color: var(--green);
+        text-decoration: none;
+      }
+
+      .btn-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        background-color: var(--green);
+        color: #000000;
+        font-family: var(--font-display);
+        font-size: 20px;
+        letter-spacing: 0.08em;
+        padding: 12px 20px;
+        border-radius: var(--radius);
+        text-decoration: none;
+        font-weight: 400;
+        text-transform: uppercase;
+        transition:
+          background-color 0.15s,
+          transform 0.1s;
+      }
+
+      .btn-action:hover {
+        background-color: #1aff53;
+        transform: translateY(-1px);
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 10px;
+        color: #444444;
+        border-top: 1px solid var(--border);
+        padding-top: 14px;
+        letter-spacing: 0.05em;
+      }
+
+      @keyframes glitch-slice {
+        0% {
+          clip: rect(12px, 9999px, 44px, 0);
+          transform: skew(0.3deg);
+        }
+        15% {
+          clip: rect(65px, 9999px, 80px, 0);
+          transform: skew(-0.5deg);
+        }
+        30% {
+          clip: rect(2px, 9999px, 35px, 0);
+          transform: skew(0.2deg);
+        }
+        45% {
+          clip: rect(78px, 9999px, 98px, 0);
+          transform: skew(-0.3deg);
+        }
+        60% {
+          clip: rect(25px, 9999px, 50px, 0);
+          transform: skew(0.6deg);
+        }
+        75% {
+          clip: rect(40px, 9999px, 70px, 0);
+          transform: skew(-0.2deg);
+        }
+        100% {
+          clip: rect(10px, 9999px, 90px, 0);
+          transform: skew(0deg);
+        }
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0.4;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 16px;
+        }
+
+        .meta-line {
+          flex-direction: column;
+          gap: 2px;
+          margin-bottom: 8px;
+        }
+
+        .meta-line .val {
+          text-align: left;
+        }
+
+        .footer {
+          flex-direction: column;
+          text-align: center;
+        }
+
+        .monitor-hud-top,
+        .monitor-hud-bottom {
+          font-size: 9px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .status-dot,
+        .glitch-code::before,
+        .glitch-code::after {
+          animation: none;
+        }
+
+        .glitch-code::before,
+        .glitch-code::after {
+          content: none;
+        }
+
+        .btn-action {
+          transition: none;
+        }
+
+        .btn-action:hover {
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <a href="index.html" class="brand">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>INBOUND SURVEILLANCE</span>
+      </a>
+      <span>NODE://PP-BAY-01</span>
+    </header>
+
+    <main class="stage">
+      <div class="terminal-card">
+        <div class="monitor-frame" aria-hidden="true">
+          <canvas id="static-canvas"></canvas>
+
+          <div class="monitor-hud-top">
+            <span>CAM_04 // RTSP_STREAM</span>
+            <span class="hud-alert">[SIGNAL INTERRUPT]</span>
+          </div>
+
+          <div class="glitch-subject">
+            <div class="glitch-code">404</div>
+            <div class="feed-state">> NO_CARRIER_DETECTED</div>
+          </div>
+
+          <div class="monitor-hud-bottom">
+            <span id="timestamp">00:00:00 UTC</span>
+            <span>FPS: 00 // LOSS: 100%</span>
+          </div>
+        </div>
+
+        <div class="meta-box">
+          <div class="meta-line">
+            <span class="key">> TARGET_PATH:</span>
+            <span class="val strike" id="uri-display">/unknown</span>
+          </div>
+          <div class="meta-line">
+            <span class="key">> FRAME_BUFFER:</span>
+            <span class="val">DROPPED (0x000404)</span>
+          </div>
+          <div class="meta-line">
+            <span class="key">> RECOVERY_ACTION:</span>
+            <span class="val active">REROUTE_TO_ROOT</span>
+          </div>
+        </div>
+
+        <a href="index.html" class="btn-action">RETURN TO ROOT TERMINAL</a>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>ON-PREMISE EDGE LOGGING // ZERO CLOUD PIPELINE</span>
+      <span>PHNOM PENH, KH</span>
+    </footer>
+
+    <script>
+      document.getElementById("uri-display").textContent = window.location.pathname || "/unresolved";
+
+      const stamp = document.getElementById("timestamp");
+      const tickClock = () => {
+        stamp.textContent = new Date().toISOString().substring(11, 19) + " UTC";
+      };
+      tickClock();
+      setInterval(tickClock, 1000);
+
+      const canvas = document.getElementById("static-canvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let raf = 0;
+
+      function resize() {
+        const ratio = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        canvas.width = Math.max(1, Math.floor(w * ratio));
+        canvas.height = Math.max(1, Math.floor(h * ratio));
+      }
+
+      function drawNoiseFrame() {
+        const w = canvas.width;
+        const h = canvas.height;
+        const imgData = ctx.createImageData(w, h);
+        const buffer = new Uint32Array(imgData.data.buffer);
+        for (let i = 0; i < buffer.length; i++) {
+          const r = Math.random();
+          if (r < 0.08) {
+            buffer[i] = 0xff00ff41;
+          } else if (r < 0.22) {
+            buffer[i] = 0xffffffff;
+          } else {
+            buffer[i] = 0xff050505;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+
+      function loop() {
+        drawNoiseFrame();
+        raf = requestAnimationFrame(loop);
+      }
+
+      resize();
+      window.addEventListener("resize", () => {
+        resize();
+        if (reduced) drawNoiseFrame();
+      });
+
+      if (reduced) {
+        drawNoiseFrame();
+      } else {
+        loop();
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (reduced) return;
+        if (document.hidden) {
+          cancelAnimationFrame(raf);
+        } else {
+          loop();
+        }
+      });
+    </script>
+  </body>
+</html>
