@@ -59,11 +59,15 @@ jobs:
         run: npm ci
 
       - name: Pre-fetch NSIS
-        shell: bash
+        shell: powershell
         run: |
-          mkdir -p "$LOCALAPPDATA/tauri/NSIS-3.11"
-          curl -L --retry 5 -o "$LOCALAPPDATA/tauri/NSIS-3.11/nsis-3.11.zip" https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip
-          tar -xf "$LOCALAPPDATA/tauri/NSIS-3.11/nsis-3.11.zip" -C "$LOCALAPPDATA/tauri/NSIS-3.11"
+          $dir = "$env:LOCALAPPDATA\tauri\NSIS-3.11"
+          New-Item -ItemType Directory -Force -Path $dir
+          $zip = "$dir\nsis-3.11.zip"
+          if (-not (Test-Path $zip)) {
+            Invoke-WebRequest -Uri "https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip" -OutFile $zip
+          }
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
 
       - name: Build Tauri Windows bundle
         uses: tauri-apps/tauri-action@v0
