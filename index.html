@@ -8,9 +8,35 @@
       name="description"
       content="Hands-free edge-AI cameras that clock active wrench-time from full-body pose estimation and send dual-clock scorecards to Telegram. Built for motorsport and performance garages."
     />
+    <link rel="canonical" id="canonical-url" href="https://inbound-surveillance-landing-page.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Inbound Surveillance" />
+    <meta
+      property="og:title"
+      content="Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages"
+    />
+    <meta
+      property="og:description"
+      content="Face ID is the handshake. Pose keeps the session alive. Dual-clock scorecards land on Telegram — 100% on-premise edge AI for performance garages."
+    />
+    <meta property="og:url" content="https://inbound-surveillance-landing-page.vercel.app/" />
+    <meta property="og:image" content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Inbound Surveillance — Automated Wrench-Time Tracking"
+    />
+    <meta
+      name="twitter:description"
+      content="Edge-AI pose tracking clocks billable wrench-time and payroll — scorecards via @Inbound_Surveillance_bot."
+    />
+    <meta name="twitter:image" content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="preload" as="image" href="assets/hero-garage.png" fetchpriority="high" />
     <link rel="preload" as="image" href="assets/demo-mechanic.png" />
     <meta name="theme-color" content="#000000" />
@@ -62,6 +88,7 @@
             <span id="boot-percentage">0%</span>
           </div>
         </div>
+        <p class="boot-skip-hint" id="boot-skip-hint" hidden>TAP OR PRESS ESC TO SKIP</p>
       </div>
     </div>
 
@@ -86,6 +113,7 @@
           <a href="#roi">The Math</a>
           <a href="#features">Features</a>
           <a href="#pricing">Pricing</a>
+          <a href="#faq">FAQ</a>
         </nav>
 
         <div class="header-actions">
@@ -103,6 +131,7 @@
         <a href="#roi">The Math</a>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
         <button class="btn btn-neon" data-open-demo type="button">Request Demo</button>
       </nav>
     </header>
@@ -110,7 +139,7 @@
     <main id="top">
       <section class="hero">
         <div class="hero-media" aria-hidden="true">
-          <img src="assets/hero-garage.png" alt="" fetchpriority="high" />
+          <img src="assets/hero-garage.png" alt="Performance garage bay with cars under overhead lighting" fetchpriority="high" />
           <div class="hero-veil"></div>
         </div>
         <div class="container hero-content">
@@ -126,7 +155,7 @@
           </p>
           <div class="hero-cta">
             <button class="btn btn-neon btn-lg" data-open-demo type="button">Book a Free Bay Demo</button>
-            <p class="social-inline">Trusted by Phnom Penh’s premier tuning shops.</p>
+            <p class="social-inline">Built from floor interviews with Phnom Penh performance garages.</p>
           </div>
           <div class="telemetry" aria-hidden="true">
             <div class="tel-chip">
@@ -182,13 +211,13 @@
                 <div class="phone-app">
                   <p class="phone-app-name">Telegram</p>
                   <div class="tg-card">
-                    <p class="tg-from">Inbound Bay Dispatch</p>
-                    <p class="tg-meta">Today 18:02</p>
+                    <p class="tg-from">@Inbound_Surveillance_bot</p>
+                    <p class="tg-meta">Inbound Bay Dispatch · Today 18:02</p>
                     <p class="tg-title">Shift summary · Bay 02</p>
                     <p class="tg-stat">Billable wrench-time: <em>4h 12m</em></p>
-                    <p class="tg-stat">Total shift hours: <em>8h 04m</em></p>
+                    <p class="tg-stat">Payroll attendance: <em>8h 04m</em></p>
                     <p class="tg-stat">Bay efficiency: <em>52%</em></p>
-                    <p class="tg-note">Bay 02 · LOCAL_EDGE · dispatched</p>
+                    <p class="tg-note">Dual clocks · LOCAL_EDGE · zero taps</p>
                   </div>
                 </div>
               </aside>
@@ -299,8 +328,8 @@
                 <span class="mono loss" data-roi-monthly>$1,440<small>/bay</small></span>
               </p>
               <p data-roi-leak-copy>
-                Mechanics lose ~45 mins of untracked time a day. At $80/hr, that’s
-                <strong>$1,440 lost per bay, every month.</strong>
+                Mechanics lose ~45 mins of untracked time a day. At $80/hr across ~24 shop days,
+                that’s <strong>$1,440 lost per bay, every month.</strong>
               </p>
             </article>
             <article class="roi-card fix">
@@ -452,41 +481,88 @@
       <section class="section proof-section" id="proof">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 06 ] Validation</p>
-            <h2>Already on the floor in Phnom Penh.</h2>
+            <p class="section-index">[ 06 ] Discovery</p>
+            <h2>What shop owners told us on the floor.</h2>
+            <p class="section-copy">
+              Field interviews with Phnom Penh performance garages — not logos we invented.
+              The pattern was the same: billable wrench-time leaks into unlogged admin.
+            </p>
           </header>
 
-          <p class="partners-label">Partner Garage</p>
-          <ul class="partners">
-            <li>
-              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">APEX DYNAMICS</text></svg>
-              <span>Partner Garage</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">NIGHTSHIFT</text></svg>
-              <span>Partner Garage</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">VELOCITY PP</text></svg>
-              <span>Partner Garage</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">MEKONG TUNE</text></svg>
-              <span>Partner Garage</span>
-            </li>
-            <li>
-              <svg viewBox="0 0 160 40" aria-hidden="true"><text x="80" y="26" text-anchor="middle">GRIDLOCK</text></svg>
-              <span>Partner Garage</span>
-            </li>
-          </ul>
+          <div class="discovery-grid">
+            <blockquote class="discovery-note">
+              <p class="discovery-tag">Unbilled hours</p>
+              <p>
+                “We know the bay was busy all afternoon, but the job card only shows three hours.
+                The rest never made it to the invoice.”
+              </p>
+              <footer>— Owner, independent tuning shop · Phnom Penh</footer>
+            </blockquote>
+            <blockquote class="discovery-note">
+              <p class="discovery-tag">Occlusion / Face ID</p>
+              <p>
+                “As soon as he’s under the hood or on the lift, any face camera is useless.
+                We need something that still knows he’s working.”
+              </p>
+              <footer>— Shop manager · multi-bay performance garage</footer>
+            </blockquote>
+            <blockquote class="discovery-note">
+              <p class="discovery-tag">Zero-click delivery</p>
+              <p>
+                “Don’t give mechanics another app. If the scorecard isn’t on my phone at closing,
+                I won’t use it.”
+              </p>
+              <footer>— Operator · motorsport prep bay</footer>
+            </blockquote>
+          </div>
+        </div>
+      </section>
 
-          <blockquote class="testimonial">
-            <p>
-              “We recovered over 15 billable hours across three bays in our first week. Mechanics just work,
-              and the camera does the admin.”
-            </p>
-            <footer>— Validated Performance Shop Owner</footer>
-          </blockquote>
+      <section class="section faq-section" id="faq">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 07 ] FAQ</p>
+            <h2>Questions owners ask before a bay install.</h2>
+          </header>
+
+          <div class="faq-list">
+            <details class="faq-item" open>
+              <summary>Why isn’t Face ID enough?</summary>
+              <p>
+                Faces disappear under hoods, on lifts, behind grinding shields, and behind masks.
+                Face ID is the handshake. YOLOv8 full-body pose keeps the session alive when the face is gone.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>Does video leave the shop?</summary>
+              <p>
+                No. Inference runs on-premise. We do not stream bay video to a cloud NVR. End-of-day scorecards
+                push metadata and summaries to your Telegram via
+                <a href="https://t.me/Inbound_Surveillance_bot" rel="noopener noreferrer">@Inbound_Surveillance_bot</a>.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>What do the dual clocks mean?</summary>
+              <p>
+                One clock tracks billable client wrench-time inside the bay polygon. The other tracks shop
+                attendance / payroll presence. Mechanics wrench — the edge node splits both without taps.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>How fast does a demo happen?</summary>
+              <p>
+                We respond within one business day on Telegram (Phnom Penh time), then map a single bay for a
+                live walkthrough. Software is $39/bay/mo; turnkey hardware install is $250 + the monthly rate.
+              </p>
+            </details>
+            <details class="faq-item">
+              <summary>Are staff notified?</summary>
+              <p>
+                Yes — you’re responsible for workplace notice. Our operator acknowledgment and
+                <a href="privacy.html">Privacy Policy</a> cover internal labor accounting only, not covert surveillance.
+              </p>
+            </details>
+          </div>
         </div>
       </section>
 
@@ -496,12 +572,17 @@
           <div class="hero-veil dense"></div>
         </div>
         <div class="container final-content">
-          <p class="section-index">[ 07 ] Deploy</p>
+          <p class="section-index">[ 08 ] Deploy</p>
           <h2>Start billing for the hours you actually work.</h2>
           <button class="btn btn-neon btn-lg" data-open-demo type="button">Recover Your Lost Revenue Today.</button>
+          <p class="response-promise">We reply on Telegram within one business day · Phnom Penh time</p>
         </div>
       </section>
     </main>
+
+    <div class="mobile-sticky-cta" id="mobile-sticky-cta">
+      <button class="btn btn-neon" data-open-demo type="button">Book a bay demo</button>
+    </div>
 
     <footer class="site-footer">
       <div class="container footer-grid">
@@ -521,7 +602,7 @@
           <p class="footer-label">Contact</p>
           <p>Phnom Penh, Cambodia</p>
           <p><a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
-          <p><a href="https://t.me/inboundsurveillance" rel="noopener">Telegram: @inboundsurveillance</a></p>
+          <p><a href="https://t.me/Inbound_Surveillance_bot" rel="noopener noreferrer">Telegram: @Inbound_Surveillance_bot</a></p>
         </div>
         <div>
           <p class="footer-label">Legal</p>
@@ -537,8 +618,11 @@
         <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
         <p class="section-index">Bay Demo</p>
         <h2 id="demo-title">Book a free bay walkthrough.</h2>
-        <p class="modal-copy">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</p>
-        <form class="demo-form" id="demo-form">
+        <p class="modal-copy">
+          We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.
+          <span class="response-promise inline">Reply within one business day · Phnom Penh time.</span>
+        </p>
+        <form class="demo-form" id="demo-form" data-formspree="">
           <label>
             Name
             <input type="text" name="name" required autocomplete="name" />
@@ -576,8 +660,11 @@
             </span>
           </label>
           <button class="btn btn-neon full-btn" type="submit">Request Demo</button>
+          <p class="form-error" id="form-error" hidden role="alert"></p>
         </form>
-        <p class="form-success" id="form-success" hidden>Request received. We’ll confirm on Telegram within one business day.</p>
+        <p class="form-success" id="form-success" hidden>
+          Request received. We’ll confirm on Telegram within one business day.
+        </p>
       </div>
     </div>
 

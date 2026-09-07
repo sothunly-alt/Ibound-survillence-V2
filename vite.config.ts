@@ -22,6 +22,7 @@ export default defineConfig({
         notFound: path.resolve(root, "404.html"),
         ogPreview: path.resolve(root, "og-preview.html"),
         maintenance: path.resolve(root, "503.html"),
+        thankYou: path.resolve(root, "thank-you.html"),
       },
     },
   },

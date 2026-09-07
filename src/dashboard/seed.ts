@@ -159,7 +159,7 @@ export const seedState: OpsState = {
       id: "msg-01",
       direction: "out",
       method: "getMe",
-      body: "@inbound_ops_bot connected · Aeon Mall Phnom Penh",
+      body: "@Inbound_Surveillance_bot connected · Aeon Mall Phnom Penh",
       ts: minutes(50),
     },
     {

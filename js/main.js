@@ -106,10 +106,125 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !modal.hidden) closeDemo();
 });
 
-form?.addEventListener("submit", (e) => {
+const DEMO_INBOX = "inboundcrew82@gmail.com";
+const formspreeEndpoint = form?.dataset.formspree?.trim() || "";
+
+function collectDemoPayload(formEl) {
+  const data = new FormData(formEl);
+  return {
+    name: String(data.get("name") || "").trim(),
+    shop: String(data.get("shop") || "").trim(),
+    contact: String(data.get("contact") || "").trim(),
+    bays: String(data.get("bays") || "").trim(),
+    plan: String(data.get("plan") || "").trim(),
+    operator_ack: data.get("operator_ack") ? "yes" : "no",
+  };
+}
+
+function buildMailto(payload) {
+  const subject = encodeURIComponent(`Demo request — ${payload.shop || payload.name}`);
+  const body = encodeURIComponent(
+    [
+      "Inbound Surveillance — Bay Demo Request",
+      "",
+      `Name: ${payload.name}`,
+      `Shop: ${payload.shop}`,
+      `Telegram / phone: ${payload.contact}`,
+      `Bays: ${payload.bays}`,
+      `Plan: ${payload.plan}`,
+      `Operator acknowledgment: ${payload.operator_ack}`,
+      "",
+      "Sent from the marketing landing demo form.",
+    ].join("\n")
+  );
+  return `mailto:${DEMO_INBOX}?subject=${subject}&body=${body}`;
+}
+
+function showFormSuccess() {
+  if (form) form.hidden = true;
+  if (success) {
+    success.hidden = false;
+    success.textContent =
+      "Request ready. Your email client should open — send it so we can confirm on Telegram within one business day.";
+  }
+}
+
+function showFormError(message) {
+  let err = document.getElementById("form-error");
+  if (!err && form) {
+    err = document.createElement("p");
+    err.id = "form-error";
+    err.className = "form-error";
+    err.setAttribute("role", "alert");
+    form.appendChild(err);
+  }
+  if (err) {
+    err.hidden = false;
+    err.textContent = message;
+  }
+}
+
+form?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  form.hidden = true;
-  success.hidden = false;
+  const submitBtn = form.querySelector('[type="submit"]');
+  const payload = collectDemoPayload(form);
+  const existingErr = document.getElementById("form-error");
+  if (existingErr) existingErr.hidden = true;
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Sending…";
+  }
+
+  try {
+    if (formspreeEndpoint) {
+      const res = await fetch(formspreeEndpoint, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, _subject: `Demo request — ${payload.shop || payload.name}` }),
+      });
+      if (!res.ok) throw new Error(`Form endpoint returned ${res.status}`);
+      if (success) {
+        success.hidden = false;
+        success.textContent =
+          "Request received. We’ll confirm on Telegram within one business day.";
+      }
+      form.hidden = true;
+      setTimeout(() => {
+        window.location.href = "thank-you.html";
+      }, 600);
+      return;
+    }
+
+    // Reliable capture without a backend: open a prefilled mailto, then thank-you page.
+    const mail = document.createElement("a");
+    mail.href = buildMailto(payload);
+    mail.rel = "noopener";
+    document.body.appendChild(mail);
+    mail.click();
+    mail.remove();
+    showFormSuccess();
+    setTimeout(() => {
+      window.location.assign("thank-you.html");
+    }, 700);
+  } catch (err) {
+    console.error(err);
+    showFormError("Send failed. Opening email fallback…");
+    const mail = document.createElement("a");
+    mail.href = buildMailto(payload);
+    document.body.appendChild(mail);
+    mail.click();
+    mail.remove();
+    showFormSuccess();
+    setTimeout(() => {
+      window.location.assign("thank-you.html");
+    }, 700);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Request Demo";
+    }
+  }
 });
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -162,8 +277,8 @@ function initRoiCalculator() {
       el.textContent = payback;
     });
     if (leakCopy) {
-      leakCopy.innerHTML = `Mechanics lose ~45 mins of untracked time a day. At $${rate}/hr, that’s
-        <strong>${formatMoney(monthlyPerBay)} lost per bay, every month.</strong>`;
+      leakCopy.innerHTML = `Mechanics lose ~45 mins of untracked time a day. At $${rate}/hr across ~24 shop days,
+        that’s <strong>${formatMoney(monthlyPerBay)} lost per bay, every month.</strong>`;
     }
   };
 
@@ -361,12 +476,40 @@ function initBootSequence() {
   const statusText = document.getElementById("boot-status");
   const terminal = document.getElementById("boot-terminal");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let finished = false;
+  let interval = null;
+
+  const complete = (opts) => {
+    if (finished) return;
+    finished = true;
+    if (interval) clearInterval(interval);
+    finishBoot(overlay, opts);
+  };
+
+  // Tap / click / Escape skips first-visit boot (keeps sessionStorage via finishBoot).
+  const skipBoot = (e) => {
+    if (holdBoot) return;
+    if (e) e.preventDefault();
+    if (bar) bar.style.width = "100%";
+    if (percentText) percentText.textContent = "100%";
+    if (statusText) statusText.textContent = "RUNTIME ZERO-CLOUD ONLINE";
+    complete();
+  };
+  overlay.addEventListener("click", skipBoot);
+  overlay.addEventListener("touchend", skipBoot, { passive: false });
+  const onKey = (e) => {
+    if (e.key === "Escape" || e.key === "Enter" || e.key === " ") skipBoot(e);
+  };
+  document.addEventListener("keydown", onKey, { once: true });
+
+  const skipHint = document.getElementById("boot-skip-hint");
+  if (skipHint) skipHint.hidden = false;
 
   if (reduced) {
     if (bar) bar.style.width = "100%";
     if (percentText) percentText.textContent = "100%";
     if (statusText) statusText.textContent = "RUNTIME ZERO-CLOUD ONLINE";
-    finishBoot(overlay);
+    complete();
     return;
   }
 
@@ -380,7 +523,7 @@ function initBootSequence() {
   let current = 0;
   let logIdx = 0;
 
-  const interval = setInterval(() => {
+  interval = setInterval(() => {
     current += Math.floor(Math.random() * 8) + 4;
 
     if (logIdx < logs.length && current >= logs[logIdx].pct) {
@@ -397,10 +540,11 @@ function initBootSequence() {
     if (current >= 100) {
       current = 100;
       clearInterval(interval);
+      interval = null;
       if (bar) bar.style.width = "100%";
       if (percentText) percentText.textContent = "100%";
 
-      setTimeout(() => finishBoot(overlay), 250);
+      setTimeout(() => complete(), 250);
       return;
     }
 

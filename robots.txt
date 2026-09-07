@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://inbound-surveillance-landing-page.vercel.app/sitemap.xml
