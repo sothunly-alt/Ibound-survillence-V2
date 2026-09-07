@@ -25,6 +25,7 @@ export default defineConfig({
         thankYou: path.resolve(root, "thank-you.html"),
         about: path.resolve(root, "about.html"),
         terms: path.resolve(root, "terms.html"),
+        team: path.resolve(root, "team.html"),
       },
     },
   },

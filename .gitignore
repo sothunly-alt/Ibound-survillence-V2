@@ -1,1 +1,5 @@
 .vercel
+.gstack/
+
+assets/preview/
+.venv-preview/

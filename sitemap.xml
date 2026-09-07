@@ -11,6 +11,11 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://inbound-surveillance-landing-page.vercel.app/team</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://inbound-surveillance-landing-page.vercel.app/privacy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>

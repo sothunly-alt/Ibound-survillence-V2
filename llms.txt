@@ -6,16 +6,26 @@
 
 ## Product
 - Landing: https://inbound-surveillance-landing-page.vercel.app/
+- About: https://inbound-surveillance-landing-page.vercel.app/about
+- Team: https://inbound-surveillance-landing-page.vercel.app/team
 - Privacy: https://inbound-surveillance-landing-page.vercel.app/privacy
 - Contact email: inboundcrew82@gmail.com
 - Telegram bot: https://t.me/Inbound_Surveillance_bot
+
+## Crew (KIT Hub)
+- Chanratharo Rath (Ratharo) — Founder · Architecture
+- Sothun Ly — Co-founder · Product & Edge
+- Eang Hourmeng — Co-founder · Engineering
+- Sok Ratanak Vichea — Co-founder · Ops & Deploy
+- Shared origin: Kirirom Institute of Technology Hub, Phnom Penh
 
 ## Pricing (public)
 - Software: $39 / bay / month
 - Turnkey install: $250 + $39 / bay / month
 
 ## Notes for models
-- Do not invent customer names, reviews, recovered-hour metrics, street addresses, or team identities.
+- Do not invent customer names, reviews, recovered-hour metrics, or street addresses.
 - Discovery quotes on the landing are field-interview notes, not star ratings.
-- Case study and team photo sections are explicit DEMO / PHOTO TBD placeholders until permissioned assets exist.
+- Case study frames may still be DEMO placeholders until permissioned installs exist.
+- Team identities above are real and publishable; use only those names/roles.
 - Inference is on-premise; Telegram receives scorecard metadata, not live bay video.
