@@ -120,6 +120,60 @@ const navSections = navLinks
   .map((link) => document.querySelector(link.getAttribute("href")))
   .filter(Boolean);
 
+function formatMoney(value) {
+  return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
+function formatPayback(days) {
+  return `DAY ${String(days).padStart(2, "0")}`;
+}
+
+function initRoiCalculator() {
+  const root = document.querySelector("[data-roi-calc]");
+  if (!root) return;
+
+  const baysInput = root.querySelector("[data-roi-bays]");
+  const rateInput = root.querySelector("[data-roi-rate]");
+  const baysDisplay = root.querySelector("[data-roi-bays-display]");
+  const rateDisplay = root.querySelector("[data-roi-rate-display]");
+  const annualEl = root.querySelector("[data-roi-annual]");
+  const softwareEl = root.querySelector("[data-roi-software]");
+  const paybackEls = document.querySelectorAll("[data-roi-payback], [data-roi-payback-eq]");
+  const rateEq = document.querySelector("[data-roi-rate-eq]");
+  const monthlyEl = document.querySelector("[data-roi-monthly]");
+  const leakCopy = document.querySelector("[data-roi-leak-copy]");
+
+  const render = () => {
+    const bays = Number(baysInput.value);
+    const rate = Number(rateInput.value);
+    const monthlyPerBay = 0.75 * rate * 24;
+    const annual = monthlyPerBay * 12 * bays;
+    const softwareAnnual = 39 * 12 * bays;
+    const paybackDays = Math.max(1, Math.ceil(39 / (0.75 * rate)));
+    const payback = formatPayback(paybackDays);
+
+    if (baysDisplay) baysDisplay.textContent = String(bays);
+    if (rateDisplay) rateDisplay.textContent = `$${rate}/hr`;
+    if (annualEl) annualEl.textContent = formatMoney(annual);
+    if (softwareEl) softwareEl.textContent = formatMoney(softwareAnnual);
+    if (rateEq) rateEq.innerHTML = `$${rate}<small>/hr</small>`;
+    if (monthlyEl) monthlyEl.innerHTML = `${formatMoney(monthlyPerBay)}<small>/bay</small>`;
+    paybackEls.forEach((el) => {
+      el.textContent = payback;
+    });
+    if (leakCopy) {
+      leakCopy.innerHTML = `Mechanics lose ~45 mins of untracked time a day. At $${rate}/hr, that’s
+        <strong>${formatMoney(monthlyPerBay)} lost per bay, every month.</strong>`;
+    }
+  };
+
+  baysInput.addEventListener("input", render);
+  rateInput.addEventListener("input", render);
+  render();
+}
+
+initRoiCalculator();
+
 let scrollTick = false;
 
 function updateScroll() {
@@ -166,7 +220,7 @@ updateScroll();
 function initScrollReveal() {
   if (reducedMotion) return;
   const nodes = document.querySelectorAll(
-    ".section-head, .hud-frame, .flow-steps, .roi-card, .feature-card, .price-card, .partners, .testimonial, .final-content"
+    ".section-head, .hud-frame, .flow-steps, .arch-card, .roi-calc, .roi-card, .feature-card, .price-card, .partners, .testimonial, .final-content"
   );
   nodes.forEach((el, i) => {
     el.classList.add("reveal");

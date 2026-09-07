@@ -6,7 +6,7 @@
     <title>Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages</title>
     <meta
       name="description"
-      content="Hands-free edge-AI cameras that automatically clock active wrench-time per bay and send timestamped invoice proof to your phone. Built for motorsport and performance garages."
+      content="Hands-free edge-AI cameras that clock active wrench-time from full-body pose estimation and send dual-clock scorecards to Telegram. Built for motorsport and performance garages."
     />
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
@@ -76,6 +76,7 @@
 
         <nav class="nav-desktop" aria-label="Primary">
           <a href="#demo">System</a>
+          <a href="#architecture">Architecture</a>
           <a href="#roi">The Math</a>
           <a href="#features">Features</a>
           <a href="#pricing">Pricing</a>
@@ -92,6 +93,7 @@
       </div>
       <nav class="nav-mobile" id="mobile-nav" hidden>
         <a href="#demo">System</a>
+        <a href="#architecture">Architecture</a>
         <a href="#roi">The Math</a>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
@@ -112,8 +114,9 @@
           </p>
           <h1>Stop Losing Profit on Untracked Garage Labor.</h1>
           <p class="lede">
-            The hands-free camera system that automatically clocks active wrench-time per bay
-            and sends timestamped invoice proof to your phone.
+            Edge cameras clock billable wrench-time from full-body pose, not Face ID.
+            Face is the handshake. Skeletal tracking keeps the session alive under the hood,
+            then the scorecard lands on Telegram with zero taps.
           </p>
           <div class="hero-cta">
             <button class="btn btn-neon btn-lg" data-open-demo type="button">Book a Free Bay Demo</button>
@@ -123,7 +126,7 @@
             <div class="tel-chip">
               <span class="tel-label">BAY 01</span>
               <span class="tel-value" data-hero-timer>02:14:33</span>
-              <span class="tel-state">ACTIVE</span>
+              <span class="tel-state">POSE LOCK</span>
             </div>
             <div class="tel-chip">
               <span class="tel-label">BAY 02</span>
@@ -145,8 +148,8 @@
             <p class="section-index">[ 01 ] System</p>
             <h2>Watch the bay clock itself.</h2>
             <p class="section-copy">
-              No tablets. No punch cards. The camera sees active wrench-time, stamps the session,
-              and drops a scorecard on Telegram.
+              No tablets. No punch cards. Pose locks the session, dual clocks tally the shift,
+              and the scorecard drops on Telegram.
             </p>
           </header>
 
@@ -163,7 +166,7 @@
 
               <div class="bbox" data-bbox>
                 <span class="bbox-tag">
-                  MECHANIC · ACTIVE
+                  MECHANIC · POSE LOCK
                   <strong data-bbox-timer>04:11:55</strong>
                 </span>
               </div>
@@ -173,11 +176,13 @@
                 <div class="phone-app">
                   <p class="phone-app-name">Telegram</p>
                   <div class="tg-card">
-                    <p class="tg-from">Inbound Surveillance</p>
-                    <p class="tg-meta">Bay 02 · Shift complete · 18:04</p>
-                    <p class="tg-title">Daily wrench scorecard</p>
-                    <p class="tg-stat">Total Wrench Time: <em>4 hrs 12 mins</em></p>
-                    <p class="tg-note">Timestamped photo audit attached.</p>
+                    <p class="tg-from">Inbound Bay Dispatch</p>
+                    <p class="tg-meta">Today 18:02</p>
+                    <p class="tg-title">Shift summary · Bay 02</p>
+                    <p class="tg-stat">Billable wrench-time: <em>4h 12m</em></p>
+                    <p class="tg-stat">Total shift hours: <em>8h 04m</em></p>
+                    <p class="tg-stat">Bay efficiency: <em>52%</em></p>
+                    <p class="tg-note">Bay 02 · LOCAL_EDGE · dispatched</p>
                   </div>
                 </div>
               </aside>
@@ -192,43 +197,115 @@
 
           <ol class="flow-steps">
             <li class="is-active" data-flow-step="0"><span>01</span> Mechanic under the hood</li>
-            <li data-flow-step="1"><span>02</span> Bounding box locks · timer ticks</li>
+            <li data-flow-step="1"><span>02</span> Pose lock · dual clocks tick</li>
             <li data-flow-step="2"><span>03</span> Telegram scorecard on your phone</li>
           </ol>
+        </div>
+      </section>
+
+      <section class="section architecture-section" id="architecture">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 02 ] Architecture</p>
+            <h2>Face ID is the handshake. Pose keeps the session alive.</h2>
+            <p class="section-copy">
+              Facial recognition drops to zero under a hood, beneath a chassis, or behind a grinding shield.
+              Body keypoints and bay polygons keep billable time unbroken.
+            </p>
+          </header>
+
+          <div class="arch-grid">
+            <article class="arch-card">
+              <p class="arch-layer">Assist</p>
+              <h3>Face ID Assist</h3>
+              <p class="arch-sub">Initial identity lock</p>
+              <p>
+                Identifies the operator on bay entry when a face is visible.
+                Opportunistic only — non-blocking when the technician is obstructed,
+                masked, or facing away from the camera.
+              </p>
+            </article>
+            <article class="arch-card is-primary">
+              <p class="arch-layer">Reliability</p>
+              <h3>Pose &amp; Skeletal Tracking</h3>
+              <p class="arch-sub">Session continuity</p>
+              <p>
+                Tracks skeletal movement and bay occupancy polygons so the session
+                stays alive under the hood, under the chassis, or behind safety gear.
+                Face can disappear; billable time does not.
+              </p>
+            </article>
+          </div>
         </div>
       </section>
 
       <section class="section roi-section" id="roi">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 02 ] The Math</p>
+            <p class="section-index">[ 03 ] The Math</p>
             <h2>The leak is already on your floor.</h2>
           </header>
+
+          <div class="roi-calc" data-roi-calc>
+            <p class="roi-calc-kicker">Wrench-Time Recovery Calculator</p>
+            <div class="roi-sliders">
+              <label class="roi-slider">
+                <span class="roi-slider-top">
+                  <span>Number of Active Bays</span>
+                  <strong data-roi-bays-display>3</strong>
+                </span>
+                <input type="range" min="1" max="10" value="3" step="1" data-roi-bays aria-label="Number of active bays" />
+              </label>
+              <label class="roi-slider">
+                <span class="roi-slider-top">
+                  <span>Shop Labor Rate</span>
+                  <strong data-roi-rate-display>$80/hr</strong>
+                </span>
+                <input type="range" min="40" max="150" value="80" step="5" data-roi-rate aria-label="Shop labor rate" />
+              </label>
+            </div>
+            <div class="roi-calc-result">
+              <div class="roi-calc-pair">
+                <div>
+                  <p class="roi-calc-label">Annual unbilled labor recovered</p>
+                  <p class="roi-calc-value mono neon" data-roi-annual>$51,840</p>
+                </div>
+                <div>
+                  <p class="roi-calc-label">Software cost ($39/bay/mo)</p>
+                  <p class="roi-calc-value mono muted" data-roi-software>$1,404</p>
+                </div>
+              </div>
+              <p class="roi-calc-meta">
+                Assumes 45 min uncaptured wrench-time per bay per day ·
+                Payback in <span data-roi-payback>DAY 01</span>
+              </p>
+            </div>
+          </div>
 
           <div class="roi-grid">
             <article class="roi-card leak">
               <p class="roi-kicker">The Leak</p>
               <p class="roi-equation">
-                <span class="mono" data-count="45" data-prefix="~" data-unit="min">~45<small>min</small></span>
+                <span class="mono">~45<small>min</small></span>
                 <span class="op">×</span>
-                <span class="mono" data-count="25" data-prefix="$" data-unit="/hr">$25<small>/hr</small></span>
+                <span class="mono" data-roi-rate-eq>$80<small>/hr</small></span>
                 <span class="op">=</span>
-                <span class="mono loss" data-count="450" data-prefix="$" data-unit="/bay">$450<small>/bay</small></span>
+                <span class="mono loss" data-roi-monthly>$1,440<small>/bay</small></span>
               </p>
-              <p>
-                Mechanics lose ~45 mins of untracked time a day. At $25/hr, that’s
-                <strong>$450 lost per bay, every month.</strong>
+              <p data-roi-leak-copy>
+                Mechanics lose ~45 mins of untracked time a day. At $80/hr, that’s
+                <strong>$1,440 lost per bay, every month.</strong>
               </p>
             </article>
             <article class="roi-card fix">
               <p class="roi-kicker">The Fix</p>
               <p class="roi-equation">
-                <span class="mono neon" data-count="39" data-prefix="$" data-unit="/mo">$39<small>/mo</small></span>
+                <span class="mono neon">$39<small>/mo</small></span>
                 <span class="op">→</span>
-                <span class="mono neon" data-count="3" data-prefix="DAY " data-pad="2">DAY 03</span>
+                <span class="mono neon" data-roi-payback-eq>DAY 01</span>
               </p>
               <p>
-                Our system costs <strong>$39/month</strong>. It pays for itself by day three.
+                Our system costs <strong>$39/month</strong>. It pays for itself fast.
                 The rest is <strong>pure recovered profit.</strong>
               </p>
             </article>
@@ -239,12 +316,12 @@
       <section class="section features-section" id="features">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 03 ] Capability</p>
+            <p class="section-index">[ 04 ] Capability</p>
             <h2>Built for the bay, not the boardroom.</h2>
           </header>
 
           <div class="feature-grid">
-            <article class="feature-card">
+            <article class="feature-card feature-card--lead">
               <div class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 32 32" fill="none">
                   <rect x="4" y="7" width="24" height="16" stroke="currentColor" stroke-width="1.5" />
@@ -252,8 +329,14 @@
                   <path d="M12 7V5h8v2" stroke="currentColor" stroke-width="1.5" />
                 </svg>
               </div>
-              <h3>Automated Wrench-Time Tracking</h3>
-              <p>Hands-free bay monitoring. Mechanics never have to touch a tablet or punch a paper card.</p>
+              <h3>Unbroken Pose-Estimation. Zero Tablets.</h3>
+              <p>
+                Standard facial recognition fails the moment a technician dives under an intake manifold
+                or pulls down a welding mask. Inbound Surveillance couples facial assist with full-body
+                spatial pose estimation. Even when the face is completely obscured, our edge model tracks
+                body volume and skeletal posture inside the bay boundaries. No punch cards, no grease on
+                touchscreens, and zero phone interaction. The mechanic works; the infrastructure tracks.
+              </p>
             </article>
             <article class="feature-card">
               <div class="feature-icon" aria-hidden="true">
@@ -263,7 +346,7 @@
                 </svg>
               </div>
               <h3>Instant Telegram Scorecards</h3>
-              <p>Automated daily shift summaries delivered straight to your phone.</p>
+              <p>Automated dual-clock shift summaries delivered straight to your phone. Zero taps.</p>
             </article>
             <article class="feature-card">
               <div class="feature-icon" aria-hidden="true">
@@ -293,7 +376,7 @@
       <section class="section pricing-section" id="pricing">
         <div class="container">
           <header class="section-head pricing-head">
-            <p class="section-index">[ 04 ] Pricing</p>
+            <p class="section-index">[ 05 ] Pricing</p>
             <h2>Simple, transparent pricing. <span>No cloud tax.</span></h2>
             <p class="section-copy">Start on the software you already have, or take the turnkey bay. Pay per bay. Nothing else.</p>
           </header>
@@ -363,7 +446,7 @@
       <section class="section proof-section" id="proof">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 05 ] Validation</p>
+            <p class="section-index">[ 06 ] Validation</p>
             <h2>Already on the floor in Phnom Penh.</h2>
           </header>
 
@@ -407,7 +490,7 @@
           <div class="hero-veil dense"></div>
         </div>
         <div class="container final-content">
-          <p class="section-index">[ 06 ] Deploy</p>
+          <p class="section-index">[ 07 ] Deploy</p>
           <h2>Start billing for the hours you actually work.</h2>
           <button class="btn btn-neon btn-lg" data-open-demo type="button">Recover Your Lost Revenue Today.</button>
         </div>
