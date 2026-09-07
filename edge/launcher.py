@@ -91,10 +91,12 @@ from db import (
     connect,
     get_daily_garage_summary,
     get_or_create_vehicle_job,
+    get_recent_ai_audits,
     get_vehicle_job_history,
     has_opened_today,
     insert_event,
     list_vehicle_jobs,
+    record_ai_audit_verdict,
     record_face_clock_in,
     record_face_clock_out,
     update_technician_activity,
@@ -445,6 +447,53 @@ def orient_frame(frame, rotate_deg: int, flip: str):
     return frame
 
 
+def transform_point_hflip(x: float, y: float) -> tuple[float, float]:
+    return round(max(0.0, min(1.0, 1.0 - x)), 4), round(max(0.0, min(1.0, y)), 4)
+
+
+def transform_point_vflip(x: float, y: float) -> tuple[float, float]:
+    return round(max(0.0, min(1.0, x)), 4), round(max(0.0, min(1.0, 1.0 - y)), 4)
+
+
+def transform_point_rotate(x: float, y: float, deg: int) -> tuple[float, float]:
+    d = ((deg % 360) + 360) % 360
+    if d == 90:
+        return round(max(0.0, min(1.0, 1.0 - y)), 4), round(max(0.0, min(1.0, x)), 4)
+    elif d == 180:
+        return round(max(0.0, min(1.0, 1.0 - x)), 4), round(max(0.0, min(1.0, 1.0 - y)), 4)
+    elif d == 270:
+        return round(max(0.0, min(1.0, y)), 4), round(max(0.0, min(1.0, 1.0 - x)), 4)
+    return round(max(0.0, min(1.0, x)), 4), round(max(0.0, min(1.0, y)), 4)
+
+
+def transform_bay_geometry(bay: dict[str, Any], transform_fn) -> dict[str, Any]:
+    b = dict(bay)
+    poly = b.get("polygon")
+    if isinstance(poly, list) and len(poly) >= 3:
+        new_poly = [list(transform_fn(float(p[0]), float(p[1]))) for p in poly]
+        b["polygon"] = new_poly
+        xs = [p[0] for p in new_poly]
+        ys = [p[1] for p in new_poly]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        b["roi"] = [round(min_x, 4), round(min_y, 4), round(max(0.02, max_x - min_x), 4), round(max(0.02, max_y - min_y), 4)]
+    elif isinstance(b.get("roi"), (list, tuple)) and len(b["roi"]) == 4:
+        x, y, w, h = (float(v) for v in b["roi"])
+        p1 = transform_fn(x, y)
+        p2 = transform_fn(x + w, y)
+        p3 = transform_fn(x + w, y + h)
+        p4 = transform_fn(x, y + h)
+        xs = [p1[0], p2[0], p3[0], p4[0]]
+        ys = [p1[1], p2[1], p3[1], p4[1]]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        b["roi"] = [round(min_x, 4), round(min_y, 4), round(max(0.02, max_x - min_x), 4), round(max(0.02, max_y - min_y), 4)]
+        if poly is not None:
+            b["polygon"] = [list(p1), list(p2), list(p3), list(p4)]
+    return b
+
+
+
 
 def parse_roi(value: Any) -> list[float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
@@ -742,15 +791,36 @@ class CameraStreamPool:
                     self._workers[cid].is_active_ai = (cid == active_id)
 
             to_remove = [wid for wid in self._workers if wid not in configured_ids]
+            workers_to_stop = []
             for wid in to_remove:
                 worker = self._workers.pop(wid)
-                worker.stop()
+                workers_to_stop.append(worker)
+
+        if workers_to_stop:
+            def _async_teardown(workers):
+                for w in workers:
+                    try:
+                        w.stop()
+                    except Exception as ex:
+                        print(f"[CameraStreamPool] Async teardown error for {w.camera_id}: {ex}", flush=True)
+
+            threading.Thread(
+                target=_async_teardown,
+                args=(workers_to_stop,),
+                name="CameraWorkerTeardown",
+                daemon=True,
+            ).start()
 
     def stop(self) -> None:
         with self._lock:
-            for worker in self._workers.values():
-                worker.stop()
+            workers = list(self._workers.values())
             self._workers.clear()
+        for worker in workers:
+            try:
+                worker.stop()
+            except Exception:
+                pass
+
 
 
 class LiveStreamEngine:
@@ -766,6 +836,7 @@ class LiveStreamEngine:
         self.is_streaming = False
         self.thread: threading.Thread | None = None
         self.current_frame_jpeg: bytes | None = None
+        self.current_frame_bgr: np.ndarray | None = None
         self.mjpeg_generation = 0
         self.frame_seq = 0
         self.new_frame_event = threading.Event()
@@ -833,9 +904,10 @@ class LiveStreamEngine:
 
     def _on_ai_verdict_received(self, verdict: AIAuditVerdict) -> None:
         try:
-            if self.conn is not None:
+            conn = connect(DATA_DIR / "events.db", check_same_thread=False)
+            try:
                 record_ai_audit_verdict(
-                    self.conn,
+                    conn,
                     bay_id=verdict.bay_id,
                     technician_name=verdict.technician_id,
                     action=verdict.action,
@@ -845,6 +917,8 @@ class LiveStreamEngine:
                     crop_path=verdict.crop_path,
                     ts=verdict.timestamp,
                 )
+            finally:
+                conn.close()
         except Exception as e:
             print(f"[AI Auditor DB Error] {e}", flush=True)
 
@@ -1355,7 +1429,9 @@ class LiveStreamEngine:
                 self.cfg["active_camera_id"] = cameras[0]["id"] if cameras else ""
             if self._gateway_stream_id == sanitize_stream_id(cid):
                 self._drop_gateway_stream()
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
+            active_id = str(self.cfg.get("active_camera_id") or "")
+        save_config(cfg_to_save)
         if self.running:
             try:
                 self.camera_pool.sync_cameras(cameras)
@@ -1364,7 +1440,7 @@ class LiveStreamEngine:
         return {
             "success": True,
             "cameras": cameras,
-            "active_camera_id": str(self.cfg.get("active_camera_id") or ""),
+            "active_camera_id": active_id,
         }
 
     def toggle_camera_port(self, camera_id: Any, enabled: bool | None = None) -> dict[str, Any]:
@@ -1384,7 +1460,8 @@ class LiveStreamEngine:
             new_state = (not current) if enabled is None else bool(enabled)
             target["enabled"] = new_state
             self.cfg["cameras"] = cameras
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
+        save_config(cfg_to_save)
         if self.running or bool(self.camera_pool._workers):
             try:
                 self.camera_pool.sync_cameras(cameras)
@@ -1415,10 +1492,11 @@ class LiveStreamEngine:
             new_state = (not current) if enabled is None else bool(enabled)
             target["ml_enabled"] = new_state
             self.cfg["cameras"] = cameras
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
             if not new_state:
                 self.active_roi_cameras.pop(cid, None)
                 self._last_bg_roi_infer.pop(cid, None)
+        save_config(cfg_to_save)
         worker = self.camera_pool.get_worker(cid)
         if worker is not None:
             worker.update_cfg({"ml_enabled": new_state})
@@ -1450,7 +1528,8 @@ class LiveStreamEngine:
             self.cfg["cameras"] = cameras
             self.bay_manager.set_bays(bays)
             self.bay_telemetry = self.bay_manager.telemetry()
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
+        save_config(cfg_to_save)
         return {"success": True, "roi": parsed, "bays": bays, "cameras": cameras, "active_camera_id": active}
 
     def set_bays(self, bays_value: Any) -> dict[str, Any]:
@@ -1477,17 +1556,29 @@ class LiveStreamEngine:
             self.cfg["cameras"] = cameras
             self.bay_manager.set_bays(parsed)
             self.bay_telemetry = self.bay_manager.telemetry()
-            save_config(self.cfg)
+            cfg_to_save = dict(self.cfg)
             roi = list(self.cfg.get("roi") or [0.30, 0.20, 0.40, 0.60])
+        save_config(cfg_to_save)
         if removed_ids:
-            try:
-                conn = connect(DATA_DIR / "events.db", check_same_thread=False)
+            def _async_close_sessions(bids):
                 try:
-                    close_bay_sessions(conn, removed_ids, datetime.now())
-                finally:
-                    conn.close()
-            except Exception as exc:
-                print(f"[set_bays] close sessions failed: {exc}", flush=True)
+                    import sqlite3
+                    db_path = DATA_DIR / "events.db"
+                    conn = sqlite3.connect(str(db_path), timeout=5.0)
+                    try:
+                        conn.execute("PRAGMA busy_timeout = 5000")
+                        close_bay_sessions(conn, bids, datetime.now())
+                    finally:
+                        conn.close()
+                except Exception as exc:
+                    print(f"[set_bays] async close sessions failed: {exc}", flush=True)
+
+            threading.Thread(
+                target=_async_close_sessions,
+                args=(list(removed_ids),),
+                name="BaySessionsCloser",
+                daemon=True,
+            ).start()
         return {
             "success": True,
             "bays": parsed,
@@ -1578,6 +1669,13 @@ class LiveStreamEngine:
             worker = self.camera_pool.get_worker(cid or active_id)
             if worker and worker.latest_jpeg:
                 return worker.latest_jpeg, "image/jpeg"
+            pkt = self.grabber.peek_latest_frame()
+            if pkt is not None and getattr(pkt, "jpeg", None):
+                return pkt.jpeg, "image/jpeg"
+            if worker:
+                wpkt = worker.grabber.peek_latest_frame()
+                if wpkt is not None and getattr(wpkt, "jpeg", None):
+                    return wpkt.jpeg, "image/jpeg"
             if cached:
                 return cached[0], cached[1]
             return None, "image/jpeg"
@@ -1948,8 +2046,17 @@ class LiveStreamEngine:
             "attendance_logs": technicians,
         }
 
-    def set_orient(self, rotate: Any = None, flip: Any = None) -> dict[str, Any]:
+    def set_orient(
+        self,
+        rotate: Any = None,
+        flip: Any = None,
+        bays: Any = None,
+        roi: Any = None,
+    ) -> dict[str, Any]:
         with self.lock:
+            old_rotate = self.cfg.get("rotate")
+            old_flip = self.cfg.get("flip")
+
             if rotate is not None and is_auto_rotate(rotate):
                 self.cfg["rotate"] = "auto"
                 self.cfg["flip"] = "none"
@@ -1958,22 +2065,78 @@ class LiveStreamEngine:
                     self.cfg["rotate"] = parse_rotate(rotate)
                 if flip is not None:
                     self.cfg["flip"] = parse_flip(flip)
+
+            new_rotate = self.cfg.get("rotate")
+            new_flip = self.cfg.get("flip")
+
+            if bays is not None:
+                parsed_bays = parse_bays(bays, fallback_roi=parse_roi(roi), seed_if_empty=False)
+                self.cfg["bays"] = parsed_bays
+                if parsed_bays:
+                    self.cfg["roi"] = list(parsed_bays[0]["roi"])
+                elif roi is not None:
+                    pr = parse_roi(roi)
+                    if pr:
+                        self.cfg["roi"] = pr
+                self.bay_manager.set_bays(self.cfg["bays"])
+                self.bay_telemetry = self.bay_manager.telemetry()
+            elif not is_auto_rotate(new_rotate) and not is_auto_rotate(old_rotate) and (new_rotate != old_rotate or new_flip != old_flip):
+                cur_bays = parse_bays(self.cfg.get("bays"), seed_if_empty=False)
+                if cur_bays:
+                    def _safe_rot(r):
+                        try:
+                            return int(r) % 360
+                        except (TypeError, ValueError):
+                            return 0
+
+                    old_r = _safe_rot(old_rotate)
+                    new_r = _safe_rot(new_rotate)
+                    delta_r = ((new_r - old_r) % 360 + 360) % 360
+
+                    transformed = []
+                    for b in cur_bays:
+                        tb = dict(b)
+                        if delta_r != 0:
+                            tb = transform_bay_geometry(tb, lambda x, y, dr=delta_r: transform_point_rotate(x, y, dr))
+                        if old_flip != new_flip:
+                            h_toggled = (old_flip == "h" or new_flip == "h") and (old_flip != new_flip)
+                            v_toggled = (old_flip == "v" or new_flip == "v") and (old_flip != new_flip)
+                            if h_toggled:
+                                tb = transform_bay_geometry(tb, transform_point_hflip)
+                            if v_toggled:
+                                tb = transform_bay_geometry(tb, transform_point_vflip)
+                        transformed.append(tb)
+
+                    self.cfg["bays"] = transformed
+                    if transformed:
+                        self.cfg["roi"] = list(transformed[0]["roi"])
+                    self.bay_manager.set_bays(self.cfg["bays"])
+                    self.bay_telemetry = self.bay_manager.telemetry()
+
             cameras = _normalize_cameras(self.cfg.get("cameras"))
             active = str(self.cfg.get("active_camera_id") or "")
             for cam in cameras:
                 if cam["id"] == active:
                     cam["rotate"] = self.cfg.get("rotate")
                     cam["flip"] = self.cfg.get("flip")
+                    if "bays" in self.cfg:
+                        cam["bays"] = self.cfg.get("bays")
+                    if "roi" in self.cfg:
+                        cam["roi"] = self.cfg.get("roi")
                     break
             self.cfg["cameras"] = cameras
-            save_config(self.cfg)
-            return {
-                "success": True,
-                "rotate": self.cfg.get("rotate"),
-                "flip": self.cfg.get("flip"),
-                "cameras": cameras,
-                "active_camera_id": active,
-            }
+            cfg_to_save = dict(self.cfg)
+
+        save_config(cfg_to_save)
+        return {
+            "success": True,
+            "rotate": cfg_to_save.get("rotate"),
+            "flip": cfg_to_save.get("flip"),
+            "bays": cfg_to_save.get("bays"),
+            "roi": cfg_to_save.get("roi"),
+            "cameras": cameras,
+            "active_camera_id": active,
+        }
 
     def _sync_connection_from_grabber(self) -> tuple[str, str | None, int]:
         grabber = self.grabber
@@ -2395,6 +2558,7 @@ class LiveStreamEngine:
                 jpeg_bytes = buffer.tobytes()
                 with self.lock:
                     self.current_frame_jpeg = jpeg_bytes
+                    self.current_frame_bgr = frame.copy()
                     self.frame_seq += 1
                 self.new_frame_event.set()
                 active_worker = self.camera_pool.get_worker(active_cid)
@@ -2924,6 +3088,41 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"error": "Job not found"}, 404)
 
+        elif parsed.path == "/api/ai-audits":
+            limit = 20
+            bay_id = None
+            if parsed.query:
+                q = dict(urllib.parse.parse_qsl(parsed.query))
+                try:
+                    limit = int(q.get("limit", 20))
+                except Exception:
+                    limit = 20
+                bay_id = q.get("bay_id")
+            audits = []
+            try:
+                conn = connect(DATA_DIR / "events.db", check_same_thread=False)
+                try:
+                    audits = get_recent_ai_audits(conn, bay_id=bay_id, limit=limit)
+                finally:
+                    conn.close()
+            except Exception as e:
+                print(f"[API /api/ai-audits error] {e}", flush=True)
+            self._send_json({"audits": audits})
+
+        elif parsed.path.startswith("/proofs/ai_audits/"):
+            rel_name = parsed.path[len("/proofs/ai_audits/"):].lstrip("/")
+            safe_name = Path(rel_name).name
+            proof_file = Path(__file__).parent / "proofs" / "ai_audits" / safe_name
+            if proof_file.exists() and proof_file.is_file():
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(proof_file.read_bytes())
+            else:
+                self.send_response(404)
+                self.end_headers()
+
         elif self._handle_identities_get(
             [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
         ):
@@ -2962,6 +3161,22 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             job_id = str(payload.get("job_id") or "").strip()
             ok = complete_vehicle_job(GLOBAL_ENGINE.conn, job_id)
             self._send_json({"ok": ok, "job_id": job_id})
+            return
+
+        if parsed.path == "/api/ai-audit/trigger":
+            bay_id = str(payload.get("bay_id") or "bay_1").strip()
+            technician_id = str(payload.get("technician_id") or "manual_trigger").strip()
+            with GLOBAL_ENGINE.lock:
+                frame = GLOBAL_ENGINE.current_frame_bgr
+            if frame is not None and GLOBAL_ENGINE.ai_auditor is not None:
+                GLOBAL_ENGINE.ai_auditor.force_audit(
+                    bay_id=bay_id,
+                    technician_id=technician_id,
+                    frame=frame,
+                )
+                self._send_json({"success": True, "message": f"Audit triggered for {bay_id}"})
+            else:
+                self._send_json({"success": False, "message": "Frame not available or AI auditor not active"}, 400)
             return
 
         if parsed.path in ("/api/connect-stream", "/api/save"):
@@ -3012,7 +3227,12 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True})
 
         elif parsed.path == "/api/orient":
-            result = GLOBAL_ENGINE.set_orient(payload.get("rotate"), payload.get("flip"))
+            result = GLOBAL_ENGINE.set_orient(
+                payload.get("rotate"),
+                payload.get("flip"),
+                payload.get("bays"),
+                payload.get("roi"),
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

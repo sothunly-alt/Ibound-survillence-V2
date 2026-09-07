@@ -6,6 +6,7 @@ except ImportError:
     from edge.ai_auditor import AIAuditorQueue, AIAuditVerdict
 
 import re
+import time
 from dataclasses import dataclass, field
 
 from vehicle import VehicleTracker
@@ -555,7 +556,13 @@ def bay_badge(
     technicians_times: dict[str, float] | None = None,
     queue_seconds: float = 0.0,
     not_working_reason: str | None = None,
+    ai_verdict: dict | None = None,
 ) -> str:
+    ai_tag = ""
+    if ai_verdict and ai_verdict.get("is_work_activity"):
+        tool_label = ai_verdict.get("action_label") or ai_verdict.get("action") or ai_verdict.get("tool_or_object") or "Diagnostic"
+        ai_tag = f" · {tool_label} [AI Verified]"
+
     if state == "EMPTY":
         return "EMPTY"
     if state == "PARKED_WAITING":
@@ -563,26 +570,26 @@ def bay_badge(
     if technicians_times and len(technicians_times) > 1:
         details = ", ".join(f"{name} ({fmt_duration(sec)})" for name, sec in technicians_times.items())
         if state == "UNDER_VEHICLE":
-            return f"UNDER VEHICLE - {details}"
+            return f"UNDER VEHICLE - {details}{ai_tag}"
         if state == "NOT_WORKING":
             reason_str = f" ({not_working_reason})" if not_working_reason else ""
             return f"NOT WORKING{reason_str} - {details}"
         if state == "ON_BREAK":
             return f"ON BREAK - (Paused: {details})"
         if state == "WORKING":
-            return f"WORKING - {details}"
+            return f"WORKING - {details}{ai_tag}"
         return f"IDLE - {details}"
 
     name = technician or "Technician"
     if state == "UNDER_VEHICLE":
-        return f"UNDER VEHICLE - {name} ({fmt_duration(wrench_seconds)})"
+        return f"UNDER VEHICLE - {name} ({fmt_duration(wrench_seconds)}){ai_tag}"
     if state == "NOT_WORKING":
         reason_str = f" ({not_working_reason})" if not_working_reason else ""
         return f"NOT WORKING{reason_str} - {name} (Paused: {fmt_duration(wrench_seconds)})"
     if state == "ON_BREAK":
         return f"ON BREAK - {name} (Paused: {fmt_duration(wrench_seconds)})"
     if state == "WORKING":
-        return f"WORKING - {name} ({fmt_duration(wrench_seconds)})"
+        return f"WORKING - {name} ({fmt_duration(wrench_seconds)}){ai_tag}"
     return f"IDLE - {name} ({fmt_duration(wrench_seconds)})"
 
 
@@ -616,6 +623,7 @@ class BaySnapshot:
     technicians_times: dict[str, float] = field(default_factory=dict)
     not_working_reason: str | None = None
     polygon: list[list[float]] | None = None
+    ai_verdict: dict | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -641,6 +649,7 @@ class BaySnapshot:
             "vehicle_present": self.vehicle_present,
             "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
             "not_working_reason": self.not_working_reason,
+            "ai_verdict": self.ai_verdict,
             "badge": bay_badge(
                 self.state,
                 self.mechanic_name,
@@ -650,6 +659,7 @@ class BaySnapshot:
                 self.technicians_times,
                 self.queue_seconds,
                 not_working_reason=self.not_working_reason,
+                ai_verdict=self.ai_verdict,
             ),
         }
 
@@ -701,6 +711,15 @@ class _BayRuntime:
         self.job_id: str | None = cfg.get("job_id")
         self.vehicle_type: str = cfg.get("vehicle_type") or ("vehicle" if cfg["type"] == "vehicle_bay" else "station")
         self.vehicle_present: bool = bool(cfg.get("vehicle_present", False))
+        self.timeline: list[tuple[float, str]] = []
+        self.ai_verdict: dict | None = None
+
+    def log_event(self, now: float, description: str) -> None:
+        time_str = time.strftime("%H:%M:%S", time.localtime(now))
+        entry = f"[{time_str}] {description}"
+        self.timeline.append((now, entry))
+        if len(self.timeline) > 50:
+            self.timeline = self.timeline[-50:]
 
     def as_config(self) -> dict:
         out = {"id": self.id, "name": self.name, "roi": list(self.roi), "type": self.type}
@@ -734,6 +753,7 @@ class _BayRuntime:
             technicians_times=dict(self.technicians_times),
             not_working_reason=self.not_working_reason,
             polygon=[list(pt) for pt in self.polygon] if self.polygon else None,
+            ai_verdict=self.ai_verdict,
         )
 
 
@@ -901,7 +921,9 @@ class BayZoneManager:
             is_actively_moving = moving or working_pose or under_vehicle or (bay.type == "tool_area")
 
             if inside or occupied:
-                bay.session_open = True
+                if not bay.session_open:
+                    bay.session_open = True
+                    bay.log_event(now, f"Technician entered bay ({technician or UNKNOWN_WORKER})")
                 if inside:
                     bay.last_active_t = now
 
@@ -931,11 +953,20 @@ class BayZoneManager:
 
                 # Check and query Tier 2 Cloud Vision AI Auditor if available
                 if self.ai_auditor is not None and frame is not None:
-                    trigger_pattern = (phone_elapsed >= 4.0) or (sitting_elapsed >= 4.0)
-                    target_det = inside[0] if inside else None
+                    trigger_pattern = (phone_elapsed >= 2.0) or (sitting_elapsed >= 2.0)
+                    target_det = None
+                    for d in inside:
+                        kpts_d = getattr(d, "keypoints", [])
+                        if is_phone_usage_pose(kpts_d, kpt_conf) or is_sitting_pose(kpts_d, kpt_conf):
+                            target_det = d
+                            break
+                    if target_det is None and inside:
+                        target_det = inside[0]
+
                     if target_det is not None:
                         kpts = getattr(target_det, "keypoints", None)
                         bbox = (int(target_det.x1), int(target_det.y1), int(target_det.x2), int(target_det.y2))
+                        context_history = "\n".join(evt[1] for evt in bay.timeline[-5:]) if bay.timeline else ""
                         self.ai_auditor.maybe_audit_bay(
                             bay_id=bay.id,
                             technician_id=bay.technician or "technician",
@@ -944,13 +975,16 @@ class BayZoneManager:
                             bbox=bbox,
                             pattern_matched=trigger_pattern,
                             now=now,
+                            context_history=context_history,
                         )
 
                 # INVERTED STATE LOGIC: Default to WORKING unless a negative state is confirmed
                 is_not_working = False
+                prev_state = bay.state
                 # Apply AI Auditor Verdict Override if available
-                verdict = self.ai_auditor.get_latest_verdict(bay.id) if self.ai_auditor else None
-                if verdict is not None and verdict.is_work_activity and (phone_elapsed > 0 or sitting_elapsed > 0):
+                verdict = self.ai_auditor.get_latest_verdict(bay.id, max_age_seconds=45.0) if self.ai_auditor else None
+                bay.ai_verdict = verdict.as_dict() if verdict else None
+                if verdict is not None and verdict.is_work_activity and (phone_elapsed > 0 or sitting_elapsed > 0 or bay.state == "NOT_WORKING"):
                     # AI verified legitimate work (e.g. Diagnostic Scanner or Manual)
                     bay.state = "WORKING"
                     bay.not_working_reason = None
@@ -974,6 +1008,10 @@ class BayZoneManager:
                     # Default: Technician inside bay with vehicle -> actively working
                     bay.state = "WORKING"
                     bay.not_working_reason = None
+
+                if bay.state != prev_state:
+                    reason_info = f" ({bay.not_working_reason})" if bay.not_working_reason else ""
+                    bay.log_event(now, f"State transitioned to {bay.state}{reason_info}")
 
                 # Track each employee in the bay individually
                 active_names: list[str] = []
@@ -1016,6 +1054,7 @@ class BayZoneManager:
             else:
                 # Person is truly OUT of the bay
                 time_since_active = (now - bay.last_active_t) if bay.last_active_t is not None else 999999.0
+                prev_state = bay.state
                 if bay.session_open and time_since_active <= bay.break_timeout_seconds:
                     bay.state = "ON_BREAK"
                     bay.not_working_reason = None
@@ -1041,6 +1080,10 @@ class BayZoneManager:
                     bay.labor_started = False
                     bay.last_working_technician = None
                     bay.locked_tracks.clear()
+                    bay.ai_verdict = None
+
+                if bay.state != prev_state:
+                    bay.log_event(now, f"State transitioned to {bay.state}")
 
             is_work_state = bay.state in ("WORKING", "UNDER_VEHICLE")
             ticks.append((bay.id, bay.technician, is_work_state, dt, bay.state, bay.job_id))

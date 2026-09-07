@@ -114,27 +114,103 @@ class TestAIAuditor(unittest.TestCase):
         mgr = BayZoneManager(bays_cfg, ai_auditor=auditor)
 
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        # Create a detection with pose that looks like holding something
+        # Create a detection with pose holding scanner / phone near face
         kpts = [(0.0, 0.0, 0.0)] * 17
-        kpts[5] = (200.0, 150.0, 0.9)  # L_SHOULDER
-        kpts[6] = (250.0, 150.0, 0.9)  # R_SHOULDER
-        kpts[9] = (220.0, 200.0, 0.9)  # L_WRIST
-        kpts[10] = (230.0, 200.0, 0.9) # R_WRIST
-        kpts[0] = (225.0, 140.0, 0.9)  # NOSE
+        kpts[0] = (300.0, 150.0, 0.9)  # NOSE
+        kpts[9] = (295.0, 155.0, 0.9)  # L_WRIST near face
 
         det = Detection(
-            x1=150, y1=100, x2=300, y2=400, conf=0.9, accepted=True,
+            x1=150, y1=100, x2=350, y2=400, conf=0.9, accepted=True,
             identity="Bob", is_staff=True, keypoints=kpts
         )
 
-        # Update manager
-        mgr.update([det], 640, 480, now=10.0, frame=frame)
+        # Update manager at t=0 (pattern starts)
+        mgr.update([det], 640, 480, now=0.0, frame=frame)
+        # Update manager at t=2.5s (phone_elapsed >= 2.0s triggers audit)
+        mgr.update([det], 640, 480, now=2.5, frame=frame)
         time.sleep(0.1)  # Allow async worker to process
 
-        mgr.update([det], 640, 480, now=11.0, frame=frame)
+        mgr.update([det], 640, 480, now=3.0, frame=frame)
         snaps = mgr.snapshots()
         self.assertEqual(len(snaps), 1)
         self.assertEqual(snaps[0].state, "WORKING")
+        self.assertIsNotNone(snaps[0].ai_verdict)
+        self.assertTrue(snaps[0].ai_verdict["is_work_activity"])
+        self.assertIn("[AI Verified]", snaps[0].as_dict()["badge"])
+
+        auditor.shutdown()
+
+    def test_bay_timeline_memory(self):
+        bays_cfg = [
+            {"id": "bay_1", "name": "Bay 1", "type": "vehicle_bay", "roi": [0.0, 0.0, 1.0, 1.0]}
+        ]
+        mgr = BayZoneManager(bays_cfg)
+        bay = mgr._bays[0]
+
+        # Log some events
+        bay.log_event(100.0, "Technician Bob entered bay")
+        bay.log_event(105.0, "State transitioned to WORKING")
+        bay.log_event(110.0, "State transitioned to NOT_WORKING (PHONE)")
+
+        self.assertEqual(len(bay.timeline), 3)
+        self.assertIn("Technician Bob entered bay", bay.timeline[0][1])
+        self.assertIn("NOT_WORKING (PHONE)", bay.timeline[2][1])
+
+    def test_offline_fallback_simulation(self):
+        client = FireworksVLMClient(api_key="")
+        frame = np.zeros((200, 200, 3), dtype=np.uint8)
+        b64_h, b64_c, _, _ = extract_dual_crops(frame)
+        verdict = client.audit_activity(b64_h, b64_c, "bay_1", "Bob", "recent timeline")
+        self.assertTrue(verdict.is_work_activity)
+        self.assertEqual(verdict.action, "DIAGNOSTIC_TOOL")
+        self.assertEqual(verdict.category, "ACTIVE_WORK")
+        self.assertGreaterEqual(verdict.confidence, 0.9)
+
+    def test_phone_distraction_verdict_does_not_override(self):
+        class MockDistractionVLM(FireworksVLMClient):
+            def audit_activity(self, *args, **kwargs):
+                return AIAuditVerdict(
+                    bay_id="bay_1",
+                    technician_id="Bob",
+                    action="PHONE_USAGE",
+                    category="DISTRACTION",
+                    confidence=0.99,
+                    explanation="Personal phone scrolling detected.",
+                    is_work_activity=False,
+                )
+
+        gate = TokenSaverGate(duration_threshold=0.0, cooldown_seconds=10.0)
+        auditor = AIAuditorQueue(vlm_client=MockDistractionVLM(), gate=gate)
+
+        bays_cfg = [
+            {"id": "bay_1", "name": "Bay 1", "type": "vehicle_bay", "roi": [0.0, 0.0, 1.0, 1.0]}
+        ]
+        mgr = BayZoneManager(bays_cfg, ai_auditor=auditor)
+
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Person in bay holding phone to ear
+        kpts = [(0.0, 0.0, 0.0)] * 17
+        kpts[0] = (300.0, 150.0, 0.9)  # NOSE
+        kpts[9] = (295.0, 155.0, 0.9)  # L_WRIST near ear
+
+        det = Detection(
+            x1=200, y1=100, x2=400, y2=450, conf=0.9, accepted=True,
+            identity="Bob", is_staff=True, keypoints=kpts
+        )
+
+        # Update at t=0
+        mgr.update([det], 640, 480, now=0.0, frame=frame)
+        # Update at t=3s (trigger pattern matched >= 2s)
+        mgr.update([det], 640, 480, now=3.0, frame=frame)
+        time.sleep(0.1)
+
+        # Advance past 12s phone threshold
+        mgr.update([det], 640, 480, now=13.0, frame=frame)
+        snaps = mgr.snapshots()
+        self.assertEqual(len(snaps), 1)
+        # Should be NOT_WORKING because AI confirmed distraction
+        self.assertEqual(snaps[0].state, "NOT_WORKING")
+        self.assertEqual(snaps[0].not_working_reason, "PHONE")
 
         auditor.shutdown()
 

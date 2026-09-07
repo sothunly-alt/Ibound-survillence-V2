@@ -1156,9 +1156,73 @@
       document.getElementById('flip-input').value = flipMode;
     }
 
+    function transformAllBaysGeometry(transformFn) {
+      if (typeof transformFn !== 'function') return;
+      liveBays = liveBays.map((bay) => {
+        const b = cloneBay(bay);
+        if (Array.isArray(b.polygon) && b.polygon.length >= 3) {
+          b.polygon = b.polygon.map((p) => {
+            const pt = transformFn(Number(p[0]), Number(p[1]));
+            return [clamp01(pt[0]), clamp01(pt[1])];
+          });
+          const xs = b.polygon.map((p) => p[0]);
+          const ys = b.polygon.map((p) => p[1]);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          b.roi = [
+            clamp01(minX),
+            clamp01(minY),
+            Math.max(0.02, clamp01(maxX - minX)),
+            Math.max(0.02, clamp01(maxY - minY))
+          ];
+        } else if (Array.isArray(b.roi) && b.roi.length === 4) {
+          const [x, y, w, h] = b.roi;
+          const p1 = transformFn(x, y);
+          const p2 = transformFn(x + w, y);
+          const p3 = transformFn(x + w, y + h);
+          const p4 = transformFn(x, y + h);
+          const xs = [p1[0], p2[0], p3[0], p4[0]].map(clamp01);
+          const ys = [p1[1], p2[1], p3[1], p4[1]].map(clamp01);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          b.roi = [
+            clamp01(minX),
+            clamp01(minY),
+            Math.max(0.02, clamp01(maxX - minX)),
+            Math.max(0.02, clamp01(maxY - minY))
+          ];
+          if (b.polygon) {
+            b.polygon = [p1, p2, p3, p4].map((pt) => [clamp01(pt[0]), clamp01(pt[1])]);
+          }
+        }
+        return b;
+      });
+      if (liveBays[0]) {
+        const sel = liveBays.find((b) => b.id === selectedBayId) || liveBays[0];
+        liveRoi = sel.roi.slice();
+      }
+      if (typeof syncBayDom === 'function') syncBayDom();
+      if (typeof layoutRoiOverlay === 'function') layoutRoiOverlay();
+    }
+
     function setRotate(deg) {
+      const prevRotate = rotateDeg;
       rotateDeg = deg;
       if (deg === 'auto') flipMode = 'none';
+
+      if (prevRotate !== 'auto' && deg !== 'auto' && prevRotate !== deg) {
+        const pDeg = parseInt(prevRotate, 10) || 0;
+        const nDeg = parseInt(deg, 10) || 0;
+        const delta = ((nDeg - pDeg) % 360 + 360) % 360;
+        if (delta === 90) {
+          transformAllBaysGeometry((x, y) => [1 - y, x]);
+        } else if (delta === 180) {
+          transformAllBaysGeometry((x, y) => [1 - x, 1 - y]);
+        } else if (delta === 270) {
+          transformAllBaysGeometry((x, y) => [y, 1 - x]);
+        }
+      }
+
       paintOrient();
       pushOrient();
       if (isStreamActive) startLivePlayer(lastLiveStreamId, lastLiveMedia);
@@ -1167,6 +1231,11 @@
 
     function toggleFlip(which) {
       flipMode = flipMode === which ? 'none' : which;
+      if (which === 'h') {
+        transformAllBaysGeometry((x, y) => [1 - x, y]);
+      } else if (which === 'v') {
+        transformAllBaysGeometry((x, y) => [x, 1 - y]);
+      }
       paintOrient();
       pushOrient();
     }
@@ -1179,7 +1248,9 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rotate: rotateDeg === 'auto' ? 'auto' : rotateDeg,
-            flip: flipMode
+            flip: flipMode,
+            bays: liveBays,
+            roi: liveRoi
           })
         });
         const data = await res.json();
@@ -2055,6 +2126,7 @@
         if (isStreamActive) {
           if (singleStage) singleStage.style.display = 'block';
           if (placeholder) placeholder.style.display = 'none';
+          startLivePlayer(lastLiveStreamId, lastLiveMedia);
           requestAnimationFrame(layoutVideoStage);
         } else {
           if (singleStage) singleStage.style.display = 'none';
@@ -2275,8 +2347,8 @@
           maxBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]">fullscreen</span>';
           maxBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            selectCamera(cam.id);
             setLayoutMode('single');
+            selectCamera(cam.id, true);
           });
 
           tile.appendChild(img);
@@ -2520,8 +2592,13 @@
     }
 
     let switchDebounceTimer = null;
-    async function selectCamera(id) {
-      if (activeCameraId === id && isStreamActive) return;
+    async function selectCamera(id, forceStream = false) {
+      if (activeCameraId === id && isStreamActive && !forceStream) {
+        if (currentLayoutMode === 'single') {
+          startLivePlayer(lastLiveStreamId, lastLiveMedia);
+        }
+        return;
+      }
       const cam = cameras.find((c) => c.id === id);
       if (!cam) return;
       const wasInGrid = currentLayoutMode === 'grid';
@@ -3619,11 +3696,13 @@
       });
     }
 
+    let recentlyDeletedBayIds = new Set();
+
     function mergeBayTelemetry(rows) {
       const incomingIds = new Set();
       rows.forEach((row) => {
         const id = row.bay_id || row.id;
-        if (!id) return;
+        if (!id || recentlyDeletedBayIds.has(id)) return;
         incomingIds.add(id);
         bayLive[id] = row;
         const existing = liveBays.find((b) => b.id === id);
@@ -3730,7 +3809,9 @@
           body: JSON.stringify({ bays: liveBays })
         });
         const data = await res.json();
-        if (Array.isArray(data.bays)) liveBays = data.bays.map(cloneBay);
+        if (Array.isArray(data.bays)) {
+          liveBays = data.bays.filter((b) => !recentlyDeletedBayIds.has(b.id)).map(cloneBay);
+        }
         if (data.cameras) applyCameraList(data);
         if (!liveBays.some((b) => b.id === selectedBayId)) {
           selectedBayId = liveBays[0] ? liveBays[0].id : '';
@@ -3791,6 +3872,8 @@
       if (!bay) return;
       const ok = confirm('Delete "' + bay.name + '"? Past reports keep their history.');
       if (!ok) return;
+      recentlyDeletedBayIds.add(id);
+      delete bayLive[id];
       liveBays = liveBays.filter((b) => b.id !== id);
       selectedBayId = liveBays[0] ? liveBays[0].id : '';
       if (selectedBayId) {
@@ -3827,17 +3910,23 @@
 
     function stateBadge(bay) {
       const live = bayLive[bay.id] || {};
+      if (live.badge) {
+        return live.badge;
+      }
       const state = live.state || 'EMPTY';
       const name = live.mechanic_name || '';
       const techTime = (live.technicians_times && name && live.technicians_times[name] != null)
         ? live.technicians_times[name]
         : (live.wrench_seconds != null ? live.wrench_seconds : (live.wrench_time_today || 0));
       const timeStr = formatSecs(techTime);
+      const aiTag = (live.ai_verdict && live.ai_verdict.is_work_activity)
+        ? ' · ' + (live.ai_verdict.action_label || live.ai_verdict.action || 'Diagnostic') + ' [AI Verified]'
+        : '';
       if (state === 'WORKING') {
-        return '🟢 WORKING' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
+        return '🟢 WORKING' + (name ? ' - ' + name : '') + ' (' + timeStr + ')' + aiTag;
       }
       if (state === 'UNDER_VEHICLE') {
-        return '🔵 UNDER VEHICLE' + (name ? ' - ' + name : '') + ' (' + timeStr + ')';
+        return '🔵 UNDER VEHICLE' + (name ? ' - ' + name : '') + ' (' + timeStr + ')' + aiTag;
       }
       if (state === 'NOT_WORKING') {
         const reason = live.not_working_reason || 'DISTRACTED';
@@ -4340,6 +4429,8 @@
       if (bay && wasDraw) {
         const [x, y, w, h] = bay.roi;
         if (w < 0.035 || h < 0.035) {
+          recentlyDeletedBayIds.add(bay.id);
+          delete bayLive[bay.id];
           liveBays = liveBays.filter((b) => b.id !== bay.id);
           selectedBayId = liveBays[0] ? liveBays[0].id : '';
           syncBayDom();
@@ -4349,6 +4440,8 @@
         }
         const label = prompt('Name this service bay', bay.name);
         if (label === null) {
+          recentlyDeletedBayIds.add(bay.id);
+          delete bayLive[bay.id];
           liveBays = liveBays.filter((b) => b.id !== bay.id);
           selectedBayId = liveBays[0] ? liveBays[0].id : '';
           syncBayDom();
@@ -4478,6 +4571,46 @@
           });
           html += '</div></div>';
         }
+
+        // Fetch recent AI vision audits
+        try {
+          const auditRes = await fetch('/api/ai-audits?limit=8', { cache: 'no-store' });
+          const auditData = await auditRes.json();
+          const audits = auditData.audits || [];
+          if (audits.length) {
+            html += '<div class="rounded-xl border border-outline-variant bg-surface-container-low p-4 space-y-3">'
+              + '<div class="flex items-center justify-between">'
+              + '<h3 class="text-sm font-semibold text-on-surface flex items-center gap-2">'
+              + '<span class="material-symbols-outlined text-primary text-base">visibility</span>'
+              + 'AI Vision Auditor (Tier 2 Verification Log)</h3>'
+              + '<span class="font-mono-data text-xs text-on-surface-variant">' + audits.length + ' logged</span>'
+              + '</div>'
+              + '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+            audits.forEach((a) => {
+              const isWork = a.category === 'ACTIVE_WORK' || a.action === 'DIAGNOSTIC_TOOL';
+              const badgeClass = isWork ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+              const badgeIcon = isWork ? 'check_circle' : 'warning';
+              const imgName = (a.crop_path || '').split('/').pop();
+              const imgSrc = imgName ? '/proofs/ai_audits/' + encodeURIComponent(imgName) : null;
+              const timeFormatted = (a.ts || '').slice(11, 19) || '—';
+              html += '<div class="flex gap-3 bg-surface-container rounded-lg p-3 border border-outline-variant/50">'
+                + (imgSrc ? '<img src="' + imgSrc + '" class="w-16 h-16 rounded object-cover border border-outline-variant shrink-0" onerror="this.style.display=\'none\'" alt="audit crop"/>' : '')
+                + '<div class="flex-1 min-w-0 space-y-1">'
+                + '<div class="flex items-center justify-between gap-2">'
+                + '<span class="font-mono-data text-xs text-on-surface-variant font-medium">' + identityEsc(a.bay_id) + ' · ' + timeFormatted + '</span>'
+                + '<span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ' + badgeClass + '">'
+                + '<span class="material-symbols-outlined text-xs">' + badgeIcon + '</span>' + identityEsc(a.action || a.category)
+                + '</span></div>'
+                + '<p class="text-xs text-on-surface font-medium truncate">' + identityEsc(a.technician_name || 'Technician') + ' (' + Math.round((a.confidence || 0) * 100) + '% conf)</p>'
+                + '<p class="text-[11px] text-on-surface-variant line-clamp-2 leading-tight">' + identityEsc(a.explanation || '') + '</p>'
+                + '</div></div>';
+            });
+            html += '</div></div>';
+          }
+        } catch (auditErr) {
+          console.error('Failed to load AI audits:', auditErr);
+        }
+
         root.innerHTML = html;
       } catch (err) {
         root.innerHTML = '<p class="text-error text-sm">' + identityEsc(err.message) + '</p>';
