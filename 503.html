@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>503 // SYSTEM_MAINTENANCE</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #000000;
+        --surface: #0a0a0a;
+        --surface-border: #181818;
+        --green: #00ff41;
+        --green-glow: rgba(0, 255, 65, 0.2);
+        --text-main: #f0f0f0;
+        --text-muted: #555555;
+        --text-dim: #888888;
+        --font-display: "Bebas Neue", sans-serif;
+        --font-mono: "IBM Plex Mono", monospace;
+        --font-sans: "IBM Plex Sans", sans-serif;
+        --radius: 4px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: var(--bg);
+        color: var(--text-main);
+        font-family: var(--font-mono);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 28px;
+        overflow-x: hidden;
+        background-image:
+          radial-gradient(circle at center, #090909 0%, #000000 100%),
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size:
+          100% 100%,
+          36px 36px,
+          36px 36px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--surface-border);
+        padding-bottom: 14px;
+      }
+
+      .brand-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-main);
+        font-weight: 600;
+        text-decoration: none;
+        letter-spacing: 0.1em;
+      }
+
+      .status-pulse {
+        width: 7px;
+        height: 7px;
+        background-color: var(--green);
+        border-radius: 50%;
+        box-shadow: 0 0 10px var(--green);
+        animation: pulse 1s infinite alternate;
+        flex-shrink: 0;
+      }
+
+      .main-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 32px 0;
+        flex: 1;
+      }
+
+      .chassis-card {
+        width: 100%;
+        max-width: 560px;
+        background-color: var(--surface);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius);
+        padding: 32px;
+        position: relative;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.95);
+      }
+
+      .corner {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border: 1.5px solid var(--green);
+      }
+
+      .c-tl {
+        top: -1px;
+        left: -1px;
+        border-right: none;
+        border-bottom: none;
+      }
+
+      .c-tr {
+        top: -1px;
+        right: -1px;
+        border-left: none;
+        border-bottom: none;
+      }
+
+      .c-bl {
+        bottom: -1px;
+        left: -1px;
+        border-right: none;
+        border-top: none;
+      }
+
+      .c-br {
+        bottom: -1px;
+        right: -1px;
+        border-left: none;
+        border-top: none;
+      }
+
+      .meta-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 6px;
+      }
+
+      .code-title {
+        font-family: var(--font-display);
+        font-size: 88px;
+        line-height: 0.9;
+        letter-spacing: 0.04em;
+        color: #ffffff;
+      }
+
+      .badge-patch {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        color: var(--green);
+        background: rgba(0, 255, 65, 0.05);
+        border: 1px solid rgba(0, 255, 65, 0.3);
+        padding: 4px 10px;
+        border-radius: 2px;
+        text-transform: uppercase;
+        flex-shrink: 0;
+      }
+
+      .system-title {
+        font-family: var(--font-sans);
+        font-size: 16px;
+        font-weight: 500;
+        color: #cccccc;
+        margin-top: 8px;
+      }
+
+      .progress-section {
+        margin: 20px 0 16px 0;
+      }
+
+      .progress-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-bottom: 8px;
+        letter-spacing: 0.06em;
+      }
+
+      .progress-bar-shell {
+        width: 100%;
+        height: 4px;
+        background: #141414;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .progress-bar-fill {
+        width: 68%;
+        height: 100%;
+        background: var(--green);
+        box-shadow: 0 0 10px var(--green-glow);
+        transition: width 0.3s ease;
+      }
+
+      .diagnostic-box {
+        background: #000000;
+        border: 1px solid #141414;
+        border-left: 2px solid var(--green);
+        border-radius: 2px;
+        padding: 14px 16px;
+        font-size: 11px;
+        line-height: 1.7;
+        margin-bottom: 24px;
+        height: 105px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+      }
+
+      .log-line {
+        color: #777777;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .log-line.active {
+        color: var(--green);
+      }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .btn-ping {
+        background-color: var(--green);
+        color: #000000;
+        font-family: var(--font-display);
+        font-size: 19px;
+        letter-spacing: 0.08em;
+        padding: 12px 16px;
+        border: none;
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 20px var(--green-glow);
+        transition:
+          background-color 0.15s ease,
+          transform 0.15s ease,
+          opacity 0.15s ease;
+        text-decoration: none;
+        font-weight: 400;
+      }
+
+      .btn-ping:hover {
+        background-color: #1aff53;
+        transform: translateY(-1px);
+      }
+
+      .btn-support {
+        background-color: transparent;
+        color: #aaaaaa;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        padding: 12px 16px;
+        border: 1px solid #222222;
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        transition:
+          border-color 0.15s,
+          color 0.15s;
+      }
+
+      .btn-support:hover {
+        border-color: #444444;
+        color: #ffffff;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        font-size: 10px;
+        color: #383838;
+        border-top: 1px solid var(--surface-border);
+        padding-top: 14px;
+        letter-spacing: 0.06em;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0.3;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 18px;
+        }
+
+        .code-title {
+          font-size: 68px;
+        }
+
+        .action-row {
+          grid-template-columns: 1fr;
+        }
+
+        .header span:last-child {
+          display: none;
+        }
+
+        .footer {
+          flex-direction: column;
+          gap: 6px;
+          text-align: center;
+        }
+
+        .progress-meta {
+          flex-direction: column;
+          gap: 4px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .status-pulse {
+          animation: none;
+        }
+
+        .progress-bar-fill {
+          transition: none;
+        }
+
+        .btn-ping {
+          transition: none;
+        }
+
+        .btn-ping:hover {
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <a href="index.html" class="brand-group">
+        <span class="status-pulse" aria-hidden="true"></span>
+        <span>INBOUND_SURVEILLANCE</span>
+      </a>
+      <span>CODE: HTTP_503 // SERVICE_UNAVAILABLE</span>
+      <span>LOC: 11.5564° N, 104.9282° E</span>
+    </header>
+
+    <main class="main-container">
+      <div class="chassis-card">
+        <div class="corner c-tl" aria-hidden="true"></div>
+        <div class="corner c-tr" aria-hidden="true"></div>
+        <div class="corner c-bl" aria-hidden="true"></div>
+        <div class="corner c-br" aria-hidden="true"></div>
+
+        <div class="meta-header">
+          <div class="code-title">503</div>
+          <div class="badge-patch">NODE_MAINTENANCE</div>
+        </div>
+
+        <h1 class="system-title">
+          Edge appliance firmware update &amp; model recalibration in progress.
+        </h1>
+
+        <div class="progress-section">
+          <div class="progress-meta">
+            <span>TASK: QUANTIZING TENSOR_RT CORES</span>
+            <span id="timer-display">EST. REMAINING: 00:08:42</span>
+          </div>
+          <div class="progress-bar-shell">
+            <div class="progress-bar-fill" id="bar-fill" style="width: 68%"></div>
+          </div>
+        </div>
+
+        <div class="diagnostic-box" id="log-box" aria-live="polite">
+          <div class="log-line">> NVME STORAGE: INTEGRITY CHECK OK</div>
+          <div class="log-line">> RTSP DAEMON: TEMPORARILY PAUSED (PORT 554)</div>
+          <div class="log-line">> SYNCING POSE ESTIMATION WEIGHTS (YOLOv8 INT8)...</div>
+          <div class="log-line active">> BUFFERING LOCAL TELEGRAM EVENT LOGS...</div>
+        </div>
+
+        <div class="action-row">
+          <button type="button" class="btn-ping" id="btn-ping">PING NODE STATUS</button>
+          <a
+            href="https://t.me/inboundsurveillance"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn-support"
+          >
+            DISPATCH SUPPORT (TG)
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>ALL LOCAL BAY TELEMETRY REMAINS SECURE &amp; BUFFERED ON-PREMISE</span>
+      <span>NODE://PP-BAY-01 // V2.0</span>
+    </footer>
+
+    <script>
+      const logBox = document.getElementById("log-box");
+      const btnPing = document.getElementById("btn-ping");
+      const timerDisplay = document.getElementById("timer-display");
+      const barFill = document.getElementById("bar-fill");
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const MAX_LOGS = 12;
+
+      const autoLines = [
+        "> QUANTIZING TENSOR_RT KERNELS (INT8)...",
+        "> POSE SKELETON CALIBRATION PASS 2/4",
+        "> FACE ASSIST MODEL: CHECKSUM VERIFIED",
+        "> LOCAL BAY BUFFER: FLUSHED TO NVME",
+        "> TELEGRAM DISPATCH QUEUE: HELD (MAINT)",
+        "> EDGE WATCHDOG: HEARTBEAT OK",
+      ];
+      let autoIdx = 0;
+      let progressPct = 68;
+
+      function appendLog(text, active) {
+        const line = document.createElement("div");
+        line.className = active ? "log-line active" : "log-line";
+        line.textContent = text;
+        logBox.querySelectorAll(".log-line.active").forEach((el) => {
+          el.classList.remove("active");
+        });
+        logBox.appendChild(line);
+        while (logBox.children.length > MAX_LOGS) {
+          logBox.removeChild(logBox.firstElementChild);
+        }
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      function setProgress(pct) {
+        progressPct = Math.min(92, Math.max(0, pct));
+        barFill.style.width = progressPct + "%";
+      }
+
+      let remainingSec = 522;
+      function tickClock() {
+        if (remainingSec > 0) remainingSec--;
+        const h = Math.floor(remainingSec / 3600)
+          .toString()
+          .padStart(2, "0");
+        const m = Math.floor((remainingSec % 3600) / 60)
+          .toString()
+          .padStart(2, "0");
+        const s = (remainingSec % 60).toString().padStart(2, "0");
+        timerDisplay.textContent = `EST. REMAINING: ${h}:${m}:${s}`;
+      }
+      tickClock();
+      setInterval(tickClock, 1000);
+
+      btnPing.addEventListener("click", () => {
+        const prevText = btnPing.textContent;
+        btnPing.textContent = "CHECKING...";
+        btnPing.style.opacity = "0.6";
+        btnPing.disabled = true;
+
+        setTimeout(() => {
+          appendLog(
+            `> PING DISPATCHED [${new Date().toLocaleTimeString()}] // STATUS: 503 LOCK`,
+            true
+          );
+          setProgress(progressPct + 4);
+
+          btnPing.textContent = "NODE LOCKED (RETRY)";
+          btnPing.style.opacity = "1";
+          btnPing.disabled = false;
+
+          setTimeout(() => {
+            btnPing.textContent = prevText;
+          }, 2000);
+        }, 650);
+      });
+
+      if (!reduced) {
+        setInterval(() => {
+          appendLog(autoLines[autoIdx % autoLines.length], true);
+          autoIdx++;
+          if (progressPct < 88) setProgress(progressPct + 0.5);
+        }, 3500);
+      }
+    </script>
+  </body>
+</html>

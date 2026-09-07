@@ -21,6 +21,7 @@ export default defineConfig({
         privacy: path.resolve(root, "privacy.html"),
         notFound: path.resolve(root, "404.html"),
         ogPreview: path.resolve(root, "og-preview.html"),
+        maintenance: path.resolve(root, "503.html"),
       },
     },
   },
