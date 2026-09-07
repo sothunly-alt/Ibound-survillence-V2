@@ -13,6 +13,7 @@ import json
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -46,6 +47,70 @@ import re
 ROOT = resource_dir()
 DATA_DIR = data_dir()
 VIDEOS_DIR = ROOT / "videos"
+
+
+def load_dotenv_files() -> None:
+    """Load KEY=VALUE pairs from .env without overriding a real environment."""
+    candidates = [
+        ROOT / ".env",
+        ROOT.parent / ".env",
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+load_dotenv_files()
+
+
+def open_host_url(url: str) -> bool:
+    """Open a URL / custom protocol with the host OS (Windows, macOS, Linux)."""
+    target = str(url or "").strip()
+    if not target:
+        return False
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(["open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        elif sys.platform.startswith("win"):
+            os.startfile(target)  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception as exc:
+        print(f"[telegram] host open failed: {exc}", flush=True)
+        return False
+
+
+def public_supabase_config() -> dict[str, Any]:
+    url = (
+        os.environ.get("VITE_SUPABASE_URL")
+        or os.environ.get("SUPABASE_URL")
+        or ""
+    ).strip()
+    key = (
+        os.environ.get("VITE_SUPABASE_ANON_KEY")
+        or os.environ.get("VITE_SUPABASE_PUBLISHABLE_KEY")
+        or os.environ.get("SUPABASE_ANON_KEY")
+        or ""
+    ).strip()
+    return {
+        "supabaseUrl": url,
+        "supabaseAnonKey": key,
+        "configured": bool(url and key),
+    }
 
 
 def init_videos_dir() -> Path:
@@ -114,7 +179,7 @@ from face_id import (
     till_status_label,
     try_create_face_recognizer,
 )
-from ai_auditor import AIAuditorQueue, AIAuditVerdict
+from ai_auditor import AIAuditorQueue, AIAuditVerdict, TokenSaverGate
 from occupancy import (
     DEFAULT_BAYS,
     BayZoneManager,
@@ -131,6 +196,7 @@ from report import build_report
 from runtime import resolve_runtime, resolve_weights_file
 from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
 from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
+from telegram_link import TelegramLinkService
 from telegram_out import TelegramOut
 from tracker import PersonTracker, run_identity_pipeline
 from vehicle import VehicleDetection, extract_vehicle_detections
@@ -163,10 +229,16 @@ def read_config() -> dict[str, Any]:
     path = get_config_path()
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", data.get("telegram_bot_token") or "")
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or str(data.get("telegram_bot_token") or "").strip()
     chat = os.environ.get("TELEGRAM_CHAT_ID", data.get("telegram_chat_id") or "")
     data["telegram_bot_token"] = token
     data["telegram_chat_id"] = chat
+    # Env wins for the shared bot; operators cannot replace it from the UI.
+    if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
+        data["telegram_bot_token"] = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    data["telegram_bot_configured"] = bool(data["telegram_bot_token"])
+    data["telegram_bot_username"] = str(data.get("telegram_bot_username") or "")
+
     data["cameras"] = _normalize_cameras(data.get("cameras"))
     data["active_camera_id"] = str(data.get("active_camera_id") or "")
     data["garage_name"] = str(data.get("garage_name") or data.get("venue") or "Demo Garage")
@@ -206,6 +278,8 @@ _SETTINGS_KEYS = (
     "open_time",
     "close_time",
     "absent_seconds",
+    "cooldown_seconds",
+    "auto_create_bays",
 )
 
 
@@ -699,7 +773,10 @@ class CameraStreamWorker:
             if pkt_ts and pkt_ts == last_packet_ts:
                 time.sleep(0.04)
                 continue
-            self.grabber.output_rotate = int(self.cfg.get("rotate") or 0)
+            try:
+                self.grabber.output_rotate = int(self.cfg.get("rotate") or 0)
+            except (ValueError, TypeError):
+                self.grabber.output_rotate = 0
             self.grabber.output_flip = str(self.cfg.get("flip") or "none")
             jpeg = getattr(packet, "jpeg", None)
             if jpeg:
@@ -710,7 +787,10 @@ class CameraStreamWorker:
                 last_packet_ts = pkt_ts
             elif packet.frame is not None and (now - last_encode_time) >= 0.09:
                 try:
-                    rot = int(self.cfg.get("rotate") or 0)
+                    try:
+                        rot = int(self.cfg.get("rotate") or 0)
+                    except (ValueError, TypeError):
+                        rot = 0
                     flp = str(self.cfg.get("flip") or "none")
                     fr = packet.frame
                     if rot or flp not in ("none", "", "0"):
@@ -881,8 +961,12 @@ class LiveStreamEngine:
         self.cfg = read_config()
         self.conn = None
         self.bot = TelegramOut(self.cfg.get("telegram_bot_token", ""), self.cfg.get("telegram_chat_id", ""))
+        self.telegram_links = TelegramLinkService()
+        self.telegram_links.configure(self.cfg.get("telegram_bot_token", ""))
         proofs_audit_dir = Path(__file__).parent / "proofs" / "ai_audits"
+        audit_cooldown = float(self.cfg.get("ai_audit_cooldown_seconds") or 45.0)
         self.ai_auditor = AIAuditorQueue(
+            gate=TokenSaverGate(cooldown_seconds=audit_cooldown),
             save_crops_dir=proofs_audit_dir,
             on_verdict_callback=self._on_ai_verdict_received,
         )
@@ -922,6 +1006,60 @@ class LiveStreamEngine:
         except Exception as e:
             print(f"[AI Auditor DB Error] {e}", flush=True)
 
+        # Trigger Telegram alert for confirmed distraction / phone usage
+        if (
+            self.bot
+            and self.bot.enabled
+            and (
+                verdict.action in ("PHONE_USAGE", "DISTRACTION")
+                or verdict.category == "DISTRACTION"
+                or not verdict.is_work_activity
+            )
+            and verdict.action != "UNKNOWN"
+        ):
+            self._send_ai_distraction_telegram(verdict)
+
+    def _send_ai_distraction_telegram(self, verdict: AIAuditVerdict) -> None:
+        now = time.time()
+        if not hasattr(self, "_last_ai_tg_alerts"):
+            self._last_ai_tg_alerts = {}
+        # 60-second cooldown per bay to prevent alert flooding
+        if (now - self._last_ai_tg_alerts.get(verdict.bay_id, 0.0)) < 60.0:
+            return
+        self._last_ai_tg_alerts[verdict.bay_id] = now
+
+        venue = str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Workshop").strip()
+        bay_name = verdict.bay_id
+        for b in (self.cfg.get("bays") or []):
+            if isinstance(b, dict) and b.get("id") == verdict.bay_id:
+                bay_name = b.get("name") or verdict.bay_id
+                break
+
+        conf_pct = int(round((verdict.confidence or 0.0) * 100))
+        time_str = verdict.timestamp[11:19] if len(verdict.timestamp) >= 19 else verdict.timestamp
+        action_label = verdict.action.replace("_", " ").title()
+
+        caption = (
+            f"📱 {venue} Alert: {action_label}\n"
+            f"📍 Bay: {bay_name}\n"
+            f"👤 Staff: {verdict.technician_id} ({conf_pct}% conf)\n"
+            f"⏰ Time: {time_str}\n\n"
+            f"🔍 AI Audit:\n{verdict.explanation}"
+        )
+
+        try:
+            crop_path = Path(verdict.crop_path) if verdict.crop_path else None
+            if crop_path and crop_path.is_file():
+                sent = self.bot.send_photo(crop_path, caption)
+            else:
+                sent = self.bot.send_message(caption)
+            if sent:
+                print(f"[LiveStreamEngine Alert] Sent AI {verdict.action} alert to Telegram for {verdict.bay_id}", flush=True)
+            else:
+                print(f"[LiveStreamEngine Alert] Failed to send AI {verdict.action} alert to Telegram for {verdict.bay_id}", flush=True)
+        except Exception as exc:
+            print(f"[LiveStreamEngine Alert] Error sending AI Telegram alert: {exc}", flush=True)
+
     def start(self):
         with self.lock:
             if self.running:
@@ -934,10 +1072,24 @@ class LiveStreamEngine:
                 print(f"[go2rtc] start failed: {exc}", flush=True)
             self._fallback_grabber.start()
             self.camera_pool.set_active_camera(self.cfg.get("active_camera_id") or "")
-            self.camera_pool.sync_cameras(list(self.cfg.get("cameras") or []))
+            if self.is_streaming:
+                self.camera_pool.sync_cameras(list(self.cfg.get("cameras") or []))
             self.wifi.start()
             self.thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.thread.start()
+
+    def disconnect(self) -> None:
+        """Disconnect active camera streams and return engine to STANDBY."""
+        with self.lock:
+            self.is_streaming = False
+            self.current_frame_jpeg = None
+            self.current_frame_bgr = None
+            self.status_text = "STANDBY"
+            self.connection_state = "STANDBY"
+            self.mjpeg_generation += 1
+            self.new_frame_event.set()
+        self._drop_gateway_stream()
+        self.camera_pool.stop()
 
     def stop(self):
         with self.lock:
@@ -957,13 +1109,22 @@ class LiveStreamEngine:
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
 
-    def reload_face_id(self) -> None:
+    def reload_face_id(self) -> int:
         if self.face_rec is None:
-            return
+            self.face_rec = try_create_face_recognizer(self.cfg)
+            if self.face_rec is None:
+                return 0
         try:
-            self.face_rec.reload_enrolled_faces()
+            count = self.face_rec.reload_enrolled_faces()
+            if self.tracker is not None:
+                self.tracker.reset()
+            if self.bay_manager is not None:
+                for bay in getattr(self.bay_manager, "_bays", []):
+                    bay.locked_tracks.clear()
+            return count
         except Exception as exc:
             print(f"[FaceID] Reload failed: {exc}")
+            return 0
 
     def _drop_gateway_stream(self) -> None:
         sid = self._gateway_stream_id
@@ -1332,8 +1493,7 @@ class LiveStreamEngine:
 
     def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         updates: dict[str, Any] = {}
-        if "telegram_bot_token" in payload:
-            updates["telegram_bot_token"] = str(payload.get("telegram_bot_token") or "")
+        # Bot token is engine-owned (TELEGRAM_BOT_TOKEN / config). Never accept UI replaces.
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
         if "venue" in payload:
@@ -1356,12 +1516,19 @@ class LiveStreamEngine:
                 updates["absent_seconds"] = max(5.0, min(600.0, float(payload.get("absent_seconds"))))
             except (TypeError, ValueError):
                 return {"success": False, "error": "absent_seconds must be a number."}
+        if "cooldown_seconds" in payload:
+            try:
+                updates["cooldown_seconds"] = max(5.0, min(600.0, float(payload.get("cooldown_seconds"))))
+            except (TypeError, ValueError):
+                return {"success": False, "error": "cooldown_seconds must be a number."}
+        if "auto_create_bays" in payload:
+            updates["auto_create_bays"] = bool(payload.get("auto_create_bays"))
         if not updates:
             return {"success": False, "error": "No settings provided."}
         with self.lock:
             self.cfg.update(updates)
             save_config(updates)
-            if "telegram_bot_token" in updates or "telegram_chat_id" in updates:
+            if "telegram_chat_id" in updates:
                 self.bot = TelegramOut(
                     self.cfg.get("telegram_bot_token", ""),
                     self.cfg.get("telegram_chat_id", ""),
@@ -1371,6 +1538,9 @@ class LiveStreamEngine:
         snapshot["bays"] = list(self.cfg.get("bays") or [])
         snapshot["wifi_devices"] = list(self.cfg.get("wifi_devices") or [])
         snapshot["operating_hours"] = self.cfg.get("operating_hours")
+        snapshot["telegram_bot_configured"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
+        snapshot["telegram_bot_username"] = self.telegram_links.status().get("bot_username") or ""
+        snapshot.pop("telegram_bot_token", None)
         return snapshot
 
     def save_camera(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -2046,6 +2216,55 @@ class LiveStreamEngine:
             "attendance_logs": technicians,
         }
 
+    def apply_telegram_link(self, chat_id: str) -> dict[str, Any]:
+        chat = str(chat_id or "").strip()
+        if not chat:
+            return {"success": False, "error": "chat_id required."}
+        return self.apply_hub_settings({"telegram_chat_id": chat})
+
+    def begin_telegram_link(
+        self, user_id: str, display_name: str = "", *, open_client: bool = False
+    ) -> dict[str, Any]:
+        token = str(self.cfg.get("telegram_bot_token") or "").strip()
+        if not token:
+            return {
+                "ok": False,
+                "error": "TELEGRAM_BOT_TOKEN is not configured on the engine.",
+            }
+        self.telegram_links.configure(token)
+        result = self.telegram_links.begin_link(user_id, display_name)
+        status = self.telegram_links.status()
+        result["telegram_chat_id"] = self.cfg.get("telegram_chat_id") or ""
+        result["status"] = status
+        opened = False
+        if open_client and result.get("ok"):
+            # Prefer desktop protocol on the host machine running the engine.
+            opened = open_host_url(str(result.get("app_link") or ""))
+            if not opened:
+                opened = open_host_url(str(result.get("deep_link") or ""))
+        result["opened_on_host"] = opened
+        return result
+
+    def telegram_link_status(self, user_id: str = "") -> dict[str, Any]:
+        status = self.telegram_links.status()
+        consumed = None
+        if user_id:
+            consumed = self.telegram_links.consume_link_for_user(user_id)
+            if consumed:
+                self.apply_telegram_link(consumed["chat_id"])
+                status = self.telegram_links.status()
+                status["just_linked"] = consumed
+        status["telegram_chat_id"] = self.cfg.get("telegram_chat_id") or ""
+        status["telegram_bot_token_set"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
+        return status
+
+    def redacted_config(self) -> dict[str, Any]:
+        cfg = dict(read_config())
+        cfg["telegram_bot_configured"] = bool(str(cfg.get("telegram_bot_token") or "").strip())
+        cfg["telegram_bot_username"] = self.telegram_links.status().get("bot_username") or ""
+        cfg["telegram_bot_token"] = ""
+        return cfg
+
     def set_orient(
         self,
         rotate: Any = None,
@@ -2369,7 +2588,10 @@ class LiveStreamEngine:
                             except Exception as ex:
                                 print(f"[VehicleInfer] Prediction error: {ex}")
 
-                    departed_bays = self.bay_manager.sync_auto_vehicles(vehicles, w, h, now=now)
+                    auto_create = bool(self.cfg.get("auto_create_bays", False))
+                    departed_bays = self.bay_manager.sync_auto_vehicles(
+                        vehicles, w, h, now=now, auto_create=auto_create
+                    )
                     if departed_bays and self.conn is not None:
                         for dep_id in departed_bays:
                             for bay_cfg in self.bay_manager.configs():
@@ -2403,7 +2625,13 @@ class LiveStreamEngine:
                     snapshots = self.bay_manager.update(
                         last_accepted, w, h, now, kpt_conf=kpt_conf, frame=frame
                     )
-                    any_occupied = any(s.state != "EMPTY" for s in snapshots)
+                    ghost.absent_seconds = float(cfg.get("absent_seconds") or 10)
+                    ghost.cooldown_seconds = float(cfg.get("cooldown_seconds") or 30)
+                    any_occupied = any(
+                        getattr(s, "person_present", False)
+                        or s.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING")
+                        for s in snapshots
+                    )
                     last_state = ghost.update(any_occupied, now)
                     stamp = datetime.now()
                     self._record_garage_tick(last_accepted, snapshots, last_state, stamp, now, clock_out_grace)
@@ -2506,30 +2734,40 @@ class LiveStreamEngine:
                         if last_state.occupied and not has_opened_today(self.conn, stamp.date()):
                             insert_event(self.conn, "opened", stamp)
 
-                        if last_state.should_alert:
-                            primary = snapshots[0] if snapshots else None
-                            roi_px = roi_to_pixels(w, h, primary.roi if primary else [0.3, 0.2, 0.4, 0.6])
-                            proof_frame = frame
-                            main_src = str(cfg.get("main_source") or "").strip()
-                            if main_src:
-                                still = request_still(
-                                    main_src,
-                                    gateway=self.media,
-                                    stream_id=self._gateway_main_stream_id,
-                                    timeout=1.5,
-                                )
-                                if still is not None:
-                                    sh, sw = still.shape[:2]
-                                    roi_px = scale_roi_px(roi_px, (w, h), (sw, sh))
-                                    proof_frame = still
-                            path = save_proof(proof_frame, roi_px, stamp, proofs, kind="idle_bay")
-                            insert_event(self.conn, "abandoned", stamp, str(path))
-                            caption = (
-                                f"{venue}: no active wrench time "
-                                f"for {int(absent)}s.\n{stamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                    if last_state.should_alert:
+                        primary = snapshots[0] if snapshots else None
+                        roi_px = roi_to_pixels(w, h, primary.roi if primary else [0.3, 0.2, 0.4, 0.6])
+                        proof_frame = frame
+                        main_src = str(cfg.get("main_source") or "").strip()
+                        if main_src:
+                            still = request_still(
+                                main_src,
+                                gateway=self.media,
+                                stream_id=self._gateway_main_stream_id,
+                                timeout=1.5,
                             )
-                            print(f"[LiveStreamEngine Alert] {path}")
-                            self.bot.send_photo(path, caption)
+                            if still is not None:
+                                sh, sw = still.shape[:2]
+                                roi_px = scale_roi_px(roi_px, (w, h), (sw, sh))
+                                proof_frame = still
+                        path = save_proof(proof_frame, roi_px, stamp, proofs, kind="idle_bay")
+                        if self.conn is not None:
+                            insert_event(self.conn, "abandoned", stamp, str(path))
+                        caption = (
+                            f"{venue}: no active wrench time "
+                            f"for {int(absent)}s.\n{stamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
+                        print(f"[LiveStreamEngine Alert] Out of ROI alert: {path}")
+                        try:
+                            if not self.bot.enabled:
+                                print(f"[LiveStreamEngine Alert] Telegram bot not configured (token={bool(self.bot.token)}, chat_id={bool(self.bot.chat_id)})")
+                            sent = self.bot.send_photo(path, caption)
+                            if sent:
+                                print(f"[LiveStreamEngine Alert] Successfully sent photo to Telegram")
+                            else:
+                                print(f"[LiveStreamEngine Alert] Failed to send photo to Telegram")
+                        except Exception as bot_err:
+                            print(f"[LiveStreamEngine Alert] Error sending Telegram photo: {bot_err}")
                 except Exception as exc:
                     print(f"[LiveStreamEngine Infer Error] {exc}")
 
@@ -2873,12 +3111,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
 
+        elif parsed.path == "/api/public-config":
+            self._send_json(public_supabase_config())
+
         elif parsed.path == "/api/config":
-            cfg = read_config()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(cfg).encode("utf-8"))
+            self._send_json(GLOBAL_ENGINE.redacted_config())
 
         elif parsed.path == "/api/telemetry":
             grabber = GLOBAL_ENGINE.grabber
@@ -2951,6 +3188,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/garage/scorecard":
             self._send_json(GLOBAL_ENGINE.garage_scorecard())
+
+        elif parsed.path == "/api/telegram/status":
+            qs = urllib.parse.parse_qs(parsed.query or "")
+            user_id = str((qs.get("user_id") or [""])[0] or "").strip()
+            self._send_json(GLOBAL_ENGINE.telegram_link_status(user_id))
 
         elif parsed.path == "/api/garage/evaluations":
             evals = []
@@ -3186,6 +3428,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(result).encode("utf-8"))
 
+        elif parsed.path == "/api/disconnect":
+            GLOBAL_ENGINE.disconnect()
+            self._send_json({"success": True, "status": "STANDBY"})
+            return
+
         elif parsed.path == "/api/discovery/scan":
             self._send_json(GLOBAL_ENGINE.discovery.start_scan())
 
@@ -3307,15 +3554,21 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_json(result)
 
         elif parsed.path == "/api/test-telegram":
-            token = str(payload.get("token") or payload.get("telegram_bot_token") or "").strip()
-            chat = str(payload.get("chat_id") or payload.get("telegram_chat_id") or "").strip()
+            token = str(GLOBAL_ENGINE.cfg.get("telegram_bot_token") or "").strip()
+            chat = str(
+                payload.get("chat_id")
+                or payload.get("telegram_chat_id")
+                or GLOBAL_ENGINE.cfg.get("telegram_chat_id")
+                or ""
+            ).strip()
             venue = str(payload.get("venue") or payload.get("garage_name") or "Demo Garage").strip()
 
-            if not token or not chat:
-                res = {"success": False, "error": "Bot Token and Chat ID are required."}
+            if not token:
+                res = {"success": False, "error": "TELEGRAM_BOT_TOKEN is not configured on the engine."}
+            elif not chat:
+                res = {"success": False, "error": "Connect via /start first, or paste a chat id."}
             else:
                 GLOBAL_ENGINE.apply_hub_settings({
-                    "telegram_bot_token": token,
                     "telegram_chat_id": chat,
                 })
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -3377,6 +3630,27 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(res).encode("utf-8"))
 
+        elif parsed.path == "/api/telegram/begin-link":
+            user_id = str(payload.get("user_id") or "").strip()
+            display_name = str(payload.get("display_name") or "").strip()
+            open_client = bool(payload.get("open_client"))
+            self._send_json(
+                GLOBAL_ENGINE.begin_telegram_link(
+                    user_id, display_name, open_client=open_client
+                )
+            )
+
+        elif parsed.path == "/api/telegram/open":
+            app_link = str(payload.get("app_link") or "").strip()
+            deep_link = str(payload.get("deep_link") or "").strip()
+            opened = open_host_url(app_link) if app_link else False
+            if not opened and deep_link:
+                opened = open_host_url(deep_link)
+            self._send_json({"ok": opened, "opened_on_host": opened})
+
+        elif parsed.path == "/api/telegram/status":
+            user_id = str(payload.get("user_id") or "").strip()
+            self._send_json(GLOBAL_ENGINE.telegram_link_status(user_id))
 
         else:
             self.send_response(404)

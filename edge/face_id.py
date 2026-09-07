@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -146,9 +147,25 @@ class FaceRecognizer:
         self.match_threshold = match_threshold
 
         yunet_path, sface_path = ensure_model_files(self.models_dir)
+        self.yunet_path = str(yunet_path)
+        self.sface_path = str(sface_path)
 
-        self.detector = cv2.FaceDetectorYN.create(
-            str(yunet_path),
+        self._lock = threading.Lock()
+        self._reload_lock = threading.Lock()
+        self._embedding_cache: Dict[Tuple[str, float], np.ndarray] = {}
+
+        self.detector = self._create_detector(self.yunet_path)
+        self.recognizer = self._create_recognizer(self.sface_path)
+
+        self._reload_detector: cv2.FaceDetectorYN | None = None
+        self._reload_recognizer: cv2.FaceRecognizerSF | None = None
+
+        self.known_embeddings: Dict[str, List[np.ndarray]] = {}
+        self.reload_enrolled_faces()
+
+    def _create_detector(self, yunet_path: str | None = None) -> cv2.FaceDetectorYN:
+        return cv2.FaceDetectorYN.create(
+            str(yunet_path or self.yunet_path),
             "",
             (320, 320),
             score_threshold=self.score_threshold,
@@ -156,59 +173,128 @@ class FaceRecognizer:
             top_k=5000,
         )
 
-        self.recognizer = cv2.FaceRecognizerSF.create(str(sface_path), "")
+    def _create_recognizer(self, sface_path: str | None = None) -> cv2.FaceRecognizerSF:
+        return cv2.FaceRecognizerSF.create(str(sface_path or self.sface_path), "")
 
-        self.known_embeddings: Dict[str, List[np.ndarray]] = {}
-        self.reload_enrolled_faces()
+    def _get_reload_models(self) -> Tuple[cv2.FaceDetectorYN, cv2.FaceRecognizerSF]:
+        with self._reload_lock:
+            if self._reload_detector is None:
+                self._reload_detector = self._create_detector()
+            if self._reload_recognizer is None:
+                self._reload_recognizer = self._create_recognizer()
+            return self._reload_detector, self._reload_recognizer
 
     def reload_enrolled_faces(self) -> int:
-        """Scan faces_dir/<StaffName>/* and compute reference embeddings."""
-        self.known_embeddings.clear()
+        """Scan faces_dir/<StaffName>/* and compute reference embeddings using an isolated detector/recognizer."""
         if not self.faces_dir.exists():
             self.faces_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self.known_embeddings.clear()
             return 0
 
-        valid_extensions = (".jpg", ".jpeg", ".png", ".webp")
-        total_faces = 0
+        enroll_det: cv2.FaceDetectorYN | None = None
+        enroll_rec: cv2.FaceRecognizerSF | None = None
 
-        for person_dir in sorted(self.faces_dir.iterdir()):
+        valid_extensions = (".jpg", ".jpeg", ".png", ".webp")
+        new_embeddings: Dict[str, List[np.ndarray]] = {}
+        total_faces = 0
+        seen_files: set[Tuple[str, float]] = set()
+
+        try:
+            person_dirs = sorted(self.faces_dir.iterdir())
+        except Exception as exc:
+            print(f"[FaceID] Error listing {self.faces_dir}: {exc}")
+            with self._lock:
+                return len(self.known_embeddings)
+
+        for person_dir in person_dirs:
             if not person_dir.is_dir() or person_dir.name.startswith("."):
                 continue
             name = person_dir.name
             embeddings = []
 
-            for img_file in sorted(person_dir.iterdir()):
+            try:
+                img_files = sorted(person_dir.iterdir())
+            except Exception:
+                continue
+
+            for img_file in img_files:
                 if img_file.suffix.lower() not in valid_extensions:
                     continue
-                img = cv2.imread(str(img_file))
-                if img is None:
-                    continue
-                emb = self.extract_embedding_from_image(img)
-                if emb is not None:
-                    embeddings.append(emb)
-                    total_faces += 1
+                try:
+                    resolved_path = str(img_file.resolve())
+                    mtime = img_file.stat().st_mtime
+                    cache_key = (resolved_path, mtime)
+                    seen_files.add(cache_key)
+
+                    if cache_key in self._embedding_cache:
+                        emb = self._embedding_cache[cache_key]
+                    else:
+                        emb = None
+                        img = cv2.imread(resolved_path)
+                        if img is not None:
+                            if enroll_det is None or enroll_rec is None:
+                                enroll_det, enroll_rec = self._get_reload_models()
+                            emb = self.extract_embedding_from_image(
+                                img,
+                                detector=enroll_det,
+                                recognizer=enroll_rec,
+                            )
+                        self._embedding_cache[cache_key] = emb
+
+                    if emb is not None:
+                        embeddings.append(emb)
+                        total_faces += 1
+                except Exception as exc:
+                    print(f"[FaceID] Warning reading {img_file.name}: {exc}")
 
             if embeddings:
-                self.known_embeddings[name] = embeddings
+                new_embeddings[name] = embeddings
                 print(f"[FaceID] Enrolled '{name}' with {len(embeddings)} reference photos.")
 
+        # Prune dead cache keys
+        self._embedding_cache = {k: v for k, v in self._embedding_cache.items() if k in seen_files}
+
+        # Atomically swap the new embeddings under lock
+        with self._lock:
+            self.known_embeddings = new_embeddings
+
         print(
-            f"[FaceID] Total {len(self.known_embeddings)} staff members enrolled "
+            f"[FaceID] Total {len(new_embeddings)} staff members enrolled "
             f"({total_faces} photos)."
         )
-        return len(self.known_embeddings)
+        return len(new_embeddings)
 
-    def extract_embedding_from_image(self, img: np.ndarray) -> Optional[np.ndarray]:
+    def extract_embedding_from_image(
+        self,
+        img: np.ndarray,
+        detector: Optional[cv2.FaceDetectorYN] = None,
+        recognizer: Optional[cv2.FaceRecognizerSF] = None,
+    ) -> Optional[np.ndarray]:
+        if img is None or img.size == 0:
+            return None
         h, w = img.shape[:2]
-        self.detector.setInputSize((w, h))
-        _, faces = self.detector.detect(img)
-
-        if faces is None or len(faces) == 0:
+        if h < 20 or w < 20:
             return None
 
-        face = max(faces, key=lambda row: float(row[2]) * float(row[3]))
-        aligned_face = self.recognizer.alignCrop(img, face)
-        return self.recognizer.feature(aligned_face)
+        # If using instance models directly, protect with lock against concurrent inference
+        needs_lock = detector is None or recognizer is None
+        det = detector or self.detector
+        rec = recognizer or self.recognizer
+
+        def _do_extract() -> Optional[np.ndarray]:
+            det.setInputSize((w, h))
+            _, faces = det.detect(img)
+            if faces is None or len(faces) == 0:
+                return None
+            face = max(faces, key=lambda row: float(row[2]) * float(row[3]))
+            aligned_face = rec.alignCrop(img, face)
+            return rec.feature(aligned_face)
+
+        if needs_lock:
+            with self._lock:
+                return _do_extract()
+        return _do_extract()
 
     def recognize_in_crop(
         self,
@@ -233,43 +319,45 @@ class FaceRecognizer:
         if h < 20 or w < 20:
             return FaceMatch(UNKNOWN_LABEL, 0.0, False)
 
-        self.detector.setInputSize((w, h))
-        _, faces = self.detector.detect(sub_img)
+        with self._lock:
+            self.detector.setInputSize((w, h))
+            _, faces = self.detector.detect(sub_img)
 
-        if faces is None or len(faces) == 0:
-            return FaceMatch(UNKNOWN_LABEL, 0.0, False)
+            if faces is None or len(faces) == 0:
+                return FaceMatch(UNKNOWN_LABEL, 0.0, False)
 
-        face = faces[0]
-        fx, fy, fw, fh = map(int, face[:4])
-        global_bbox = (offset_x + fx, offset_y + fy, fw, fh)
+            face = faces[0]
+            fx, fy, fw, fh = map(int, face[:4])
+            global_bbox = (offset_x + fx, offset_y + fy, fw, fh)
 
-        aligned_face = self.recognizer.alignCrop(sub_img, face)
-        embedding = self.recognizer.feature(aligned_face)
+            aligned_face = self.recognizer.alignCrop(sub_img, face)
+            embedding = self.recognizer.feature(aligned_face)
 
-        best_name = "Unknown"
-        best_score = 0.0
-        cosine_mode = getattr(
-            cv2,
-            "FaceRecognizerSF_FR_COSINE",
-            getattr(cv2, "FACE_RECOGNIZER_SF_FR_COSINE", 0),
-        )
+            best_name = "Unknown"
+            best_score = 0.0
+            cosine_mode = getattr(
+                cv2,
+                "FaceRecognizerSF_FR_COSINE",
+                getattr(cv2, "FACE_RECOGNIZER_SF_FR_COSINE", 0),
+            )
 
-        for name, emb_list in self.known_embeddings.items():
-            for ref_emb in emb_list:
-                score = self.recognizer.match(ref_emb, embedding, cosine_mode)
-                if score > best_score:
-                    best_score = float(score)
-                    best_name = name
+            known = self.known_embeddings
+            for name, emb_list in known.items():
+                for ref_emb in emb_list:
+                    score = self.recognizer.match(ref_emb, embedding, cosine_mode)
+                    if score > best_score:
+                        best_score = float(score)
+                        best_name = name
 
-        is_staff = best_score >= self.match_threshold
-        final_name = best_name if is_staff else UNKNOWN_LABEL
+            is_staff = best_score >= self.match_threshold
+            final_name = best_name if is_staff else UNKNOWN_LABEL
 
-        return FaceMatch(
-            name=final_name,
-            confidence=best_score,
-            is_staff=is_staff,
-            bbox=global_bbox,
-        )
+            return FaceMatch(
+                name=final_name,
+                confidence=best_score,
+                is_staff=is_staff,
+                bbox=global_bbox,
+            )
 
     def annotate_detections(self, frame: np.ndarray, detections: list) -> None:
         for det in detections:

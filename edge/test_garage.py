@@ -1055,6 +1055,113 @@ class GarageApiTests(unittest.TestCase):
         self.assertIn("HourMeng (7m 08s)", badge)
         self.assertNotIn("11m 51s", badge)
 
+    def test_standing_pose_not_flagged_as_under_vehicle(self):
+        from occupancy import is_under_vehicle_pose
+        # Standing human: vertical height (400px) much greater than width (40px)
+        kpts = [(0.0, 0.0, 0.0)] * 17
+        kpts[0] = (300.0, 100.0, 0.9)  # Nose
+        kpts[5] = (280.0, 150.0, 0.9)  # L_SHOULDER
+        kpts[6] = (320.0, 150.0, 0.9)  # R_SHOULDER
+        kpts[11] = (285.0, 300.0, 0.9)  # L_HIP
+        kpts[12] = (315.0, 300.0, 0.9)  # R_HIP
+        kpts[13] = (285.0, 400.0, 0.9)  # L_KNEE
+        kpts[14] = (315.0, 400.0, 0.9)  # R_KNEE
+        kpts[15] = (285.0, 500.0, 0.9)  # L_ANKLE
+        kpts[16] = (315.0, 500.0, 0.9)  # R_ANKLE
+        self.assertFalse(is_under_vehicle_pose(kpts))
+
+    def test_creeper_pose_flagged_as_under_vehicle(self):
+        from occupancy import is_under_vehicle_pose
+        # Lying horizontally on a creeper under vehicle (horizontal span > vertical)
+        kpts = [(0.0, 0.0, 0.0)] * 17
+        kpts[0] = (100.0, 300.0, 0.9)  # Nose
+        kpts[5] = (180.0, 295.0, 0.9)  # L_SHOULDER
+        kpts[6] = (180.0, 305.0, 0.9)  # R_SHOULDER
+        kpts[11] = (350.0, 295.0, 0.9)  # L_HIP
+        kpts[12] = (350.0, 305.0, 0.9)  # R_HIP
+        kpts[13] = (450.0, 295.0, 0.9)  # L_KNEE
+        kpts[14] = (450.0, 305.0, 0.9)  # R_KNEE
+        kpts[15] = (550.0, 295.0, 0.9)  # L_ANKLE
+        kpts[16] = (550.0, 305.0, 0.9)  # R_ANKLE
+        self.assertTrue(is_under_vehicle_pose(kpts))
+
+    def test_wrenching_pose_not_flagged_as_phone_usage(self):
+        from occupancy import is_phone_usage_pose
+        # Mechanic working with two hands (wrists separated > 0.22 torso, not holding phone)
+        kpts = [(0.0, 0.0, 0.0)] * 17
+        kpts[0] = (300.0, 130.0, 0.9)  # Nose
+        kpts[5] = (250.0, 150.0, 0.9)  # L_SHOULDER
+        kpts[6] = (350.0, 150.0, 0.9)  # R_SHOULDER
+        kpts[7] = (220.0, 230.0, 0.9)  # L_ELBOW
+        kpts[8] = (380.0, 230.0, 0.9)  # R_ELBOW
+        kpts[9] = (260.0, 240.0, 0.9)  # L_WRIST
+        kpts[10] = (340.0, 240.0, 0.9)  # R_WRIST (distance = 80px, torso = 200px -> 0.40 torso)
+        kpts[11] = (260.0, 350.0, 0.9)  # L_HIP
+        kpts[12] = (340.0, 350.0, 0.9)  # R_HIP
+        self.assertFalse(is_phone_usage_pose(kpts))
+
+    def test_out_of_roi_triggers_ghost_alert(self):
+        from occupancy import BayZoneManager, GhostCounter
+        from person import Detection
+        bays_cfg = [{"id": "bay_1", "name": "Bay 1", "type": "vehicle_bay", "roi": [0.2, 0.2, 0.4, 0.6]}]
+        mgr = BayZoneManager(bays_cfg)
+        ghost = GhostCounter(absent_seconds=5.0, cooldown_seconds=10.0)
+
+        # Step 1: Worker inside bay at t=0
+        det_in_bay = Detection(
+            x1=160, y1=120, x2=240, y2=260, conf=0.9, accepted=True,
+            identity="Alice", is_staff=True, keypoints=[(200.0, 150.0, 0.9)] * 17
+        )
+        snaps = mgr.update([det_in_bay], 640, 480, now=0.0)
+        any_occupied = any(
+            getattr(s, "person_present", False)
+            or s.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING")
+            for s in snaps
+        )
+        self.assertTrue(any_occupied)
+        st = ghost.update(any_occupied, 0.0)
+        self.assertTrue(st.occupied)
+        self.assertFalse(st.should_alert)
+
+        # Step 2: Worker steps out of bay at t=1.0 (empty bay or person elsewhere)
+        snaps = mgr.update([], 640, 480, now=1.0)
+        self.assertEqual(snaps[0].state, "ON_BREAK")
+        self.assertFalse(snaps[0].person_present)
+        any_occupied = any(
+            getattr(s, "person_present", False)
+            or s.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING")
+            for s in snaps
+        )
+        self.assertFalse(any_occupied)
+        st = ghost.update(any_occupied, 1.0)
+        self.assertFalse(st.occupied)
+        self.assertFalse(st.should_alert)
+
+        # Step 3: Worker stays out of bay past absent_seconds (at t=7.0, elapsed=6.0s >= 5.0s)
+        snaps = mgr.update([], 640, 480, now=7.0)
+        any_occupied = any(
+            getattr(s, "person_present", False)
+            or s.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING")
+            for s in snaps
+        )
+        self.assertFalse(any_occupied)
+        st = ghost.update(any_occupied, 7.0)
+        self.assertFalse(st.occupied)
+        self.assertTrue(st.should_alert)
+
+    def test_sync_auto_vehicles_guards_against_phantom_bays(self):
+        from occupancy import BayZoneManager
+        from vehicle import VehicleDetection
+        bays_cfg = [{"id": "bay_1", "name": "Bay 1", "type": "vehicle_bay", "roi": [0.1, 0.1, 0.4, 0.4]}]
+        mgr = BayZoneManager(bays_cfg, auto_create_bays=False)
+        self.assertEqual(len(mgr._bays), 1)
+
+        car = VehicleDetection(x1=80, y1=60, x2=200, y2=180, conf=0.85, vehicle_type="car", vehicle_id="car_1")
+        # With auto_create=False, should NOT create a new bay
+        departed = mgr.sync_auto_vehicles([car], 640, 480, now=0.0, auto_create=False)
+        self.assertEqual(len(mgr._bays), 1)
+        self.assertTrue(mgr._bays[0].vehicle_present)
+
 
 if __name__ == "__main__":
     unittest.main()

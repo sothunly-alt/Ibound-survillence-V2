@@ -95,3 +95,7 @@ face_match_threshold: 0.60
 
 telegram_bot_token: ""
 telegram_chat_id: ""
+
+# Tier 2 AI Auditor (Fireworks VLM)
+fireworks_api_key: ""
+fireworks_model: "accounts/fireworks/models/deepseek-v4-flash-vision-exp"

@@ -380,7 +380,22 @@ def is_under_vehicle_pose(keypoints: list, kpt_conf: float = 0.35) -> bool:
     Cues:
     - Lower limbs (ankles/knees) visible while upper torso/head are occluded under chassis.
     - Horizontal body alignment: horizontal distance (dx) between joints significantly exceeds vertical (dy).
+    - MUST NOT trigger on upright standing/walking postures.
     """
+    valid_pts = [
+        (float(pt[0]), float(pt[1]))
+        for pt in keypoints
+        if pt is not None and len(pt) >= 2 and (len(pt) < 3 or float(pt[2]) >= kpt_conf)
+    ]
+    if valid_pts:
+        xs = [p[0] for p in valid_pts]
+        ys = [p[1] for p in valid_pts]
+        span_w = max(xs) - min(xs)
+        span_h = max(ys) - min(ys)
+        # Upright / standing posture: vertical height exceeds horizontal width
+        if span_h > 1.15 * max(span_w, 1.0) and span_h > 45.0:
+            return False
+
     ls = _kpt(keypoints, L_SHOULDER, kpt_conf)
     rs = _kpt(keypoints, R_SHOULDER, kpt_conf)
     lh = _kpt(keypoints, L_HIP, kpt_conf)
@@ -395,29 +410,37 @@ def is_under_vehicle_pose(keypoints: list, kpt_conf: float = 0.35) -> bool:
     knees = _mid(lk, rk)
     ankles = _mid(la, ra)
 
-    # 1. Lower body limbs visible extending out from chassis (ankles or knees present)
+    # 1. Lower body limbs visible extending out from chassis (ankles or knees present, upper occluded)
     lower_pts = sum(1 for p in (lh, rh, lk, rk, la, ra) if p is not None)
     upper_pts = sum(1 for p in (ls, rs) if p is not None)
     if lower_pts >= 2 and upper_pts == 0:
-        return True
+        # Must be horizontal limb profile (legs extending horizontally out from chassis)
+        if valid_pts:
+            span_w = max(xs) - min(xs)
+            span_h = max(ys) - min(ys)
+            if span_w >= span_h * 0.9:
+                return True
+        else:
+            return True
 
-    # 2. Horizontal creeper alignment (shoulders to hips or hips to ankles horizontal: dx > dy)
+    # 2. Horizontal creeper alignment: body spine and legs must lie horizontally
     if shoulders and hips:
-        dx = abs(shoulders[0] - hips[0])
-        dy = abs(shoulders[1] - hips[1])
-        if dx > 1.2 * dy:
-            return True
+        dx_sh = abs(shoulders[0] - hips[0])
+        dy_sh = abs(shoulders[1] - hips[1])
+        if dx_sh > 1.3 * dy_sh:
+            if hips and (knees or ankles):
+                leg_ref = knees or ankles
+                dx_leg = abs(hips[0] - leg_ref[0])
+                dy_leg = abs(hips[1] - leg_ref[1])
+                if dx_leg >= dy_leg * 0.8:
+                    return True
+            else:
+                return True
 
-    if hips and knees:
-        dx = abs(hips[0] - knees[0])
-        dy = abs(hips[1] - knees[1])
-        if dx > 1.2 * dy:
-            return True
-
-    if knees and ankles:
-        dx = abs(knees[0] - ankles[0])
-        dy = abs(knees[1] - ankles[1])
-        if dx > 1.2 * dy:
+    if hips and knees and ankles:
+        dx_leg = abs(hips[0] - ankles[0])
+        dy_leg = abs(hips[1] - ankles[1])
+        if dx_leg > 1.4 * dy_leg:
             return True
 
     return False
@@ -427,10 +450,10 @@ def is_phone_usage_pose(keypoints: list, kpt_conf: float = 0.30) -> bool:
     """True when pose indicates worker operating or looking down at a phone screen.
 
     Negative work cues:
-    - Both wrists close together (holding screen with one or both hands).
-    - Wrists in front of torso (between neck/shoulders and hips).
-    - Head/neck flexed downward (nose close to shoulder midpoint height).
-    - Or one wrist held directly adjacent to ear/face (phone call).
+    - Phone call: wrist held up to ear with elevated elbow.
+    - Holding phone: wrists tightly converged (<0.22 torso) in front of chest/lap
+      with head flexed downward toward hands.
+    Must NOT trigger on standard two-handed wrenching, typing, or tool usage.
     """
     ls = _kpt(keypoints, L_SHOULDER, kpt_conf)
     rs = _kpt(keypoints, R_SHOULDER, kpt_conf)
@@ -439,6 +462,10 @@ def is_phone_usage_pose(keypoints: list, kpt_conf: float = 0.30) -> bool:
     lw = _kpt(keypoints, L_WRIST, kpt_conf)
     rw = _kpt(keypoints, R_WRIST, kpt_conf)
     nose = _kpt(keypoints, NOSE, kpt_conf)
+    l_ear = _kpt(keypoints, 3, kpt_conf)
+    r_ear = _kpt(keypoints, 4, kpt_conf)
+    l_eye = _kpt(keypoints, 1, kpt_conf)
+    r_eye = _kpt(keypoints, 2, kpt_conf)
     lh = _kpt(keypoints, L_HIP, kpt_conf)
     rh = _kpt(keypoints, R_HIP, kpt_conf)
 
@@ -446,24 +473,30 @@ def is_phone_usage_pose(keypoints: list, kpt_conf: float = 0.30) -> bool:
     hips = _mid(lh, rh)
     torso = max(1.0, abs(hips[1] - shoulders[1])) if (shoulders and hips) else 100.0
 
-    # 1. Phone call to ear/face
-    for wrist in (lw, rw):
-        if wrist and nose:
-            dist_to_face = ((wrist[0] - nose[0]) ** 2 + (wrist[1] - nose[1]) ** 2) ** 0.5
-            if dist_to_face < 0.30 * torso:
-                return True
+    # 1. Phone call to ear / face: wrist held up to ear/temple with raised forearm
+    head_targets = [p for p in (l_ear, r_ear, l_eye, r_eye, nose) if p is not None]
+    if head_targets:
+        for wrist, elbow in ((lw, le), (rw, re)):
+            if wrist:
+                # If shoulders exist, wrist must be at shoulder level or higher
+                if shoulders is None or wrist[1] <= shoulders[1] + 0.20 * torso:
+                    for target in head_targets:
+                        dist = ((wrist[0] - target[0]) ** 2 + (wrist[1] - target[1]) ** 2) ** 0.5
+                        if dist < 0.28 * torso:
+                            # If elbow is detected, forearm must be pointing up to head (elbow lower than wrist)
+                            if elbow is None or elbow[1] >= wrist[1] - 0.10 * torso:
+                                return True
 
-    # 2. Holding phone in front of chest / lap
+    # 2. Holding phone in front of chest / lap: wrists tightly converged
     if lw and rw and shoulders and hips:
         wrist_dist = ((lw[0] - rw[0]) ** 2 + (lw[1] - rw[1]) ** 2) ** 0.5
-        if wrist_dist < 0.38 * torso:
+        # Phone holding requires tightly clustered hands (< 0.22 of torso)
+        if wrist_dist < 0.22 * torso:
             wrist_y = (lw[1] + rw[1]) / 2.0
-            if shoulders[1] - 0.1 * torso <= wrist_y <= hips[1] + 0.35 * torso:
-                # Head pitched downward toward hands
-                if nose and nose[1] > shoulders[1] - 0.25 * torso:
-                    return True
-                # Elbows flexed inwards
-                if le and re and (lw[1] < le[1] + 0.4 * torso or rw[1] < re[1] + 0.4 * torso):
+            # Wrists in front of torso between mid-chest and lap
+            if shoulders[1] - 0.05 * torso <= wrist_y <= hips[1] + 0.35 * torso:
+                # Head must be pitched downward toward hands
+                if nose and nose[1] > shoulders[1] - 0.15 * torso and wrist_y > nose[1]:
                     return True
 
     return False
@@ -624,6 +657,7 @@ class BaySnapshot:
     not_working_reason: str | None = None
     polygon: list[list[float]] | None = None
     ai_verdict: dict | None = None
+    person_present: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -645,6 +679,7 @@ class BaySnapshot:
             "break_time_today": round(self.break_time_today, 2),
             "queue_time_today": round(self.queue_time_today, 2),
             "is_working": self.is_working,
+            "person_present": self.person_present,
             "job_id": self.job_id,
             "vehicle_present": self.vehicle_present,
             "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
@@ -748,6 +783,7 @@ class _BayRuntime:
             break_time_today=self.today_break,
             queue_time_today=self.today_queue,
             is_working=self.state in ("WORKING", "UNDER_VEHICLE"),
+            person_present=self.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING"),
             job_id=self.job_id,
             vehicle_present=self.vehicle_present,
             technicians_times=dict(self.technicians_times),
@@ -777,6 +813,7 @@ class BayZoneManager:
         motion_px: float = 14.0,
         fallback_roi: list[float] | None = None,
         ai_auditor: AIAuditorQueue | None = None,
+        auto_create_bays: bool | None = None,
     ) -> None:
         self.idle_stationary_seconds = max(1.0, float(idle_stationary_seconds))
         self.ai_auditor = ai_auditor
@@ -786,6 +823,7 @@ class BayZoneManager:
         self.break_timeout_seconds = float(break_timeout_seconds)
         self.departure_grace_seconds = float(departure_grace_seconds)
         self.motion_px = motion_px
+        self.auto_create_bays = not bool(bays) if auto_create_bays is None else bool(auto_create_bays)
         self._bays: list[_BayRuntime] = []
         self.set_bays(bays, fallback_roi=fallback_roi)
         self._last_ticks: list[tuple[str, str | None, bool, float, str, str | None]] = []
@@ -829,41 +867,53 @@ class BayZoneManager:
         frame_w: int,
         frame_h: int,
         now: float = 0.0,
+        auto_create: bool | None = None,
     ) -> list[str]:
         """Dynamically create/update bays around auto-detected vehicles and return departed vehicle bay IDs."""
         active_tracks, departed_ids = self.vehicle_tracker.update(vehicles, now, frame_w, frame_h)
-        existing_ids = {b.id for b in self._bays}
-        for v in vehicles:
-            b_id = getattr(v, "vehicle_id", None) or f"auto_{getattr(v, 'vehicle_type', 'car')}"
-            roi = v.roi(frame_w, frame_h) if hasattr(v, "roi") else [0.2, 0.2, 0.6, 0.6]
-            x_min = max(0.0, roi[0] - 0.05)
-            y_min = max(0.0, roi[1] - 0.05)
-            w_val = min(1.0 - x_min, roi[2] + 0.10)
-            h_val = min(1.0 - y_min, roi[3] + 0.10)
-            padded_roi = [round(x_min, 4), round(y_min, 4), round(w_val, 4), round(h_val, 4)]
-            if b_id in existing_ids:
-                for b in self._bays:
-                    if b.id == b_id:
-                        b.roi = padded_roi
-                        b.vehicle_present = True
-            else:
-                vtype = getattr(v, "vehicle_type", "vehicle")
-                vnum = b_id.split("_")[-1] if "_" in b_id else "1"
-                cfg = {
-                    "id": b_id,
-                    "name": f"Auto: {vtype.capitalize()} #{vnum}",
-                    "type": "vehicle_bay",
-                    "roi": padded_roi,
-                }
-                runtime = _BayRuntime(
-                    cfg,
-                    self.confirm,
-                    self.clear,
-                    self.under_car_grace_seconds,
-                    self.break_timeout_seconds,
-                )
-                runtime.vehicle_present = True
-                self._bays.append(runtime)
+
+        # 1. Update vehicle_present on existing manual bays
+        for b in self._bays:
+            if not getattr(b, "is_auto", False) and not b.id.startswith("auto_"):
+                b_roi_px = roi_to_pixels(frame_w, frame_h, b.roi)
+                b.vehicle_present = any(box_overlaps_roi(v.box(), b_roi_px) for v in vehicles)
+
+        should_auto_create = self.auto_create_bays if auto_create is None else auto_create
+
+        if should_auto_create:
+            existing_ids = {b.id for b in self._bays}
+            for v in vehicles:
+                b_id = getattr(v, "vehicle_id", None) or f"auto_{getattr(v, 'vehicle_type', 'car')}"
+                roi = v.roi(frame_w, frame_h) if hasattr(v, "roi") else [0.2, 0.2, 0.6, 0.6]
+                x_min = max(0.0, roi[0] - 0.05)
+                y_min = max(0.0, roi[1] - 0.05)
+                w_val = min(1.0 - x_min, roi[2] + 0.10)
+                h_val = min(1.0 - y_min, roi[3] + 0.10)
+                padded_roi = [round(x_min, 4), round(y_min, 4), round(w_val, 4), round(h_val, 4)]
+                if b_id in existing_ids:
+                    for b in self._bays:
+                        if b.id == b_id:
+                            b.roi = padded_roi
+                            b.vehicle_present = True
+                else:
+                    vtype = getattr(v, "vehicle_type", "vehicle")
+                    vnum = b_id.split("_")[-1] if "_" in b_id else "1"
+                    cfg = {
+                        "id": b_id,
+                        "name": f"Auto: {vtype.capitalize()} #{vnum}",
+                        "type": "vehicle_bay",
+                        "roi": padded_roi,
+                    }
+                    runtime = _BayRuntime(
+                        cfg,
+                        self.confirm,
+                        self.clear,
+                        self.under_car_grace_seconds,
+                        self.break_timeout_seconds,
+                    )
+                    runtime.vehicle_present = True
+                    runtime.is_auto = True
+                    self._bays.append(runtime)
 
         for dep_id in departed_ids:
             for b in self._bays:

@@ -2,8 +2,10 @@ import { createContext, createElement, useContext, useEffect, useMemo, useReduce
 import { padSeq, portraitDataUri, uid } from "./ids";
 import { holdReason, lastAlertByCamera } from "./rules";
 import { seedState } from "./seed";
+import { persistableCameras } from "./account";
 import type {
   Alert,
+  Camera,
   CaseRecord,
   Detection,
   ObjectClass,
@@ -24,7 +26,8 @@ type Action =
   | { type: "OPERATOR"; alertId: string; action: OperatorAction }
   | { type: "DISMISS_ALERT"; alertId: string }
   | { type: "ADD_MESSAGES"; messages: TelegramMessage[] }
-  | { type: "TOAST"; text: string | null };
+  | { type: "TOAST"; text: string | null }
+  | { type: "HYDRATE_ACCOUNT"; venue: string; cameras: Camera[] };
 
 function loadState(): OpsState {
   try {
@@ -228,6 +231,22 @@ function reducer(state: OpsState, action: Action): OpsState {
       return { ...state, messages: [...state.messages, ...action.messages] };
     case "TOAST":
       return { ...state, toast: action.text };
+    case "HYDRATE_ACCOUNT": {
+      const venue = action.venue || state.venue;
+      const same =
+        venue === state.venue &&
+        action.cameras.length === state.cameras.length &&
+        action.cameras.every(
+          (cam, index) =>
+            cam.id === state.cameras[index]?.id &&
+            cam.name === state.cameras[index]?.name &&
+            cam.zone === state.cameras[index]?.zone &&
+            cam.rtspLabel === state.cameras[index]?.rtspLabel &&
+            cam.protocol === state.cameras[index]?.protocol,
+        );
+      if (same) return state;
+      return { ...state, venue, cameras: action.cameras };
+    }
     default:
       return state;
   }
@@ -235,6 +254,7 @@ function reducer(state: OpsState, action: Action): OpsState {
 
 type StoreApi = {
   state: OpsState;
+  hydrateAccount: (venue: string, cameras: Camera[]) => void;
   setRules: (rules: RuleConfig) => void;
   submitMissing: (fields: NonNullable<CaseRecord["missing"]>, photo: string, source: CaseRecord["source"]) => string;
   submitWatchlist: (fields: NonNullable<CaseRecord["watchlist"]>, photo: string) => string;
@@ -252,7 +272,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadState);
 
   useEffect(() => {
-    const persist: OpsState = { ...state, toast: null, scanning: state.scanning };
+    const persist: OpsState = {
+      ...state,
+      toast: null,
+      scanning: state.scanning,
+      cameras: persistableCameras(state.cameras),
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persist));
   }, [state]);
 
@@ -270,6 +295,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     return {
       state,
+      hydrateAccount: (venue, cameras) => dispatch({ type: "HYDRATE_ACCOUNT", venue, cameras }),
       setRules: (rules) => dispatch({ type: "SET_RULES", rules }),
       submitMissing: (fields, photo, source) => {
         const ticketId = `TKT-${state.ticketSeq + 1}`;

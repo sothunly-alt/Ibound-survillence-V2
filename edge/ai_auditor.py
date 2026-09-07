@@ -78,7 +78,7 @@ class TokenSaverGate:
     def __init__(
         self,
         duration_threshold: float = 0.0,
-        cooldown_seconds: float = 180.0,
+        cooldown_seconds: float = 45.0,
         grace_seconds: float = 2.0,
     ):
         self.duration_threshold = duration_threshold
@@ -184,7 +184,7 @@ def _load_env_or_config() -> tuple[str, str]:
         except Exception:
             pass
     if not model:
-        model = "accounts/fireworks/models/qwen2-vl-72b-instruct"
+        model = "accounts/fireworks/models/deepseek-v4-flash-vision-exp"
     return api_key, model
 
 
@@ -193,7 +193,7 @@ class FireworksVLMClient:
         self,
         api_key: str | None = None,
         model: str | None = None,
-        timeout: float = 15.0,
+        timeout: float = 25.0,
     ):
         loaded_key, loaded_model = _load_env_or_config()
         self.api_key = api_key if api_key is not None else loaded_key
@@ -273,15 +273,19 @@ Respond STRICTLY in JSON with keys:
                     ],
                 }
             ],
-            "max_tokens": 512,
+            "max_tokens": 1024,
             "temperature": 0.1,
         }
+        if "deepseek" in self.model.lower():
+            payload["thinking"] = {"type": "disabled"}
         try:
             r = requests.post(self.endpoint, headers=headers, json=payload, timeout=self.timeout)
             r.raise_for_status()
             res_json = r.json()
             msg = res_json["choices"][0]["message"]
-            raw = msg.get("content", "") or msg.get("reasoning_content", "")
+            raw = (msg.get("content") or "").strip()
+            if not raw:
+                raw = (msg.get("reasoning_content") or "").strip()
 
             # Clean JSON markdown fences
             if "```json" in raw:
@@ -317,14 +321,26 @@ Respond STRICTLY in JSON with keys:
                 is_work_activity=is_work,
             )
         except Exception as e:
-            print(f"[AI-Auditor Error] Fireworks API call failed: {e}", flush=True)
+            err_detail = str(e)
+            if hasattr(e, "response") and e.response is not None:
+                try:
+                    err_json = e.response.json()
+                    if isinstance(err_json, dict) and "error" in err_json:
+                        api_err = err_json["error"]
+                        if isinstance(api_err, dict) and "message" in api_err:
+                            err_detail = f"{e} ({api_err['message']})"
+                        elif isinstance(api_err, str):
+                            err_detail = f"{e} ({api_err})"
+                except Exception:
+                    pass
+            print(f"[AI-Auditor Error] Fireworks API call failed: {err_detail}", flush=True)
             return AIAuditVerdict(
                 bay_id=bay_id,
                 technician_id=technician_id,
                 action="UNKNOWN",
                 category="UNKNOWN",
                 confidence=0.0,
-                explanation=f"Audit error: {e}",
+                explanation=f"Audit error: {err_detail}",
                 is_work_activity=True,
             )
 

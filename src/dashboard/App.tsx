@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { cameraToOps } from "./account";
+import { useAccount } from "./auth";
+import { AccountSetup } from "./components/AccountSetup";
 import { AlertsView } from "./components/AlertsView";
 import { CasesView } from "./components/CasesView";
 import { LiveView } from "./components/LiveView";
+import { ProfileChip } from "./components/ProfileChip";
 import { RulesView } from "./components/RulesView";
 import { ScanAndGoView } from "./components/ScanAndGoView";
 import { TelegramPanel } from "./components/TelegramPanel";
@@ -58,27 +62,28 @@ function PipelineStrip() {
 }
 
 function Shell() {
-  const { state } = useOps();
+  const { state, hydrateAccount } = useOps();
+  const { snapshot } = useAccount();
   const [view, setView] = useState<ViewId>("live");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const hydrateRef = useRef(hydrateAccount);
+  hydrateRef.current = hydrateAccount;
   const mainView = view === "bot" ? "live" : view;
+
+  useEffect(() => {
+    if (!snapshot) return;
+    hydrateRef.current(
+      snapshot.profile.venue_name,
+      snapshot.cameras.map(cameraToOps),
+    );
+    if (!snapshot.profile.setup_completed) setSetupOpen(true);
+  }, [snapshot]);
 
   return (
     <div className={`ops${view === "bot" ? " is-bot" : ""}`}>
       <header className="ops__top">
-        <a className="brand" href="/">
-          <span className="brand__mark" aria-hidden="true">
-            <img
-              src="/inb_surveillance.png"
-              alt="Inbound Surveillance"
-              style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover", border: "1px solid #00FF66" }}
-            />
-          </span>
-          <span className="brand__copy">
-            <strong>Inbound Surveillance</strong>
-            <span className="brand__sub">Operator console</span>
-          </span>
-        </a>
-        <p className="venue">{state.venue}</p>
+        <ProfileChip onOpenSetup={() => setSetupOpen(true)} />
+        <p className="venue">{snapshot?.profile.venue_name || state.venue}</p>
       </header>
       <PipelineStrip />
       <div className="ops__body">
@@ -108,6 +113,7 @@ function Shell() {
           {state.toast}
         </div>
       )}
+      <AccountSetup open={setupOpen} onClose={() => setSetupOpen(false)} />
     </div>
   );
 }

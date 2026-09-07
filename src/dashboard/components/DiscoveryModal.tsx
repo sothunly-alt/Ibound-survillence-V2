@@ -11,7 +11,14 @@ export type DiscoveryModalProps = {
   open: boolean;
   engineBase: string;
   onClose: () => void;
-  onConnected?: (info: { name: string; source: string; protocol: string }) => void;
+  onConnected?: (info: {
+    name: string;
+    source: string;
+    protocol: string;
+    vendor?: string;
+    username?: string;
+    password?: string;
+  }) => void;
 };
 
 function protocolFromDevice(dev: DiscoveredDevice): CameraProtocol {
@@ -258,7 +265,14 @@ export function DiscoveryModal({ open, engineBase, onClose, onConnected }: Disco
         setConnecting(false);
         return;
       }
-      onConnected?.({ name, source, protocol });
+      onConnected?.({
+        name,
+        source,
+        protocol,
+        vendor: payload.vendor,
+        username: user,
+        password: pass,
+      });
       onClose();
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connect failed.");

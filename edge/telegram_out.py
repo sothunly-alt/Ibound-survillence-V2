@@ -20,6 +20,21 @@ class TelegramOut:
     def _url(self, method: str) -> str:
         return API.format(token=self.token, method=method)
 
+    def send_message_to(self, chat_id: str, text: str) -> bool:
+        target = str(chat_id or "").strip()
+        if not self.token or not target:
+            print("[telegram] skipped sendMessage (no token/chat_id)")
+            return False
+        response = requests.post(
+            self._url("sendMessage"),
+            data={"chat_id": target, "text": text},
+            timeout=30,
+        )
+        if not response.ok:
+            print(f"[telegram] sendMessage failed: {response.text}")
+            return False
+        return True
+
     def send_message(self, text: str) -> bool:
         if not self.enabled:
             print("[telegram] skipped sendMessage (no token/chat_id)")

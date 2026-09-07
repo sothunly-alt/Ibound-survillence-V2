@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
   <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script id="tailwind-config">
     tailwind.config = {
       darkMode: "class",
@@ -315,18 +316,83 @@
     .wrench-bar > span { display: block; height: 100%; background: #00FF66; }
     #discovery-results { max-height: 11rem; overflow-y: auto; }
     #discover-cred-modal.hidden { display: none; }
+    body.auth-locked > nav,
+    body.auth-locked > main { display: none !important; }
+    #auth-gate {
+      display: none;
+      place-items: center;
+      background: #000000;
+    }
+    body.auth-locked #auth-gate { display: grid; }
+    .auth-card {
+      width: min(420px, calc(100vw - 32px));
+      background: #121212;
+      border: 1px solid #222222;
+      border-radius: 14px;
+      padding: 22px;
+      display: grid;
+      gap: 12px;
+    }
+    .auth-card input {
+      width: 100%;
+      background: #000000;
+      border: 1px solid #2b2b2b;
+      color: #FAFAFA;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .auth-card label span {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
     @media (prefers-reduced-motion: reduce) {
       .animate-pulse { animation: none; }
     }
   </style>
 </head>
-<body class="font-body-md text-body-md antialiased h-screen flex bg-[#000000] text-[#FAFAFA]">
+<body class="auth-locked font-body-md text-body-md antialiased h-screen flex bg-[#000000] text-[#FAFAFA]">
+  <div id="auth-gate" class="fixed inset-0 z-[200]">
+    <form id="auth-form" class="auth-card" data-mode="signin" onsubmit="return submitHubAuth(event)">
+      <div class="flex items-center gap-3">
+        <img src="/inb_surveillance.png" alt="" class="w-9 h-9 rounded-full object-cover border border-primary" />
+        <div>
+          <p class="font-bold">Inbound Surveillance</p>
+          <p class="text-on-surface-variant text-xs">Private operator console</p>
+        </div>
+      </div>
+      <h1 id="auth-title" class="font-headline-md text-headline-md">Sign in</h1>
+      <p class="text-on-surface-variant text-sm">Create an account or sign in. Profile, crew, ROI, camera protocol, and stream URLs stay private to this login.</p>
+      <p id="auth-message" class="text-sm"></p>
+      <div id="auth-signup-fields" class="hidden grid gap-3">
+        <label>
+          <span>Display name</span>
+          <input id="auth-name" placeholder="Operator name" autocomplete="name" />
+        </label>
+        <label>
+          <span>Venue</span>
+          <input id="auth-venue" placeholder="Shop or site name" autocomplete="organization" />
+        </label>
+      </div>
+      <label>
+        <span>Email</span>
+        <input id="auth-email" type="email" required placeholder="you@garage.com" autocomplete="email" />
+      </label>
+      <label>
+        <span>Password</span>
+        <input id="auth-password" type="password" required placeholder="Password" autocomplete="current-password" />
+      </label>
+      <button id="auth-submit" type="submit" class="w-full bg-primary-container text-on-primary py-2.5 rounded-lg font-medium hover:bg-primary transition-colors">Sign in</button>
+      <button id="auth-toggle" type="button" class="w-full border border-outline-variant py-2.5 rounded-lg text-sm hover:border-primary hover:text-primary" onclick="toggleHubAuthMode()">Create account</button>
+    </form>
+  </div>
   <nav class="sidebar fixed left-0 top-0 h-full w-[288px] flex flex-col py-edge-margin border-r border-outline-variant z-20 max-lg:static max-lg:w-full max-lg:h-auto max-lg:relative">
     <div class="px-container-padding mb-6 flex items-center gap-3">
-      <img src="/inb_surveillance.png" alt="Inbound Surveillance" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)]" />
+      <img id="profile-avatar" src="/inb_surveillance.png" alt="" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)]" />
       <div class="min-w-0">
-        <p id="greeting" class="text-on-surface font-bold text-base leading-snug truncate">Operator Hub</p>
-        <p class="text-on-surface-variant text-xs truncate">Inbound Surveillance</p>
+        <p id="greeting" class="text-on-surface font-bold text-base leading-snug truncate">Operator</p>
+        <p id="profile-venue" class="text-on-surface-variant text-xs truncate">Private operator</p>
       </div>
     </div>
     <ul class="flex-1 overflow-y-auto px-4 space-y-1">
@@ -387,8 +453,8 @@
   <main class="ml-[288px] flex-1 flex flex-col h-full bg-black relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
       <div class="flex items-center gap-3 min-w-0">
-        <img src="/inb_surveillance.png" alt="Inbound Surveillance" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0" />
-        <h1 class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Inbound Surveillance</h1>
+        <img id="header-avatar" src="/inb_surveillance.png" alt="" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0" />
+        <h1 id="header-operator" class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Operator</h1>
         <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
           <span class="text-outline">/</span>
           <span class="text-primary border-b border-primary pb-0.5" id="crumb-venue">Garage</span>
@@ -415,9 +481,9 @@
         <button type="button" class="text-on-surface-variant hover:text-primary transition-colors p-1" title="Settings" onclick="showConfigTab('source')">
           <span class="material-symbols-outlined">settings</span>
         </button>
-        <span class="w-8 h-8 rounded-full border border-outline-variant bg-surface-container flex items-center justify-center text-on-surface-variant">
-          <span class="material-symbols-outlined text-[20px]">person</span>
-        </span>
+        <button type="button" class="text-on-surface-variant hover:text-primary transition-colors px-2 py-1 text-xs" title="Sign out" onclick="signOutAccount()">
+          Sign out
+        </button>
       </div>
     </header>
 
@@ -454,6 +520,10 @@
             <button id="btn-toggle-config" type="button" class="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors" title="Collapse / Expand Settings Panel for maximum grid size" onclick="toggleConfigPanel()">
               <span class="material-symbols-outlined text-[15px]" id="icon-toggle-config">expand_more</span>
               <span id="label-toggle-config">Hide Settings</span>
+            </button>
+            <button id="btn-toggle-roi" type="button" class="px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 text-on-surface-variant hover:text-on-surface transition-colors" title="Toggle ROI Overlay Visibility (does not affect background inference or alerts)" onclick="toggleRoiVisibility()">
+              <span class="material-symbols-outlined text-[15px]" id="icon-toggle-roi">layers</span>
+              <span id="label-toggle-roi">ROI: ON</span>
             </button>
           </div>
         </div>
@@ -736,20 +806,33 @@
           </div>
         </div>
 
-        <div id="panel-integrations" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
-          <div class="flex flex-col gap-1.5">
-            <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Telegram Bot Token</label>
-            <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="Optional" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Chat ID</label>
-            <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="e.g. -1001234567890" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
-          </div>
-          <div class="md:col-span-2">
-            <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
-              Capture &amp; Send Test
-            </button>
-            <p id="tg-feedback" class="hidden text-sm mt-3"></p>
+        <div id="panel-integrations" class="p-6 grid grid-cols-1 gap-6 hidden">
+          <div class="rounded-xl border border-outline-variant bg-surface-container p-4 space-y-3">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="text-sm font-semibold text-on-surface">Connect with /start</h3>
+                <p class="text-xs text-on-surface-variant mt-1">The shared garage bot is configured on the engine. Open it, tap Start, and this account’s chat id is saved automatically.</p>
+              </div>
+              <span id="tg-link-badge" class="text-xs px-2 py-1 rounded-full border border-outline-variant text-on-surface-variant">Not linked</span>
+            </div>
+            <p id="tg-link-detail" class="font-mono-data text-xs text-on-surface-variant">Chat ID —</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="btn-connect-tg" class="bg-primary hover:brightness-110 text-on-primary py-2 px-4 rounded-lg font-medium text-sm disabled:opacity-60" onclick="connectTelegramAccount()">
+                Connect Telegram
+              </button>
+              <a id="tg-deep-link" class="hidden bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg font-medium text-sm border border-outline-variant inline-flex items-center" href="#" rel="noopener noreferrer">Open bot in Telegram</a>
+              <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
+                Capture &amp; Send Test
+              </button>
+            </div>
+            <details class="text-xs text-on-surface-variant">
+              <summary class="cursor-pointer select-none">Advanced: paste chat ID manually</summary>
+              <div class="mt-2 flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Chat ID</label>
+                <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Filled automatically after /start" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
+              </div>
+            </details>
+            <p id="tg-feedback" class="hidden text-sm"></p>
           </div>
         </div>
       </div>
@@ -886,10 +969,175 @@
 
     const BAY_COLORS = ['#34d399', '#fbbf24', '#c084fc', '#60a5fa', '#f472b6', '#2dd4bf'];
 
+    let supabaseClient = null;
+    let hubStarted = false;
+    let enteringHub = false;
+    let hubAccountUser = null;
+    let hubAccountProfile = null;
+    let telegramLinkPollTimer = null;
+
     function greetingText() {
       const h = new Date().getHours();
       const part = h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening';
-      return 'Good ' + part + ', Owner';
+      return 'Good ' + part;
+    }
+
+    function showAuthMessage(text, isError) {
+      const el = document.getElementById('auth-message');
+      if (!el) return;
+      el.textContent = text || '';
+      el.className = 'text-sm ' + (isError ? 'text-error' : 'text-primary');
+    }
+
+    function toggleHubAuthMode() {
+      const form = document.getElementById('auth-form');
+      const signup = form.dataset.mode !== 'signup';
+      form.dataset.mode = signup ? 'signup' : 'signin';
+      document.getElementById('auth-signup-fields').classList.toggle('hidden', !signup);
+      document.getElementById('auth-title').textContent = signup ? 'Create account' : 'Sign in';
+      document.getElementById('auth-submit').textContent = signup ? 'Create account' : 'Sign in';
+      document.getElementById('auth-toggle').textContent = signup ? 'Already have an account? Sign in' : 'Create account';
+      document.getElementById('auth-password').autocomplete = signup ? 'new-password' : 'current-password';
+      showAuthMessage('', false);
+    }
+
+    async function signedAvatarUrl(path) {
+      if (!path || !supabaseClient) return null;
+      const { data, error } = await supabaseClient.storage.from('account-private').createSignedUrl(path, 3600);
+      if (error) return null;
+      return data.signedUrl;
+    }
+
+    async function loadAccountProfile(user) {
+      hubAccountUser = user;
+      let profile = null;
+      const lookup = await supabaseClient.from('profiles').select('*').eq('id', user.id).maybeSingle();
+      if (!lookup.error && lookup.data) profile = lookup.data;
+      if (!profile) {
+        const fallbackName = (user.user_metadata && user.user_metadata.display_name) || (user.email || '').split('@')[0] || 'Operator';
+        const fallbackVenue = (user.user_metadata && user.user_metadata.venue_name) || '';
+        const inserted = await supabaseClient.from('profiles').upsert({
+          id: user.id,
+          display_name: fallbackName,
+          venue_name: fallbackVenue,
+        }).select('*').single();
+        if (!inserted.error) profile = inserted.data;
+      }
+      hubAccountProfile = profile;
+      const name = (profile && profile.display_name) || (user.email || '').split('@')[0] || 'Operator';
+      const venue = (profile && profile.venue_name) || 'Private operator';
+      const avatar = profile ? await signedAvatarUrl(profile.avatar_path) : null;
+      const greeting = document.getElementById('greeting');
+      const venueEl = document.getElementById('profile-venue');
+      const headerName = document.getElementById('header-operator');
+      const crumb = document.getElementById('crumb-venue');
+      if (greeting) greeting.textContent = name;
+      if (venueEl) venueEl.textContent = venue;
+      if (headerName) headerName.textContent = name;
+      if (crumb) crumb.textContent = venue;
+      ['profile-avatar', 'header-avatar'].forEach((id) => {
+        const img = document.getElementById(id);
+        if (!img) return;
+        img.src = avatar || '/inb_surveillance.png';
+        img.alt = name;
+      });
+      if (profile && profile.telegram_chat_id) {
+        const chatInput = document.getElementById('tg-chat-input');
+        if (chatInput && !chatInput.value) chatInput.value = profile.telegram_chat_id;
+        try {
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_chat_id: profile.telegram_chat_id }),
+          });
+        } catch (_) {}
+      }
+      paintTelegramLinkStatus({
+        telegram_chat_id: (profile && profile.telegram_chat_id) || '',
+        telegram_username: (profile && profile.telegram_username) || '',
+      });
+    }
+
+    async function enterHub(session) {
+      if (!session || enteringHub) return;
+      enteringHub = true;
+      try {
+        document.body.classList.remove('auth-locked');
+        await loadAccountProfile(session.user);
+        startHub();
+      } finally {
+        enteringHub = false;
+      }
+    }
+
+    async function submitHubAuth(event) {
+      event.preventDefault();
+      if (!supabaseClient) {
+        showAuthMessage('Supabase is not configured. Restart the engine after setting .env.', true);
+        return false;
+      }
+      const form = document.getElementById('auth-form');
+      const signup = form.dataset.mode === 'signup';
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const displayName = document.getElementById('auth-name').value.trim();
+      const venueName = document.getElementById('auth-venue').value.trim();
+      showAuthMessage('', false);
+      try {
+        if (signup) {
+          if (password.length < 8) throw new Error('Password must be at least 8 characters.');
+          const { data, error } = await supabaseClient.auth.signUp({
+            email,
+            password,
+            options: {
+              emailRedirectTo: window.location.origin + '/',
+              data: { display_name: displayName, venue_name: venueName },
+            },
+          });
+          if (error) throw error;
+          if (!data.session) showAuthMessage('Account created. Confirm the email link, then sign in.', false);
+        } else {
+          const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+        }
+      } catch (err) {
+        showAuthMessage(err.message || 'Authentication failed.', true);
+      }
+      return false;
+    }
+
+    async function signOutAccount() {
+      try {
+        await fetch('/api/disconnect', { method: 'POST' });
+      } catch (_) {}
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      window.location.reload();
+    }
+
+    async function bootHubAuth() {
+      try {
+        const res = await fetch('/api/public-config', { cache: 'no-store' });
+        const cfg = await res.json();
+        if (!cfg.configured || !window.supabase) {
+          showAuthMessage('Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env, then restart the engine.', true);
+          return;
+        }
+        supabaseClient = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            flowType: 'pkce',
+          },
+        });
+        supabaseClient.auth.onAuthStateChange((_event, session) => {
+          if (session) void enterHub(session);
+        });
+        const { data } = await supabaseClient.auth.getSession();
+        if (data.session) await enterHub(data.session);
+      } catch (err) {
+        showAuthMessage(err.message || 'Could not start authentication.', true);
+      }
     }
 
     function showConfigTab(name) {
@@ -1266,7 +1514,6 @@
 
     function hubSettingsPayload() {
       return {
-        telegram_bot_token: document.getElementById('tg-token-input').value,
         telegram_chat_id: document.getElementById('tg-chat-input').value,
         venue: document.getElementById('venue-input').value,
         garage_name: document.getElementById('venue-input').value,
@@ -2075,6 +2322,29 @@
       } else {
         requestAnimationFrame(layoutVideoStage);
       }
+    }
+
+    let roiVisible = localStorage.getItem('roi_overlay_visible') !== 'false';
+    function updateRoiVisibilityUI() {
+      const overlay = document.getElementById('roi-overlay');
+      const label = document.getElementById('label-toggle-roi');
+      const icon = document.getElementById('icon-toggle-roi');
+      const btn = document.getElementById('btn-toggle-roi');
+      if (overlay) {
+        overlay.style.display = roiVisible ? 'block' : 'none';
+      }
+      if (label) label.textContent = roiVisible ? 'ROI: ON' : 'ROI: OFF';
+      if (icon) icon.textContent = roiVisible ? 'layers' : 'layers_clear';
+      if (btn) {
+        btn.classList.toggle('text-primary', roiVisible);
+        btn.classList.toggle('text-on-surface-variant', !roiVisible);
+      }
+    }
+
+    function toggleRoiVisibility() {
+      roiVisible = !roiVisible;
+      localStorage.setItem('roi_overlay_visible', String(roiVisible));
+      updateRoiVisibilityUI();
     }
 
     function setLayoutMode(mode) {
@@ -3107,8 +3377,12 @@
         }
         if (currentConfig.flip !== undefined) flipMode = currentConfig.flip || 'none';
         paintOrient();
-        if (currentConfig.telegram_bot_token) document.getElementById('tg-token-input').value = currentConfig.telegram_bot_token;
         if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
+        paintTelegramLinkStatus({
+          telegram_chat_id: currentConfig.telegram_chat_id || '',
+          telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
+          bot_username: currentConfig.telegram_bot_username || '',
+        });
         if (Array.isArray(currentConfig.bays) && currentConfig.bays.length) {
           liveBays = currentConfig.bays.map(cloneBay);
           selectedBayId = liveBays[0].id;
@@ -3133,8 +3407,10 @@
         renderCameraList();
         updateCrumbs();
         updateImportGridOptions();
-        if (activeCameraId || currentConfig.source !== undefined) {
-          connectAndStreamCamera();
+        if (!document.body.classList.contains('auth-locked')) {
+          if (activeCameraId || currentConfig.source !== undefined) {
+            connectAndStreamCamera();
+          }
         }
       } catch (err) {
         console.error('Failed to load config:', err);
@@ -3230,7 +3506,6 @@
             rotate: payload.rotate,
             flip: payload.flip,
             roi: payload.roi,
-            telegram_bot_token: document.getElementById('tg-token-input').value,
             telegram_chat_id: document.getElementById('tg-chat-input').value
           })
         });
@@ -3803,10 +4078,11 @@
 
     async function persistLiveBays() {
       try {
+        const baysToPersist = liveBays.filter((b) => !b.is_auto && !String(b.id || '').startsWith('auto_'));
         const res = await fetch('/api/garage/bays', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bays: liveBays })
+          body: JSON.stringify({ bays: baysToPersist })
         });
         const data = await res.json();
         if (Array.isArray(data.bays)) {
@@ -4251,6 +4527,7 @@
       overlay.style.height = rect.height + 'px';
 
       syncBayDom();
+      updateRoiVisibilityUI();
 
       const stageW = rect.width || 640;
       const stageH = rect.height || 480;
@@ -4518,6 +4795,252 @@
       return '🔴 Low';
     }
 
+    function fmtMinutes(minutes) {
+      const total = Math.max(0, Number(minutes) || 0);
+      const hours = Math.floor(total / 60);
+      const mins = Math.round(total % 60);
+      if (hours <= 0) return mins + 'm';
+      return hours + 'h ' + String(mins).padStart(2, '0') + 'm';
+    }
+
+    function fmtClockSlice(value) {
+      if (!value) return '—';
+      const text = String(value);
+      if (text.length >= 16) return text.slice(11, 16);
+      return text;
+    }
+
+    function paintTelegramLinkStatus(info) {
+      const badge = document.getElementById('tg-link-badge');
+      const detail = document.getElementById('tg-link-detail');
+      const chatId = (info && (info.telegram_chat_id || (info.just_linked && info.just_linked.chat_id))) || document.getElementById('tg-chat-input').value || '';
+      const username = (info && (info.telegram_username || (info.just_linked && info.just_linked.telegram_username))) || '';
+      const linked = !!chatId;
+      if (badge) {
+        badge.textContent = linked ? 'Linked' : (info && info.pending && info.pending.length ? 'Waiting for /start' : 'Not linked');
+        badge.className = 'text-xs px-2 py-1 rounded-full border ' + (
+          linked
+            ? 'border-primary/40 text-primary bg-primary/10'
+            : 'border-outline-variant text-on-surface-variant'
+        );
+      }
+      if (detail) {
+        detail.textContent = linked
+          ? ('Chat ID ' + chatId + (username ? ' · @' + username : ''))
+          : (info && info.bot_username ? ('Bot @' + info.bot_username + ' · waiting for /start') : 'Chat ID —');
+      }
+    }
+
+    async function persistTelegramLinkToAccount(link) {
+      if (!supabaseClient || !hubAccountUser || !link || !link.chat_id) return;
+      const patch = {
+        telegram_chat_id: String(link.chat_id),
+        telegram_user_id: String(link.telegram_user_id || ''),
+        telegram_username: String(link.telegram_username || ''),
+        telegram_linked_at: new Date().toISOString(),
+      };
+      const { data, error } = await supabaseClient
+        .from('profiles')
+        .update(patch)
+        .eq('id', hubAccountUser.id)
+        .select('*')
+        .single();
+      if (error) {
+        const feedback = document.getElementById('tg-feedback');
+        showBanner(
+          feedback,
+          false,
+          'Linked locally, but account save failed: ' + error.message +
+            ' Apply migration telegram_link_on_profiles if the telegram columns are missing.'
+        );
+        paintTelegramLinkStatus({ telegram_chat_id: link.chat_id, telegram_username: link.telegram_username || '' });
+        return;
+      }
+      if (data) {
+        hubAccountProfile = data;
+        paintTelegramLinkStatus({
+          telegram_chat_id: data.telegram_chat_id,
+          telegram_username: data.telegram_username,
+        });
+      }
+    }
+
+    function stopTelegramLinkPoll() {
+      if (telegramLinkPollTimer) {
+        clearInterval(telegramLinkPollTimer);
+        telegramLinkPollTimer = null;
+      }
+    }
+
+    async function pollTelegramLinkOnce() {
+      if (!hubAccountUser) return null;
+      const res = await fetch('/api/telegram/status?user_id=' + encodeURIComponent(hubAccountUser.id), { cache: 'no-store' });
+      const data = await res.json();
+      if (data.telegram_chat_id) {
+        const chatInput = document.getElementById('tg-chat-input');
+        if (chatInput) chatInput.value = data.telegram_chat_id;
+      }
+        if (data.just_linked) {
+        stopTelegramLinkPoll();
+        await persistTelegramLinkToAccount(data.just_linked);
+        const feedback = document.getElementById('tg-feedback');
+        showBanner(feedback, true, 'Telegram linked. Alerts will go to this chat.');
+      } else {
+        paintTelegramLinkStatus(data);
+        if (data.last_error) {
+          const feedback = document.getElementById('tg-feedback');
+          const err = String(data.last_error);
+          const tip = /webhook/i.test(err)
+            ? ' Delete any Telegram webhook on this bot (getUpdates cannot run with a webhook set).'
+            : '';
+          showBanner(feedback, false, err + tip);
+        }
+      }
+      return data;
+    }
+
+    function telegramAppLink(botUsername, startCode) {
+      const user = String(botUsername || '').replace(/^@/, '').trim();
+      const code = String(startCode || '').trim();
+      if (!user) return { app: '', web: '' };
+      const web = code
+        ? ('https://t.me/' + encodeURIComponent(user) + '?start=' + encodeURIComponent(code))
+        : ('https://t.me/' + encodeURIComponent(user));
+      const app = code
+        ? ('tg://resolve?domain=' + encodeURIComponent(user) + '&start=' + encodeURIComponent(code))
+        : ('tg://resolve?domain=' + encodeURIComponent(user));
+      return { app: app, web: web };
+    }
+
+    function bindTelegramOpenLink(deep, data) {
+      if (!deep) return;
+      const links = telegramAppLink(data.bot_username, data.code);
+      const appHref = data.app_link || links.app;
+      const webHref = data.deep_link || links.web;
+      deep.dataset.appLink = appHref || '';
+      deep.dataset.webLink = webHref || '';
+      deep.href = appHref || webHref || '#';
+      deep.classList.toggle('hidden', !(appHref || webHref));
+      deep.textContent = data.bot_username
+        ? ('Open @' + String(data.bot_username).replace(/^@/, ''))
+        : 'Open bot in Telegram';
+      deep.onclick = function (ev) {
+        ev.preventDefault();
+        openTelegramClient(appHref, webHref);
+        void fetch('/api/telegram/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_link: appHref || '', deep_link: webHref || '' }),
+        }).catch(() => {});
+      };
+    }
+
+    function openTelegramClient(appLink, webLink) {
+      const app = String(appLink || '').trim();
+      const web = String(webLink || '').trim();
+      // Never navigate the hub itself. Use a hidden anchor / iframe so Telegram Desktop
+      // can claim tg:// on Windows, macOS, and Linux without leaving this page.
+      if (app) {
+        const anchor = document.createElement('a');
+        anchor.href = app;
+        anchor.rel = 'noopener noreferrer';
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        const frame = document.createElement('iframe');
+        frame.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none';
+        frame.src = app;
+        document.body.appendChild(frame);
+        window.setTimeout(() => { try { frame.remove(); } catch (_) {} }, 2000);
+        return;
+      }
+      if (web) {
+        const anchor = document.createElement('a');
+        anchor.href = web;
+        anchor.rel = 'noopener noreferrer';
+        anchor.target = '_blank';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+    }
+
+    async function connectTelegramAccount() {
+      const feedback = document.getElementById('tg-feedback');
+      const btn = document.getElementById('btn-connect-tg');
+      const deep = document.getElementById('tg-deep-link');
+      if (!hubAccountUser) {
+        showBanner(feedback, false, 'Sign in first so we can save the Telegram link to your account.');
+        return;
+      }
+      // Keep a user-gesture window/handle ready; after await, popups are often blocked.
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/telegram/begin-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: hubAccountUser.id,
+            display_name: (hubAccountProfile && hubAccountProfile.display_name) || hubAccountUser.email || 'Operator',
+            open_client: true,
+          }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showBanner(feedback, false, data.error || 'Could not start Telegram link.');
+          return;
+        }
+        paintTelegramLinkStatus(data.status || data);
+        bindTelegramOpenLink(deep, data);
+        openTelegramClient(data.app_link || '', data.deep_link || '');
+        try {
+          await fetch('/api/telegram/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              app_link: data.app_link || '',
+              deep_link: data.deep_link || '',
+            }),
+          });
+        } catch (_) {}
+        const opened = data.opened_on_host ? ' Telegram should open on this computer.' : ' If Telegram did not open, click Open @' + (data.bot_username || 'bot') + '.';
+        showBanner(feedback, true, (data.instructions || 'Open Telegram and tap Start.') + opened);
+        stopTelegramLinkPoll();
+        telegramLinkPollTimer = setInterval(() => { void pollTelegramLinkOnce(); }, 2000);
+        void pollTelegramLinkOnce();
+      } catch (err) {
+        showBanner(feedback, false, err.message || 'Telegram link failed.');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function testTelegram() {
+      const btn = document.getElementById('btn-test-tg');
+      const feedback = document.getElementById('tg-feedback');
+      btn.disabled = true;
+      feedback.classList.add('hidden');
+      try {
+        const res = await fetch('/api/test-telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: document.getElementById('tg-chat-input').value,
+            venue: document.getElementById('venue-input').value,
+            garage_name: document.getElementById('venue-input').value,
+            source: buildSource()
+          })
+        });
+        const data = await res.json();
+        showBanner(feedback, !!data.success, data.success ? data.message : (data.error || 'Failed to deliver Telegram photo.'));
+      } catch (err) {
+        showBanner(feedback, false, 'Error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     async function renderScorecard() {
       const root = document.getElementById('scorecard-content');
       if (!root) return;
@@ -4526,7 +5049,11 @@
         const data = await res.json();
         const shop = data.shop || {};
         const util = document.getElementById('scorecard-util');
-        if (util) util.textContent = 'Utilization ' + (shop.utilization_pct != null ? shop.utilization_pct + '%' : '—');
+        if (util) {
+          const utilPct = shop.utilization_pct != null ? Number(shop.utilization_pct).toFixed(0) + '%' : '—';
+          const staffH = shop.total_shift_hours != null ? Number(shop.total_shift_hours).toFixed(1) + 'h staff' : '';
+          util.textContent = 'Utilization ' + utilPct + (staffH ? ' · ' + staffH : '');
+        }
         const rawTechs = data.technicians || data.attendance_logs || [];
         const seenStaff = new Set();
         const techs = [];
@@ -4539,6 +5066,17 @@
         const wifi = {};
         (data.wifi_devices || []).forEach((d) => { wifi[d.name] = d; });
         let html = '';
+        html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">'
+          + '<div class="rounded-xl border border-outline-variant bg-surface-container p-3"><p class="text-xs text-on-surface-variant">Shop window</p><p class="font-mono-data text-sm text-on-surface mt-1">'
+          + identityEsc((shop.open_time || '08:00') + '–' + (shop.close_time || '18:00')) + '</p></div>'
+          + '<div class="rounded-xl border border-outline-variant bg-surface-container p-3"><p class="text-xs text-on-surface-variant">Elapsed</p><p class="font-mono-data text-sm text-on-surface mt-1">'
+          + identityEsc(shop.operating_hours != null ? Number(shop.operating_hours).toFixed(1) + 'h' : '—') + '</p></div>'
+          + '<div class="rounded-xl border border-outline-variant bg-surface-container p-3"><p class="text-xs text-on-surface-variant">Staff hours</p><p class="font-mono-data text-sm text-on-surface mt-1">'
+          + identityEsc(shop.total_shift_hours != null ? Number(shop.total_shift_hours).toFixed(1) + 'h' : '—') + '</p></div>'
+          + '<div class="rounded-xl border border-outline-variant bg-surface-container p-3"><p class="text-xs text-on-surface-variant">Utilization</p><p class="font-mono-data text-sm text-primary mt-1">'
+          + identityEsc(shop.utilization_pct != null ? Number(shop.utilization_pct).toFixed(0) + '%' : '—') + '</p></div>'
+          + '</div>';
+
         if (!techs.length) {
           html += '<div class="rounded-xl border border-dashed border-outline-variant p-8 text-center text-on-surface-variant">No clock-ins yet today. Face ID at the entrance starts a shift.</div>';
         } else {
@@ -4546,16 +5084,26 @@
           techs.forEach((tech) => {
             const score = Number(tech.performance_score || tech.wrench_pct || 0);
             const wifiOn = !!(tech.wifi_connected || (wifi[tech.staff_name] && wifi[tech.staff_name].connected));
+            const presence = tech.presence || (wifiOn ? 'face+wifi' : 'camera');
+            const bayLabel = tech.current_bay ? (' · ' + tech.current_bay) : '';
             html += '<div class="rounded-xl border border-outline-variant bg-surface-container p-4 space-y-3">'
               + '<div class="flex items-start justify-between gap-3">'
               + '<div><p class="text-on-surface font-medium">' + identityEsc(tech.staff_name) + '</p>'
-              + '<p class="text-xs text-on-surface-variant mt-0.5">' + identityEsc(tech.attendance || 'Clocked In') + '</p></div>'
+              + '<p class="text-xs text-on-surface-variant mt-0.5">' + identityEsc((tech.attendance || 'Clocked In') + bayLabel) + '</p></div>'
               + '<div class="flex items-center gap-2">'
               + '<span title="Garage Wi-Fi" class="w-2.5 h-2.5 rounded-full ' + (wifiOn ? 'bg-green-500' : 'bg-outline') + '"></span>'
               + '<span class="text-xs">' + badgeEmoji(tech.badge) + '</span></div></div>'
-              + '<p class="font-mono-data text-mono-data text-on-surface-variant">In ' + identityEsc((tech.clock_in_time || '').slice(11, 16) || '—')
-              + ' · Out ' + identityEsc((tech.clock_out_time || '').slice(11, 16) || '—') + '</p>'
-              + '<div><div class="flex justify-between text-xs mb-1"><span>Wrench time</span><span>' + score.toFixed(0) + '%</span></div>'
+              + '<div class="grid grid-cols-2 gap-2 text-xs">'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">In</p><p class="font-mono-data text-on-surface mt-0.5">' + identityEsc(fmtClockSlice(tech.clock_in_time)) + '</p></div>'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">Out</p><p class="font-mono-data text-on-surface mt-0.5">' + identityEsc(fmtClockSlice(tech.clock_out_time)) + '</p></div>'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">Shift</p><p class="font-mono-data text-on-surface mt-0.5">' + identityEsc(fmtMinutes(tech.total_shift_minutes)) + '</p></div>'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">Presence</p><p class="font-mono-data text-on-surface mt-0.5">' + identityEsc(presence) + '</p></div>'
+              + '</div>'
+              + '<div class="grid grid-cols-2 gap-2 text-xs">'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">Wrench</p><p class="font-mono-data text-primary mt-0.5">' + identityEsc(fmtMinutes(tech.wrench_minutes)) + ' · ' + score.toFixed(0) + '%</p></div>'
+              + '<div class="rounded-lg bg-surface-container-low p-2"><p class="text-on-surface-variant">Idle / break</p><p class="font-mono-data text-on-surface mt-0.5">' + identityEsc(fmtMinutes(tech.idle_minutes)) + '</p></div>'
+              + '</div>'
+              + '<div><div class="flex justify-between text-xs mb-1"><span>Wrench efficiency</span><span>' + score.toFixed(0) + '%</span></div>'
               + '<div class="wrench-bar"><span style="width:' + Math.min(100, score) + '%"></span></div></div>'
               + '</div>';
           });
@@ -4566,8 +5114,11 @@
           html += '<div class="rounded-xl border border-outline-variant bg-surface-container-low p-4">'
             + '<h3 class="text-sm font-semibold text-on-surface mb-3">Bay utilization</h3><div class="grid grid-cols-1 md:grid-cols-3 gap-3">';
           bays.forEach((bay) => {
+            const activeH = ((Number(bay.active_seconds) || 0) / 3600).toFixed(1);
+            const idleH = ((Number(bay.idle_seconds) || 0) / 3600).toFixed(1);
             html += '<div class="bg-surface-container rounded-lg p-3"><p class="text-sm text-on-surface">' + identityEsc(bay.bay_id)
-              + '</p><p class="font-mono-data text-mono-data text-primary mt-1">' + Number(bay.utilization_pct || 0).toFixed(0) + '%</p></div>';
+              + '</p><p class="font-mono-data text-mono-data text-primary mt-1">' + Number(bay.utilization_pct || 0).toFixed(0) + '%</p>'
+              + '<p class="text-[11px] text-on-surface-variant mt-1">Wrench ' + identityEsc(activeH) + 'h · Idle ' + identityEsc(idleH) + 'h · ' + Number(bay.session_count || 0) + ' sessions</p></div>';
           });
           html += '</div></div>';
         }
@@ -4617,32 +5168,6 @@
       }
     }
 
-    async function testTelegram() {
-      const btn = document.getElementById('btn-test-tg');
-      const feedback = document.getElementById('tg-feedback');
-      btn.disabled = true;
-      feedback.classList.add('hidden');
-      try {
-        const res = await fetch('/api/test-telegram', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: document.getElementById('tg-token-input').value,
-            chat_id: document.getElementById('tg-chat-input').value,
-            venue: document.getElementById('venue-input').value,
-            garage_name: document.getElementById('venue-input').value,
-            source: buildSource()
-          })
-        });
-        const data = await res.json();
-        showBanner(feedback, !!data.success, data.success ? data.message : (data.error || 'Failed to deliver Telegram photo.'));
-      } catch (err) {
-        showBanner(feedback, false, 'Error: ' + err.message);
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
     function tickClock() {
       const d = new Date();
       const pad = (n) => String(n).padStart(2, '0');
@@ -4652,7 +5177,12 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('greeting').textContent = greetingText();
+      void bootHubAuth();
+    });
+
+    function startHub() {
+      if (hubStarted) return;
+      hubStarted = true;
       paintOrient();
       onProtocolChange();
       refreshUploadedVideos();
@@ -4704,7 +5234,7 @@
           fileInput.value = '';
         });
       }
-    });
+    }
   </script>
 </body>
 </html>

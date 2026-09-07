@@ -214,6 +214,32 @@ class TestAIAuditor(unittest.TestCase):
 
         auditor.shutdown()
 
+    def test_default_model_and_config(self):
+        client = FireworksVLMClient(api_key="test-key")
+        self.assertEqual(client.model, "accounts/fireworks/models/deepseek-v4-flash-vision-exp")
+        self.assertEqual(client.timeout, 25.0)
+
+    def test_http_error_detail_extraction(self):
+        from unittest.mock import MagicMock, patch
+        import requests
+
+        client = FireworksVLMClient(api_key="fake-key")
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {
+            "error": {"message": "Model not found, inaccessible, and/or not deployed"}
+        }
+        http_err = requests.exceptions.HTTPError(
+            "404 Client Error: Not Found for url: https://api.fireworks.ai/inference/v1/chat/completions",
+            response=mock_response,
+        )
+
+        with patch("requests.post", side_effect=http_err):
+            verdict = client.audit_activity("h", "c", "bay_1", "Bob")
+            self.assertEqual(verdict.action, "UNKNOWN")
+            self.assertEqual(verdict.confidence, 0.0)
+            self.assertIn("Model not found, inaccessible, and/or not deployed", verdict.explanation)
+
 
 if __name__ == "__main__":
     unittest.main()

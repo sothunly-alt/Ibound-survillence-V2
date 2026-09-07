@@ -3,8 +3,10 @@ import { engineBaseUrl } from "../../engine-url";
 import { engineBayToStation, type StationBay } from "../bay-names";
 import { cameraById, confidenceLabel, formatRelative } from "../format";
 import { holdLabel, holdReason, lastAlertByCamera } from "../rules";
+import { PROTOCOLS } from "../account";
+import { useAccount } from "../auth";
 import { useOps } from "../store";
-import type { Detection, EngineTelemetry } from "../types";
+import type { CameraProtocol, Detection, EngineTelemetry } from "../types";
 import { BayContextMenu } from "./BayContextMenu";
 import { DiscoveryModal } from "./DiscoveryModal";
 
@@ -62,8 +64,13 @@ function formatResolution(tel: EngineTelemetry | null): string {
   return "—";
 }
 
+function asProtocol(value: string): CameraProtocol {
+  return (PROTOCOLS as string[]).includes(value) ? (value as CameraProtocol) : "rtsp";
+}
+
 export function LiveView() {
   const { state } = useOps();
+  const { saveCamera, saveRois } = useAccount();
   const [engineLive, setEngineLive] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [telemetry, setTelemetry] = useState<EngineTelemetry | null>(null);
@@ -72,6 +79,13 @@ export function LiveView() {
   const detections = [...state.detections].sort((a, b) => b.ts - a.ts);
   const engine = engineBaseUrl();
   const [liveFrame, setLiveFrame] = useState("");
+  const [showRoi, setShowRoi] = useState(() => {
+    try {
+      return localStorage.getItem("dashboard_roi_visible") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const bays = useMemo(() => {
     const rows = telemetry?.bays || [];
     return rows
@@ -166,18 +180,31 @@ export function LiveView() {
   }, [selectedBayId, bays, engine]);
 
   async function persistBays(next: StationBay[]) {
-    const res = await fetch(`${engine}/api/garage/bays`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bays: next }),
-    });
-    const data = (await res.json()) as { bays?: Record<string, unknown>[] };
-    if (Array.isArray(data.bays)) {
-      setTelemetry((prev) => ({
-        ...(prev || {}),
-        bays: data.bays,
-      }));
+    try {
+      const res = await fetch(`${engine}/api/garage/bays`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bays: next }),
+      });
+      const data = (await res.json()) as { bays?: Record<string, unknown>[] };
+      if (Array.isArray(data.bays)) {
+        setTelemetry((prev) => ({
+          ...(prev || {}),
+          bays: data.bays,
+        }));
+      }
+    } catch {
+      /* Engine may be offline; still persist ROI privately. */
     }
+    await saveRois(
+      next.map((bay, index) => ({
+        name: bay.name,
+        bay_type: bay.type === "tool_area" ? "tool_area" : "vehicle_bay",
+        roi: bay.roi,
+        external_id: bay.id,
+        sort_order: index,
+      })),
+    );
   }
 
   async function deleteBay(bayId: string) {
@@ -243,6 +270,20 @@ export function LiveView() {
               {hasMain ? <span className="live-badge">MAIN</span> : null}
             </>
           ) : null}
+          <button
+            className={`btn btn--sm ${showRoi ? "btn--primary" : "btn--ghost"}`}
+            type="button"
+            title="Toggle ROI hotspot overlays"
+            onClick={() => {
+              const next = !showRoi;
+              setShowRoi(next);
+              try {
+                localStorage.setItem("dashboard_roi_visible", String(next));
+              } catch {}
+            }}
+          >
+            {showRoi ? "ROI: ON" : "ROI: OFF"}
+          </button>
           <button className="btn btn--ghost btn--sm" type="button" onClick={() => setScanOpen(true)}>
             Scan network
           </button>
@@ -257,30 +298,31 @@ export function LiveView() {
               ) : (
                 <div className="frame__tag">Waiting for frames…</div>
               )}
-              {bays.map((bay) => {
-                const [x, y, w, h] = bay.roi;
-                return (
-                  <button
-                    key={bay.id}
-                    type="button"
-                    className={`roi-hotspot${bay.id === selectedBayId ? " is-selected" : ""}`}
-                    style={{
-                      left: `${x * 100}%`,
-                      top: `${y * 100}%`,
-                      width: `${w * 100}%`,
-                      height: `${h * 100}%`,
-                    }}
-                    onClick={() => setSelectedBayId(bay.id)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setSelectedBayId(bay.id);
-                      setMenu({ x: event.clientX, y: event.clientY });
-                    }}
-                    aria-label={bay.name}
-                    title={bay.name}
-                  />
-                );
-              })}
+              {showRoi &&
+                bays.map((bay) => {
+                  const [x, y, w, h] = bay.roi;
+                  return (
+                    <button
+                      key={bay.id}
+                      type="button"
+                      className={`roi-hotspot${bay.id === selectedBayId ? " is-selected" : ""}`}
+                      style={{
+                        left: `${x * 100}%`,
+                        top: `${y * 100}%`,
+                        width: `${w * 100}%`,
+                        height: `${h * 100}%`,
+                      }}
+                      onClick={() => setSelectedBayId(bay.id)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setSelectedBayId(bay.id);
+                        setMenu({ x: event.clientX, y: event.clientY });
+                      }}
+                      aria-label={bay.name}
+                      title={bay.name}
+                    />
+                  );
+                })}
               <span className="frame__tag">
                 Edge engine · {engine}
                 {proto ? ` · ${proto}` : ""}
@@ -302,6 +344,16 @@ export function LiveView() {
         open={scanOpen}
         engineBase={engine}
         onClose={() => setScanOpen(false)}
+        onConnected={(info) => {
+          void saveCamera({
+            name: info.name,
+            protocol: asProtocol(info.protocol),
+            source_url: info.source,
+            username: info.username,
+            password: info.password,
+            vendor: info.vendor,
+          });
+        }}
       />
       <BayContextMenu
         open={Boolean(menu)}
