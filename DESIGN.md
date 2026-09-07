@@ -81,14 +81,15 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 - **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path.
 
 ## Location / Map (marketing)
-Location is a **tactical node HUD**, not consumer map chrome. City hub only until a permanent shop address is published — never invent a street address.
+Location is a **GT5 / motorsport telemetry radar HUD** — self-drawn SVG/CSS only. Signals “based in Cambodia” without consumer map chrome. Never invent a street address.
 
-- **Basemap:** dark tiles (e.g. Leaflet + Carto Dark Matter). Suppress pastel Google roads / retail POIs.
-- **Pin:** one Terminal Green pulse marker at the published city coords (`11.5564, 104.9282` for Phnom Penh). Label: `PP-NODE // PHNOM PENH` in IBM Plex Mono.
-- **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed; telemetry strip over the map is ambient, not a CTA.
-- **Directions:** one `btn-ghost` “Open directions” → Google Maps city search (or real address when published). Never neon on the location block.
-- **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
-- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with Book a Free Bay Demo.
+- **Canvas:** True Black `#000000` void, subtle tactical grid, circular radar range rings.
+- **Geometry:** Simplified Cambodia silhouette in graphite `#161616`; Tonle Sap as dark negative space; National Roads 4 / 5 / 6 as glowing sector traces in stealth dim green `#00330e`.
+- **Node:** Phnom Penh lock at published coords (`11.5564, 104.9282`) — Terminal Green `#00FF41` aperture crosshair + radar ping. HUD tag e.g. `SECTOR: KHM-PP-01 // LAT: … // LON: … // ELEV: 12M` in IBM Plex Mono.
+- **Frame:** ≤4px radius, industrial corner brackets; telemetry is ambient, not a CTA.
+- **External nav:** one ghost control `[ EXTERNAL NAV DIRECTORY ]` → Google Maps query for the coords. Never neon on the location block.
+- **Motion:** short crosshair / ping pulse only; `prefers-reduced-motion` → static.
+- **Forbidden:** Leaflet, Mapbox, Google Maps JS embeds, tile basemaps, API keys, © attribution footers, light consumer map UI, invented street address, second neon CTA competing with Book a Free Bay Demo.
 
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
@@ -114,3 +115,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-04 | Pose/body primary; Face ID assist | Mechanics under cars / masked / facing away |
 | 2026-09-07 | Hick’s lock on marketing CTAs | One neon primary (Book a Free Bay Demo); kill decision fatigue before Thursday pitch |
 | 2026-09-07 | Tactical PP-NODE location HUD | Carto Dark + neon pin; brand immunity vs pastel Google; city hub only |
+| 2026-09-07 | GT5 Cambodia SVG radar (no tiles) | Zero keys/watermarks; motorsport telemetry vibe; Leaflet removed |

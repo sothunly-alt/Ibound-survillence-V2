@@ -80,12 +80,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="css/styles.css" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
     <style>
       html,
       body {
@@ -740,24 +734,102 @@
             </p>
             <p class="mono location-coords">11.5564° N, 104.9282° E</p>
             <a
-              class="btn btn-ghost"
-              href="https://www.google.com/maps/search/?api=1&query=Phnom+Penh%2C+Cambodia"
+              class="btn btn-ghost location-ext-nav"
+              href="https://maps.google.com/?q=11.5564,104.9282"
               target="_blank"
               rel="noopener noreferrer"
-              >Open directions</a
+              >[ EXTERNAL NAV DIRECTORY ]</a
             >
           </div>
-          <div class="map-frame" data-pp-node>
+          <div class="map-frame radar-frame" data-pp-node>
             <div class="map-corners" aria-hidden="true"></div>
-            <div
-              id="pp-map"
-              class="pp-map"
+            <svg
+              class="gt5-radar"
+              viewBox="0 0 480 420"
               role="img"
-              aria-label="Phnom Penh edge hub at 11.5564 N, 104.9282 E"
-            ></div>
+              aria-label="Cambodia telemetry radar — Phnom Penh sector KHM-PP-01 at 11.5564 N, 104.9282 E"
+            >
+              <defs>
+                <pattern id="radar-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+                  <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#0a0a0a" stroke-width="1" />
+                </pattern>
+                <radialGradient id="radar-wash" cx="50%" cy="52%" r="55%">
+                  <stop offset="0%" stop-color="#00330e" stop-opacity="0.18" />
+                  <stop offset="70%" stop-color="#000000" stop-opacity="0" />
+                </radialGradient>
+                <clipPath id="cambodia-clip">
+                  <path
+                    d="M118 72 C148 48 188 42 228 46 C268 50 302 62 338 78 C368 92 392 118 402 148
+                       C414 186 408 228 392 262 C378 292 352 318 318 338 C288 356 252 368 214 372
+                       C178 376 142 368 118 348 C92 326 78 294 74 258 C70 218 78 178 92 146
+                       C102 118 108 92 118 72 Z"
+                  />
+                </clipPath>
+              </defs>
+
+              <rect width="480" height="420" fill="#000000" />
+              <rect width="480" height="420" fill="url(#radar-grid)" />
+              <rect width="480" height="420" fill="url(#radar-wash)" />
+
+              <!-- Range rings -->
+              <g class="radar-rings" fill="none" stroke="#0f1f14" stroke-width="1">
+                <circle cx="248" cy="220" r="60" />
+                <circle cx="248" cy="220" r="110" />
+                <circle cx="248" cy="220" r="160" />
+                <circle cx="248" cy="220" r="200" />
+              </g>
+              <line x1="248" y1="20" x2="248" y2="400" stroke="#0f1f14" stroke-width="1" />
+              <line x1="48" y1="220" x2="448" y2="220" stroke="#0f1f14" stroke-width="1" />
+
+              <!-- Cambodia silhouette -->
+              <path
+                class="cambodia-land"
+                d="M118 72 C148 48 188 42 228 46 C268 50 302 62 338 78 C368 92 392 118 402 148
+                   C414 186 408 228 392 262 C378 292 352 318 318 338 C288 356 252 368 214 372
+                   C178 376 142 368 118 348 C92 326 78 294 74 258 C70 218 78 178 92 146
+                   C102 118 108 92 118 72 Z"
+                fill="#161616"
+                stroke="#1e1e1e"
+                stroke-width="1.5"
+              />
+
+              <!-- Tonle Sap negative cutout -->
+              <ellipse class="tonle-sap" cx="232" cy="188" rx="38" ry="52" fill="#000000" opacity="0.92" />
+              <ellipse cx="232" cy="188" rx="38" ry="52" fill="none" stroke="#0a0a0a" stroke-width="1" />
+
+              <!-- National Roads 4 / 5 / 6 as sector traces -->
+              <g class="road-traces" fill="none" stroke="#00330e" stroke-width="2.5" stroke-linecap="round">
+                <!-- NR5 west–east through PP corridor -->
+                <path d="M96 248 C140 242 180 236 220 248 C260 260 300 268 360 258" />
+                <!-- NR6 northeast -->
+                <path d="M248 268 C278 240 312 210 352 168" />
+                <!-- NR4 southwest toward coast -->
+                <path d="M248 268 C220 290 180 312 142 338" />
+              </g>
+
+              <!-- Phnom Penh target node ~ south-central -->
+              <g class="pp-node" transform="translate(248 268)">
+                <circle class="radar-ping" r="28" fill="none" stroke="#00FF41" stroke-width="1.2" />
+                <circle class="radar-ping radar-ping-delay" r="28" fill="none" stroke="#00FF41" stroke-width="1" />
+                <circle class="node-core" r="4" fill="#00FF41" />
+                <g class="crosshair" stroke="#00FF41" stroke-width="1.5" fill="none">
+                  <line x1="-16" y1="0" x2="-7" y2="0" />
+                  <line x1="7" y1="0" x2="16" y2="0" />
+                  <line x1="0" y1="-16" x2="0" y2="-7" />
+                  <line x1="0" y1="7" x2="0" y2="16" />
+                  <rect x="-10" y="-10" width="20" height="20" />
+                </g>
+              </g>
+
+              <text class="radar-label" x="56" y="48" fill="#00330e" font-family="IBM Plex Mono, monospace" font-size="9">
+                SECTOR SCAN // KHM
+              </text>
+              <text class="radar-label" x="340" y="400" fill="#00330e" font-family="IBM Plex Mono, monospace" font-size="9">
+                RNG 200KM
+              </text>
+            </svg>
             <div class="map-telemetry mono">
-              <span>PP-NODE // PHNOM PENH</span>
-              <span class="muted">11.5564 / 104.9282</span>
+              <span>SECTOR: KHM-PP-01 // LAT: 11.5564° N // LON: 104.9282° E // ELEV: 12M</span>
             </div>
           </div>
         </div>
@@ -877,11 +949,6 @@
       </div>
     </div>
 
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
     <script src="js/main.js"></script>
   </body>
 </html>
