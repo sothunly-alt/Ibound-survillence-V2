@@ -2,9 +2,6 @@ name: Build Cross-Platform Desktop App
 
 on:
   push:
-    branches:
-      - camera-detection
-      - main
     tags:
       - "v*"
   workflow_dispatch:
