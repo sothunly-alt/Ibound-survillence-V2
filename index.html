@@ -27,7 +27,7 @@
         background: #000;
         margin: 0;
       }
-      .boot-loader {
+      .boot-overlay {
         position: fixed;
         inset: 0;
         z-index: 9999;
@@ -36,26 +36,32 @@
     </style>
   </head>
   <body class="is-booting">
-    <div class="boot-loader" id="boot-loader" role="status" aria-live="polite" aria-busy="true">
-      <p class="boot-brand">Inbound Surveillance</p>
-      <div class="boot-stage">
-        <div class="boot-radar" aria-hidden="true">
-          <div class="boot-sweep"></div>
-          <div class="boot-cross"></div>
-          <div class="boot-ring"></div>
-          <div class="boot-ring inner"></div>
-          <div class="boot-box boot-box-a"></div>
-          <div class="boot-box boot-box-b"></div>
-          <div class="boot-box boot-box-c"></div>
-          <span class="boot-blip"></span>
-          <span class="boot-scan"></span>
+    <div id="boot-loader" class="boot-overlay" role="status" aria-live="polite" aria-busy="true">
+      <div class="boot-modal">
+        <div class="boot-header">
+          <div class="boot-title-group">
+            <span class="boot-dot"></span>
+            <span class="boot-title">INBOUND_DAEMON // V2.0-EDGE</span>
+          </div>
+          <span class="boot-node-id">NODE://PP-BAY-01</span>
         </div>
-        <p class="boot-kicker">Edge node · local</p>
-        <p class="boot-status" data-boot-status>Calibrating optics</p>
-        <div class="boot-track" aria-hidden="true">
-          <span class="boot-bar" data-boot-bar></span>
+
+        <div class="boot-terminal" id="boot-terminal">
+          <div class="log-entry">> INBOUND CORE: INITIALIZING ON-PREMISE STACK</div>
+          <div class="log-entry">> CHECKING LOCAL RUNTIME: ONNX_TENSOR_RT [OK]</div>
+          <div class="log-entry">> LOADING MODEL: YOLOv8_POSE_ESTIMATION (17 PTS)</div>
+          <div class="log-entry log-highlight">> ZERO-CLOUD PIPELINE: SECURE ENCLAVE LOCKED</div>
         </div>
-        <span class="boot-pct" data-boot-pct>00%</span>
+
+        <div class="boot-progress-wrapper">
+          <div class="boot-progress-bar">
+            <div class="boot-progress-fill" id="boot-bar"></div>
+          </div>
+          <div class="boot-telemetry">
+            <span id="boot-status">INITIALIZING POSE PIPELINE...</span>
+            <span id="boot-percentage">0%</span>
+          </div>
+        </div>
       </div>
     </div>
 

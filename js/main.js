@@ -310,91 +310,103 @@ if (shot) {
   });
 }
 
-const bootLoader = document.getElementById("boot-loader");
-const bootStatus = document.querySelector("[data-boot-status]");
-const bootBar = document.querySelector("[data-boot-bar]");
-const bootPct = document.querySelector("[data-boot-pct]");
-
-function loadImage(src) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-    img.src = src;
-  });
-}
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function setBootProgress(value) {
-  const pct = Math.max(0, Math.min(100, Math.round(value)));
-  if (bootBar) bootBar.style.width = `${pct}%`;
-  if (bootPct) bootPct.textContent = `${String(pct).padStart(2, "0")}%`;
-}
-
-async function runBootSequence() {
-  if (!bootLoader) {
+function finishBoot(overlay, { hold = false } = {}) {
+  if (!overlay) {
     document.body.classList.remove("is-booting");
     return;
   }
 
+  overlay.setAttribute("aria-busy", "false");
+  document.body.classList.remove("is-booting");
+
+  if (hold || new URLSearchParams(location.search).has("holdboot")) return;
+
+  try {
+    sessionStorage.setItem("inbound_booted", "true");
+  } catch {
+    /* private mode / blocked storage */
+  }
+
+  overlay.classList.add("boot-complete");
+  setTimeout(() => overlay.remove(), 400);
+}
+
+function initBootSequence() {
+  const overlay = document.getElementById("boot-loader");
+  if (!overlay) {
+    document.body.classList.remove("is-booting");
+    return;
+  }
+
+  if (shot) {
+    overlay.remove();
+    document.body.classList.remove("is-booting");
+    return;
+  }
+
+  const holdBoot = new URLSearchParams(location.search).has("holdboot");
+
+  try {
+    if (!holdBoot && sessionStorage.getItem("inbound_booted")) {
+      overlay.remove();
+      document.body.classList.remove("is-booting");
+      return;
+    }
+  } catch {
+    /* continue boot if storage unavailable */
+  }
+
+  const bar = document.getElementById("boot-bar");
+  const percentText = document.getElementById("boot-percentage");
+  const statusText = document.getElementById("boot-status");
+  const terminal = document.getElementById("boot-terminal");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const narrative = ["Calibrating optics", "Securing connection", "Detecting environment", "Bay locked"];
-  let step = 0;
-  if (bootStatus) bootStatus.textContent = narrative[0];
 
-  const story = setInterval(() => {
-    step = Math.min(step + 1, narrative.length - 1);
-    if (bootStatus) bootStatus.textContent = narrative[step];
-    setBootProgress(18 + step * 22);
-  }, reduced ? 220 : 620);
+  if (reduced) {
+    if (bar) bar.style.width = "100%";
+    if (percentText) percentText.textContent = "100%";
+    if (statusText) statusText.textContent = "RUNTIME ZERO-CLOUD ONLINE";
+    finishBoot(overlay);
+    return;
+  }
 
-  let progress = 8;
-  const tick = setInterval(() => {
-    progress = Math.min(progress + (reduced ? 18 : 4), 86);
-    setBootProgress(progress);
-  }, 120);
+  const logs = [
+    { pct: 25, status: "INITIALIZING POSE PIPELINE...", log: "> YOLOv8-POSE: 17 SKELETAL KEYPOINTS LOCKED" },
+    { pct: 58, status: "ALLOCATING DUAL-TIMER MEMORY...", log: "> CLOCKS: [BILLABLE_LABOR] + [PAYROLL_ATTENDANCE] ACTIVE" },
+    { pct: 85, status: "CONFIGURING BOT WEBHOOK...", log: "> DISPATCH: TELEGRAM ENCRYPTED ENDPOINT READY" },
+    { pct: 100, status: "RUNTIME ZERO-CLOUD ONLINE", log: "> SYSTEM VERIFIED: EDGE NODE AT MAXIMUM THROUGHPUT" },
+  ];
 
-  const minHold = reduced ? 280 : 2200;
-  const started = performance.now();
+  let current = 0;
+  let logIdx = 0;
 
-  await Promise.all([
-    loadImage("assets/hero-garage.png"),
-    loadImage("assets/demo-mechanic.png"),
-    document.fonts ? document.fonts.ready.catch(() => undefined) : Promise.resolve(),
-  ]);
+  const interval = setInterval(() => {
+    current += Math.floor(Math.random() * 8) + 4;
 
-  const elapsed = performance.now() - started;
-  if (elapsed < minHold) await wait(minHold - elapsed);
+    if (logIdx < logs.length && current >= logs[logIdx].pct) {
+      if (statusText) statusText.textContent = logs[logIdx].status;
+      if (terminal) {
+        const newLine = document.createElement("div");
+        newLine.className = logIdx === logs.length - 1 ? "log-entry log-highlight" : "log-entry";
+        newLine.textContent = logs[logIdx].log;
+        terminal.appendChild(newLine);
+      }
+      logIdx += 1;
+    }
 
-  clearInterval(story);
-  clearInterval(tick);
-  if (bootStatus) bootStatus.textContent = narrative[narrative.length - 1];
-  setBootProgress(100);
+    if (current >= 100) {
+      current = 100;
+      clearInterval(interval);
+      if (bar) bar.style.width = "100%";
+      if (percentText) percentText.textContent = "100%";
 
-  await wait(reduced ? 40 : 220);
+      setTimeout(() => finishBoot(overlay), 250);
+      return;
+    }
 
-  if (new URLSearchParams(location.search).has("holdboot")) return;
-
-  bootLoader.classList.add("is-done");
-  bootLoader.setAttribute("aria-busy", "false");
-  document.body.classList.remove("is-booting");
-
-  let removed = false;
-  const unmount = () => {
-    if (removed) return;
-    removed = true;
-    bootLoader.remove();
-  };
-  bootLoader.addEventListener("transitionend", unmount, { once: true });
-  setTimeout(unmount, 500);
+    if (bar) bar.style.width = `${current}%`;
+    if (percentText) percentText.textContent = `${current}%`;
+  }, 45);
 }
 
-if (shot) {
-  bootLoader?.remove();
-  document.body.classList.remove("is-booting");
-} else {
-  runBootSequence();
-}
+initBootSequence();
