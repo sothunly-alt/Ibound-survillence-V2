@@ -1768,30 +1768,24 @@ h3 {
   position: relative;
   min-height: 280px;
   border: 1px solid color-mix(in srgb, var(--surveillance-green) 42%, transparent);
-  background: #000000;
+  background: #050505;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-dim) 35%, transparent);
 }
 
-.radar-frame {
-  background: #000000;
-}
-
-.gt5-radar {
-  display: block;
+.pp-map {
   width: 100%;
-  height: auto;
-  min-height: 280px;
-  aspect-ratio: 480 / 420;
-  background: #000000;
+  height: 280px;
+  background: #050505;
+  z-index: 0;
 }
 
 .map-corners {
   pointer-events: none;
   position: absolute;
   inset: 8px;
-  z-index: 2;
+  z-index: 450;
   border: 1px solid transparent;
   background:
     linear-gradient(var(--surveillance-green), var(--surveillance-green)) top left / 14px 1px no-repeat,
@@ -1810,85 +1804,99 @@ h3 {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 3;
+  z-index: 460;
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
   gap: 8px 16px;
   padding: 10px 12px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.92) 35%);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.88) 35%);
+  font-size: 11px;
+  letter-spacing: 0.12em;
   color: var(--surveillance-green);
-  line-height: 1.35;
 }
 
-.location-ext-nav {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.1em;
+.map-telemetry .muted {
+  color: var(--muted);
+  letter-spacing: 0.08em;
 }
 
-.road-traces {
-  filter: drop-shadow(0 0 3px #00330e);
+.pp-node-marker {
+  background: transparent !important;
+  border: none !important;
 }
 
-.node-core {
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--surveillance-green) 80%, transparent));
+.pp-node-pin {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
 }
 
-.crosshair {
-  animation: crosshair-pulse 2.2s ease-in-out infinite;
+.pp-node-pin i {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surveillance-green);
+  box-shadow:
+    0 0 0 2px #000,
+    0 0 12px color-mix(in srgb, var(--surveillance-green) 70%, transparent);
 }
 
-.radar-ping {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: radar-ping 2.4s ease-out infinite;
-  opacity: 0;
+.pp-node-pin--pulse i {
+  animation: pp-node-pulse 1.8s ease-out infinite;
 }
 
-.radar-ping-delay {
-  animation-delay: 1.2s;
-}
-
-@keyframes radar-ping {
+@keyframes pp-node-pulse {
   0% {
-    transform: scale(0.35);
-    opacity: 0.85;
-    stroke-opacity: 1;
+    box-shadow:
+      0 0 0 2px #000,
+      0 0 0 0 color-mix(in srgb, var(--surveillance-green) 55%, transparent);
+  }
+  70% {
+    box-shadow:
+      0 0 0 2px #000,
+      0 0 0 14px transparent;
   }
   100% {
-    transform: scale(1.65);
-    opacity: 0;
-    stroke-opacity: 0;
+    box-shadow:
+      0 0 0 2px #000,
+      0 0 0 0 transparent;
   }
 }
 
-@keyframes crosshair-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
+.map-frame .leaflet-control-zoom a {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  background: #0d0d0d;
+  color: var(--surveillance-green);
+  border: 1px solid color-mix(in srgb, var(--surveillance-green) 35%, transparent);
+  border-radius: 2px;
+  font-size: 14px;
+}
+
+.map-frame .leaflet-control-zoom a:hover {
+  background: #121212;
+  color: var(--text);
+}
+
+.map-frame .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.72);
+  color: var(--muted);
+  font-size: 9px;
+  max-width: 55%;
+  margin: 0 0 36px 0;
+}
+
+.map-frame .leaflet-control-attribution a {
+  color: color-mix(in srgb, var(--surveillance-green) 70%, var(--muted));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .crosshair,
-  .radar-ping,
-  .radar-ping-delay {
+  .pp-node-pin--pulse i {
     animation: none;
-  }
-
-  .radar-ping,
-  .radar-ping-delay {
-    opacity: 0.35;
-    transform: scale(1);
-  }
-
-  .crosshair {
-    opacity: 1;
   }
 }
 

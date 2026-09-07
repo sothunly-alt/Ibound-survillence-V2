@@ -570,3 +570,44 @@ function initBootSequence() {
 }
 
 initBootSequence();
+
+function initPpNodeMap() {
+  const el = document.getElementById("pp-map");
+  if (!el || typeof L === "undefined") return;
+
+  const lat = 11.5564;
+  const lng = 104.9282;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const map = L.map(el, {
+    zoomControl: false,
+    attributionControl: true,
+    scrollWheelZoom: false,
+    dragging: !window.matchMedia("(pointer: coarse)").matches,
+  }).setView([lat, lng], 12);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer">OSM</a> &copy; <a href="https://carto.com/attributions" rel="noopener noreferrer">CARTO</a>',
+    subdomains: "abcd",
+    maxZoom: 19,
+  }).addTo(map);
+
+  L.control.zoom({ position: "topright" }).addTo(map);
+
+  const pinClass = reduced ? "pp-node-pin" : "pp-node-pin pp-node-pin--pulse";
+  const icon = L.divIcon({
+    className: "pp-node-marker",
+    html: `<span class="${pinClass}" aria-hidden="true"><i></i></span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  L.marker([lat, lng], { icon, keyboard: false, title: "PP-NODE // PHNOM PENH" }).addTo(map);
+
+  // Leaflet needs a invalidate after layout settles (grid / fonts).
+  requestAnimationFrame(() => map.invalidateSize());
+  window.addEventListener("load", () => map.invalidateSize(), { once: true });
+}
+
+initPpNodeMap();
