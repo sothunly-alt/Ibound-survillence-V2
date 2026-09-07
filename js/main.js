@@ -38,7 +38,9 @@ if (heroTimer) {
 const bbox = document.querySelector("[data-bbox]");
 const bboxTimer = document.querySelector("[data-bbox-timer]");
 const phone = document.querySelector("[data-phone]");
+const demoSection = document.querySelector(".demo-section");
 const steps = [...document.querySelectorAll("[data-flow-step]")];
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let demoSeconds = 4 * 3600 + 11 * 60 + 55;
 let demoPhase = 0;
 
@@ -47,6 +49,7 @@ function setPhase(phase) {
   steps.forEach((step) => step.classList.toggle("is-active", Number(step.dataset.flowStep) === phase));
   bbox?.classList.toggle("is-on", phase >= 1);
   phone?.classList.toggle("is-on", phase >= 2);
+  demoSection?.classList.toggle("is-phone-focus", phase >= 2);
 }
 
 function runDemoLoop() {
@@ -227,7 +230,6 @@ form?.addEventListener("submit", async (e) => {
   }
 });
 
-const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const heroImg = document.querySelector(".hero-media img");
 const finalImg = document.querySelector(".final-media img");
 const navLinks = [...document.querySelectorAll(".nav-desktop a[href^='#']")];
@@ -330,6 +332,7 @@ function onScrollFrame() {
 }
 
 window.addEventListener("scroll", onScrollFrame, { passive: true });
+window.addEventListener("resize", onScrollFrame, { passive: true });
 updateScroll();
 
 function initScrollReveal() {
