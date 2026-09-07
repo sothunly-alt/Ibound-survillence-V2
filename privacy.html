@@ -31,9 +31,20 @@
       </div>
     </header>
     <main class="container legal-page">
+      <nav class="breadcrumbs mono" aria-label="Breadcrumb">
+        <a href="index.html">Home</a>
+        <span aria-hidden="true">/</span>
+        <span>Privacy</span>
+      </nav>
       <p class="section-index">Legal</p>
       <h1>Privacy Policy &amp; Data Architecture Disclosure</h1>
       <p class="legal-updated">Last Updated: September 2026</p>
+      <p class="mono">INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH, CAMBODIA</p>
+      <p>
+        If registering formally:
+        <em>Inbound Surveillance Systems (Cambodia) Co., Ltd.</em>
+        Governing jurisdiction: Phnom Penh, Kingdom of Cambodia.
+      </p>
 
       <div class="legal-roles" role="note" aria-label="Data roles">
         <p class="legal-roles-title">Roles</p>
@@ -111,11 +122,23 @@
 
       <section>
         <h2>4. Third-Party Transmissions (Telegram Integration)</h2>
+        <blockquote class="legal-quote">
+          <p class="legal-quote-label">Local Data Minimization Notice — Zero-Cloud Guarantee</p>
+          <p>
+            Inbound Surveillance operates strictly as a closed on-premise appliance. Raw RTSP video streams
+            and biometric facial/skeletal vector embeddings are processed in local volatile memory (RAM) and
+            discarded on-chip. No video footage, facial captures, or employee biometric markers are ever
+            egressed, streamed, or stored on external cloud infrastructure. Only encrypted numerical telemetry
+            logs (session duration, timestamps, and aggregate wrench-time hours) are transmitted to the
+            designated operator Telegram webhook.
+          </p>
+        </blockquote>
         <p>
-          Shift summaries, timestamped visual verifications, and bay status alerts are dispatched via
-          encrypted HTTPS webhooks directly to client-configured endpoints (such as the Telegram Bot API).
-          Once dispatched, the storage, retention, and access governance of transmitted scorecards adhere to
-          the client’s internal messaging security policies and Telegram’s platform terms.
+          Shift summaries, timestamped visual verifications (when enabled by the operator on local hardware),
+          and bay status alerts are dispatched via encrypted HTTPS webhooks directly to client-configured
+          endpoints (such as the Telegram Bot API). Once dispatched, the storage, retention, and access
+          governance of transmitted scorecards adhere to the client’s internal messaging security policies and
+          Telegram’s platform terms.
         </p>
       </section>
 
@@ -178,7 +201,8 @@
       </section>
 
       <p>Questions: <a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
-      <p>© 2026 Inbound Surveillance</p>
+      <p><a href="terms.html">Terms of Service</a> · <a href="about.html">About</a></p>
+      <p>© 2026 Inbound Surveillance Edge Systems · Phnom Penh, Cambodia</p>
     </main>
   </body>
 </html>

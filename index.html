@@ -33,6 +33,38 @@
       content="Edge-AI pose tracking clocks billable wrench-time and payroll — scorecards via @Inbound_Surveillance_bot."
     />
     <meta name="twitter:image" content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "Inbound Surveillance",
+            "url": "https://inbound-surveillance-landing-page.vercel.app/",
+            "email": "inboundcrew82@gmail.com",
+            "sameAs": ["https://t.me/Inbound_Surveillance_bot"],
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Phnom Penh",
+              "addressCountry": "KH"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Inbound Surveillance",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "On-premise edge appliance",
+            "description": "Edge-AI pose tracking that clocks billable wrench-time and payroll attendance for performance garages, with Telegram scorecard dispatch.",
+            "url": "https://inbound-surveillance-landing-page.vercel.app/",
+            "offers": {
+              "@type": "Offer",
+              "price": "39.00",
+              "priceCurrency": "USD"
+            }
+          }
+        ]
+      }
+    </script>
     <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
@@ -99,7 +131,7 @@
       <div class="container header-inner">
         <a class="brand" href="#top" aria-label="Inbound Surveillance home">
           <span class="brand-mark" aria-hidden="true">
-            <img src="assets/brand-mark.png" alt="" width="34" height="34" />
+            <img src="assets/brand-mark.png" alt="Inbound Surveillance mark" width="34" height="34" />
           </span>
           <span class="brand-text">
             <span class="brand-name">INBOUND</span>
@@ -113,7 +145,9 @@
           <a href="#roi">The Math</a>
           <a href="#features">Features</a>
           <a href="#pricing">Pricing</a>
+          <a href="#cases">Cases</a>
           <a href="#faq">FAQ</a>
+          <a href="#team">Team</a>
         </nav>
 
         <div class="header-actions">
@@ -131,7 +165,9 @@
         <a href="#roi">The Math</a>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
+        <a href="#cases">Cases</a>
         <a href="#faq">FAQ</a>
+        <a href="#team">Team</a>
         <button class="btn btn-neon" data-open-demo type="button">Request Demo</button>
       </nav>
     </header>
@@ -475,6 +511,9 @@
             <span></span>
             Extra bays stay at the same per-bay rate. No overage tax.
           </p>
+          <p class="guarantee-note mono">
+            Pilot guarantee: TBD — slot for written pilot terms.
+          </p>
         </div>
       </section>
 
@@ -482,6 +521,7 @@
         <div class="container">
           <header class="section-head">
             <p class="section-index">[ 06 ] Discovery</p>
+            <p class="partners-label">FIELD NOTES · NOT STAR RATINGS</p>
             <h2>What shop owners told us on the floor.</h2>
             <p class="section-copy">
               Field interviews with Phnom Penh performance garages — not logos we invented.
@@ -518,10 +558,55 @@
         </div>
       </section>
 
+      <section class="section cases-section" id="cases">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 07 ] Cases</p>
+            <h2>Demo case frames — replace with permissioned installs.</h2>
+            <p class="section-copy">
+              Template slots only. Outcomes stay dashed until a shop signs off on publication.
+            </p>
+          </header>
+
+          <div class="cases-grid">
+            <article class="case-card">
+              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
+              <h3>Multi-bay tune shop · occlusion leak</h3>
+              <p class="case-label">Problem</p>
+              <p>Face-only clocks dropped whenever techs went under hoods or on lifts.</p>
+              <p class="case-label">Approach</p>
+              <p>Pose + bay polygons; Face ID assist on entry only.</p>
+              <p class="case-label">Outcome</p>
+              <p class="case-metric mono">— hrs recovered · TBD</p>
+            </article>
+            <article class="case-card">
+              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
+              <h3>Motorsport prep · dual-clock payroll</h3>
+              <p class="case-label">Problem</p>
+              <p>Billable wrench-time and attendance were tracked on separate paper systems.</p>
+              <p class="case-label">Approach</p>
+              <p>On-prem dual clocks; Telegram scorecard at close.</p>
+              <p class="case-label">Outcome</p>
+              <p class="case-metric mono">— % efficiency delta · TBD</p>
+            </article>
+            <article class="case-card">
+              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
+              <h3>Independent garage · zero-click admin</h3>
+              <p class="case-label">Problem</p>
+              <p>Owners refused any mechanic-facing app; scorecards had to arrive unprompted.</p>
+              <p class="case-label">Approach</p>
+              <p>Edge dispatch to @Inbound_Surveillance_bot; no cloud video stream.</p>
+              <p class="case-label">Outcome</p>
+              <p class="case-metric mono">— admin hrs / week · TBD</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="section faq-section" id="faq">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 07 ] FAQ</p>
+            <p class="section-index">[ 08 ] FAQ</p>
             <h2>Questions owners ask before a bay install.</h2>
           </header>
 
@@ -566,13 +651,105 @@
         </div>
       </section>
 
+      <section class="section team-section" id="team">
+        <div class="container">
+          <header class="section-head">
+            <p class="section-index">[ 09 ] Team</p>
+            <h2>Crew slots reserved.</h2>
+            <p class="section-copy">
+              Real team photos landing before launch — slots reserved. No stock humans.
+            </p>
+          </header>
+          <div class="team-grid">
+            <figure class="team-slot">
+              <div class="team-frame" aria-hidden="true">
+                <span class="corner c-tl"></span>
+                <span class="corner c-tr"></span>
+                <span class="corner c-bl"></span>
+                <span class="corner c-br"></span>
+                <span class="team-placeholder">PHOTO TBD</span>
+              </div>
+              <figcaption>
+                <strong>Founder</strong>
+                <span>Name TBD</span>
+              </figcaption>
+            </figure>
+            <figure class="team-slot">
+              <div class="team-frame" aria-hidden="true">
+                <span class="corner c-tl"></span>
+                <span class="corner c-tr"></span>
+                <span class="corner c-bl"></span>
+                <span class="corner c-br"></span>
+                <span class="team-placeholder">PHOTO TBD</span>
+              </div>
+              <figcaption>
+                <strong>Co-founder</strong>
+                <span>Name TBD</span>
+              </figcaption>
+            </figure>
+            <figure class="team-slot">
+              <div class="team-frame" aria-hidden="true">
+                <span class="corner c-tl"></span>
+                <span class="corner c-tr"></span>
+                <span class="corner c-bl"></span>
+                <span class="corner c-br"></span>
+                <span class="team-placeholder">PHOTO TBD</span>
+              </div>
+              <figcaption>
+                <strong>Edge</strong>
+                <span>Name TBD</span>
+              </figcaption>
+            </figure>
+            <figure class="team-slot">
+              <div class="team-frame" aria-hidden="true">
+                <span class="corner c-tl"></span>
+                <span class="corner c-tr"></span>
+                <span class="corner c-bl"></span>
+                <span class="corner c-br"></span>
+                <span class="team-placeholder">PHOTO TBD</span>
+              </div>
+              <figcaption>
+                <strong>Ops</strong>
+                <span>Name TBD</span>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section location-section" id="location">
+        <div class="container location-grid">
+          <div>
+            <p class="section-index">[ 10 ] Location</p>
+            <h2>Phnom Penh, Cambodia</h2>
+            <p class="section-copy">
+              Edge installs and bay walkthroughs based in Phnom Penh. Street address TBD —
+              use the map link for the city hub until a shop address is published.
+            </p>
+            <p class="mono location-coords">11.5564° N, 104.9282° E</p>
+            <a
+              class="btn btn-ghost"
+              href="https://www.google.com/maps/search/?api=1&query=Phnom+Penh%2C+Cambodia"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Open directions</a
+            >
+          </div>
+          <div class="map-placeholder" aria-label="Map embed placeholder">
+            <span class="map-badge">MAP EMBED TBD</span>
+            <span class="mono">GRID // PP-NODE</span>
+            <span class="mono muted">11.5564 / 104.9282</span>
+          </div>
+        </div>
+      </section>
+
       <section class="final-cta">
         <div class="final-media" aria-hidden="true">
           <img src="assets/cta-workshop.png" alt="" />
           <div class="hero-veil dense"></div>
         </div>
         <div class="container final-content">
-          <p class="section-index">[ 08 ] Deploy</p>
+          <p class="section-index">[ 11 ] Deploy</p>
           <h2>Start billing for the hours you actually work.</h2>
           <button class="btn btn-neon btn-lg" data-open-demo type="button">Recover Your Lost Revenue Today.</button>
           <p class="response-promise">We reply on Telegram within one business day · Phnom Penh time</p>
@@ -584,12 +761,14 @@
       <button class="btn btn-neon" data-open-demo type="button">Book a bay demo</button>
     </div>
 
+    <!-- GA4: set window.INBOUND_GA4_ID = "G-XXXXXXXX" and restore consent UI when analytics is live. -->
+
     <footer class="site-footer">
       <div class="container footer-grid">
         <div>
           <a class="brand" href="#top" aria-label="Inbound Surveillance home">
-            <span class="brand-mark" aria-hidden="true">
-              <img src="assets/brand-mark.png" alt="" width="34" height="34" />
+            <span class="brand-mark">
+              <img src="assets/brand-mark.png" alt="Inbound Surveillance mark" width="34" height="34" />
             </span>
             <span class="brand-text">
               <span class="brand-name">INBOUND</span>
@@ -603,10 +782,15 @@
           <p>Phnom Penh, Cambodia</p>
           <p><a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
           <p><a href="https://t.me/Inbound_Surveillance_bot" rel="noopener noreferrer">Telegram: @Inbound_Surveillance_bot</a></p>
+          <p><a href="#location">Map / directions</a></p>
         </div>
         <div>
           <p class="footer-label">Legal</p>
+          <p><a href="about.html">About</a></p>
           <p><a href="privacy.html">Privacy Policy</a></p>
+          <p><a href="terms.html">Terms</a></p>
+          <p><a href="llms.txt">llms.txt</a></p>
+          <p class="mono footer-entity">INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH</p>
           <p>© 2026 Inbound Surveillance</p>
         </div>
       </div>

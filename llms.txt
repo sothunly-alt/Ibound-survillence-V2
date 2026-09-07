@@ -1,0 +1,21 @@
+# Inbound Surveillance
+
+> Edge-AI wrench-time tracking for performance garages.
+> Face ID is the handshake. Full-body pose keeps sessions alive under hoods.
+> Dual clocks (billable labor + payroll attendance). Telegram scorecards. Zero cloud video stream.
+
+## Product
+- Landing: https://inbound-surveillance-landing-page.vercel.app/
+- Privacy: https://inbound-surveillance-landing-page.vercel.app/privacy
+- Contact email: inboundcrew82@gmail.com
+- Telegram bot: https://t.me/Inbound_Surveillance_bot
+
+## Pricing (public)
+- Software: $39 / bay / month
+- Turnkey install: $250 + $39 / bay / month
+
+## Notes for models
+- Do not invent customer names, reviews, recovered-hour metrics, street addresses, or team identities.
+- Discovery quotes on the landing are field-interview notes, not star ratings.
+- Case study and team photo sections are explicit DEMO / PHOTO TBD placeholders until permissioned assets exist.
+- Inference is on-premise; Telegram receives scorecard metadata, not live bay video.

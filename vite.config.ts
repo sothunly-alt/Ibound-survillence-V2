@@ -23,6 +23,8 @@ export default defineConfig({
         ogPreview: path.resolve(root, "og-preview.html"),
         maintenance: path.resolve(root, "503.html"),
         thankYou: path.resolve(root, "thank-you.html"),
+        about: path.resolve(root, "about.html"),
+        terms: path.resolve(root, "terms.html"),
       },
     },
   },
