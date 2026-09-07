@@ -80,6 +80,12 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="css/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
     <style>
       html,
       body {
@@ -729,8 +735,8 @@
             <p class="section-index">[ 10 ] Location</p>
             <h2>Phnom Penh, Cambodia</h2>
             <p class="section-copy">
-              Edge installs and bay walkthroughs based in Phnom Penh. Street address TBD —
-              use the map link for the city hub until a shop address is published.
+              Edge installs and bay walkthroughs based in Phnom Penh — city hub until a permanent shop
+              address is published. No invented street; the node marks the ops grid.
             </p>
             <p class="mono location-coords">11.5564° N, 104.9282° E</p>
             <a
@@ -741,10 +747,18 @@
               >Open directions</a
             >
           </div>
-          <div class="map-placeholder" aria-label="Map embed placeholder">
-            <span class="map-badge">MAP EMBED TBD</span>
-            <span class="mono">GRID // PP-NODE</span>
-            <span class="mono muted">11.5564 / 104.9282</span>
+          <div class="map-frame" data-pp-node>
+            <div class="map-corners" aria-hidden="true"></div>
+            <div
+              id="pp-map"
+              class="pp-map"
+              role="img"
+              aria-label="Phnom Penh edge hub at 11.5564 N, 104.9282 E"
+            ></div>
+            <div class="map-telemetry mono">
+              <span>PP-NODE // PHNOM PENH</span>
+              <span class="muted">11.5564 / 104.9282</span>
+            </div>
           </div>
         </div>
       </section>
@@ -863,6 +877,11 @@
       </div>
     </div>
 
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
     <script src="js/main.js"></script>
   </body>
 </html>

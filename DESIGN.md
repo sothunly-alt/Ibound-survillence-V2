@@ -80,6 +80,16 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 - **Lead capture:** `#demo-form` `data-formspree` must be a live POST endpoint (Formspree `https://formspree.io/f/…`, bare Formspree ID, or FormSubmit AJAX). Prefer Formspree when the crew has a dashboard ID. Empty endpoint is forbidden for “silent success” UX — if unset, JS must fall back to mailto / loud failure, never fake a received lead.
 - **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path.
 
+## Location / Map (marketing)
+Location is a **tactical node HUD**, not consumer map chrome. City hub only until a permanent shop address is published — never invent a street address.
+
+- **Basemap:** dark tiles (e.g. Leaflet + Carto Dark Matter). Suppress pastel Google roads / retail POIs.
+- **Pin:** one Terminal Green pulse marker at the published city coords (`11.5564, 104.9282` for Phnom Penh). Label: `PP-NODE // PHNOM PENH` in IBM Plex Mono.
+- **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed; telemetry strip over the map is ambient, not a CTA.
+- **Directions:** one `btn-ghost` “Open directions” → Google Maps city search (or real address when published). Never neon on the location block.
+- **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
+- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with Book a Free Bay Demo.
+
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
 
@@ -103,3 +113,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-04 | Accent `#00FF41`, radius ≤4px | Reinstate grit/neon; override ClearView blue seed / soft radii / “no neon” |
 | 2026-09-04 | Pose/body primary; Face ID assist | Mechanics under cars / masked / facing away |
 | 2026-09-07 | Hick’s lock on marketing CTAs | One neon primary (Book a Free Bay Demo); kill decision fatigue before Thursday pitch |
+| 2026-09-07 | Tactical PP-NODE location HUD | Carto Dark + neon pin; brand immunity vs pastel Google; city hub only |
