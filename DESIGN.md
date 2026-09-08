@@ -23,11 +23,12 @@
 - **Loading:** Google Fonts — `Bebas+Neue`, `IBM+Plex+Sans`, `IBM+Plex+Mono`
 - **Blacklist for this product:** Inter, Roboto, Plus Jakarta Sans, Outfit, soft geometric “SaaS” stacks as primary body
 - **Scale (landing / marketing):**
-  - Display XL: clamp ~2.8–4.6rem, Bebas, tracking ~0.04–0.08em, uppercase where brand-facing
-  - H2: ~2–3rem Bebas
-  - H3: ~1.25–1.5rem Bebas
-  - Body: 1rem / 1.55–1.65 IBM Plex Sans
-  - Mono metrics: 0.8–0.95rem IBM Plex Mono
+  - Display XL: `clamp(2.75rem, 4.2vw + 1rem, 4.5rem)` (~44–72px) — CSS `--fs-display`
+  - H2: `clamp(2rem, 2.2vw + 1rem, 3rem)` (~32–48px) — `--fs-h2`
+  - Lede / section copy: `clamp(1.125rem, 0.35vw + 1rem, 1.35rem)` — `--fs-lede`
+  - Body: `clamp(1rem, 0.2vw + 0.95rem, 1.125rem)` — `--fs-body`
+  - Mono / UI labels: `--fs-ui`
+  - Large desktop (`min-width: 1280px`): content column up to 1200px so type and frame scale together
 - **Navbar logo:** Bebas Neue, uppercase, letter-spacing ~0.08em beside the mark
 
 ## Color
@@ -72,7 +73,7 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 - **Canonical labels:**
   - Hero / final CTA / sticky: **Book Pilot Bay**
   - Header (space-constrained): **Book Pilot**
-  - Modal submit: **Request Demo**
+  - Modal submit: **Request Pilot**
 - **One accent treatment:** only the primary path uses `btn-neon` / Terminal Green fill. All other actions are `btn-ghost` or quiet text links.
 - **Choice budget per viewport (hero):** brand + one headline + one support line + **one** CTA group — primary only, or primary + one ghost “See how it works” → `#architecture`. No second neon in the hero fold.
 - **Nav (judge scan):** max four anchors — Problem (`#roi`), Engine (`#demo`), Field Notes (`#field-notes`), Team (`#team`) — plus one neon Book Pilot. Pricing / FAQ stay on-page, not in chrome.
@@ -117,3 +118,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-07 | Hick’s lock on marketing CTAs | One neon primary (Book a Free Bay Demo); kill decision fatigue before Thursday pitch |
 | 2026-09-07 | Tactical PP-NODE location HUD | Carto Dark + neon pin; brand immunity vs pastel Google; city hub only |
 | 2026-09-08 | FirstWave AIM 70 landing lock | Judge-first scan: Book Pilot Bay; pruned nav; boot bypass; Field Discovery matrix; interactive ROI; kill TBD/cases |
+| 2026-09-08 | Desktop type scale raised | Hero/h2/lede/body clamps match Display XL; 1200px container at 1280px+; kill parallax; Request Pilot |

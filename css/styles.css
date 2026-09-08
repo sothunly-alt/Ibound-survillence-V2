@@ -18,6 +18,12 @@
   --font-display: "Bebas Neue", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --fs-display: clamp(2.75rem, 4.2vw + 1rem, 4.5rem);
+  --fs-h2: clamp(2rem, 2.2vw + 1rem, 3rem);
+  --fs-h3: clamp(1.25rem, 0.6vw + 1rem, 1.6rem);
+  --fs-lede: clamp(1.125rem, 0.35vw + 1rem, 1.35rem);
+  --fs-body: clamp(1rem, 0.2vw + 0.95rem, 1.125rem);
+  --fs-ui: clamp(0.8125rem, 0.15vw + 0.75rem, 0.9375rem);
   --shadow-neon: 0 0 0 1px color-mix(in srgb, var(--surveillance-green) 35%, transparent),
     0 0 28px color-mix(in srgb, var(--surveillance-green) 22%, transparent);
   --page-wash:
@@ -55,8 +61,8 @@ body {
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: var(--fs-body);
+  line-height: 1.6;
   overflow-x: hidden;
 }
 
@@ -124,6 +130,12 @@ h3 {
 .container {
   width: min(1120px, calc(100% - 40px));
   margin-inline: auto;
+}
+
+@media (min-width: 1280px) {
+  .container {
+    width: min(1200px, calc(100% - 64px));
+  }
 }
 
 .site-header {
@@ -212,7 +224,7 @@ h3 {
 .nav-desktop a {
   font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 13px;
+  font-size: clamp(0.8125rem, 0.2vw + 0.75rem, 0.9375rem);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
@@ -237,7 +249,7 @@ h3 {
   text-transform: uppercase;
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 1.05rem;
+  font-size: clamp(1.05rem, 0.25vw + 1rem, 1.2rem);
   padding: 12px 18px;
 }
 
@@ -273,12 +285,12 @@ h3 {
 
 .btn-sm {
   padding: 10px 16px;
-  font-size: 12px;
+  font-size: clamp(0.9rem, 0.15vw + 0.85rem, 1.05rem);
 }
 
 .btn-lg {
-  padding: 16px 24px;
-  font-size: 14px;
+  padding: 18px 28px;
+  font-size: clamp(1.1rem, 0.3vw + 1rem, 1.35rem);
 }
 
 .menu-toggle {
@@ -389,17 +401,18 @@ h3 {
 }
 
 .hero h1 {
-  max-width: 18ch;
-  font-size: clamp(32px, 5.4vw, 56px);
+  max-width: 22ch;
+  font-size: var(--fs-display);
   margin: 18px 0 18px;
 }
 
 .lede {
-  max-width: 52ch;
+  max-width: 54ch;
   color: #c5cdc8;
   font-family: var(--font-sans);
   font-weight: 400;
-  font-size: 18px;
+  font-size: var(--fs-lede);
+  line-height: 1.6;
   margin: 0 0 28px;
 }
 
@@ -474,13 +487,15 @@ h3 {
 
 .section-head h2,
 .final-content h2 {
-  font-size: clamp(28px, 4vw, 42px);
-  max-width: 18ch;
+  font-size: var(--fs-h2);
+  max-width: 22ch;
 }
 
 .section-copy {
-  max-width: 54ch;
+  max-width: 56ch;
   color: var(--muted);
+  font-size: var(--fs-lede);
+  line-height: 1.6;
 }
 
 .hud-frame {
@@ -1074,7 +1089,7 @@ h3 {
 }
 
 .feature-card h3 {
-  font-size: 18px;
+  font-size: var(--fs-h3);
   margin-bottom: 10px;
 }
 
@@ -1320,6 +1335,10 @@ h3 {
   gap: 16px;
 }
 
+.field-notes-section .discovery-grid {
+  margin-top: 28px;
+}
+
 .discovery-note {
   margin: 0;
   padding: 20px;
@@ -1502,14 +1521,14 @@ h3 {
 
 .field-col-header {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--fs-ui);
   letter-spacing: 0.12em;
   color: var(--neon);
 }
 
 .field-datapoint {
   margin: 0 0 14px;
-  font-size: 11px;
+  font-size: var(--fs-ui);
   letter-spacing: 0.06em;
   color: #c5cdc8;
   line-height: 1.45;
@@ -1518,9 +1537,18 @@ h3 {
 .field-col p:last-child {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--fs-body);
+  line-height: 1.6;
   color: #c5cdc8;
+}
+
+.field-sources {
+  margin: 20px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-ui);
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .guarantee-note {

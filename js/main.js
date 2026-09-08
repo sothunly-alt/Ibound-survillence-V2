@@ -238,13 +238,11 @@ form?.addEventListener("submit", async (e) => {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Request Demo";
+      submitBtn.textContent = "Request Pilot";
     }
   }
 });
 
-const heroImg = document.querySelector(".hero-media img");
-const finalImg = document.querySelector(".final-media img");
 const navLinks = [...document.querySelectorAll(".nav-desktop a[href^='#']")];
 const navSections = navLinks
   .map((link) => document.querySelector(link.getAttribute("href")))
@@ -322,17 +320,6 @@ function updateScroll() {
   const max = document.documentElement.scrollHeight - window.innerHeight;
   const pct = max > 0 ? Math.min(100, (y / max) * 100) : 0;
   document.documentElement.style.setProperty("--scroll", `${pct}%`);
-
-  if (!reducedMotion) {
-    if (heroImg) {
-      heroImg.style.transform = `translate3d(0, ${y * 0.18}px, 0) scale(1.08)`;
-    }
-    if (finalImg) {
-      const top = finalImg.getBoundingClientRect().top;
-      const shift = Math.max(-80, Math.min(80, (window.innerHeight / 2 - top) * 0.08));
-      finalImg.style.transform = `translate3d(0, ${shift}px, 0) scale(1.08)`;
-    }
-  }
 
   const marker = y + window.innerHeight * 0.35;
   let activeId = null;
