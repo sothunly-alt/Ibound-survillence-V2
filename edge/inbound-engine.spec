@@ -84,6 +84,9 @@ for env_candidate in (EDGE / ".env", REPO / ".env"):
 faces = EDGE / "faces"
 if faces.is_dir():
     datas.append((str(faces), "faces"))
+static_dir = EDGE / "static"
+if static_dir.is_dir():
+    datas.append((str(static_dir), "static"))
 models = EDGE / "models"
 if models.is_dir():
     for onnx in models.glob("*.onnx"):

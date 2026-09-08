@@ -3122,6 +3122,32 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
 
+        elif parsed.path.startswith("/static/"):
+            rel_path = parsed.path.lstrip("/")
+            candidates = [
+                ROOT / rel_path,
+                ROOT.parent / rel_path,
+                Path(__file__).resolve().parent / rel_path,
+            ]
+            content = None
+            for cand in candidates:
+                if cand.exists() and cand.is_file():
+                    try:
+                        content = cand.read_bytes()
+                        break
+                    except Exception:
+                        pass
+            if content:
+                content_type = "application/javascript" if rel_path.endswith(".js") else "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(content)
+            else:
+                self.send_response(404)
+                self.end_headers()
+
         elif parsed.path == "/api/public-config":
             self._send_json(public_supabase_config())
 

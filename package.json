@@ -13,7 +13,7 @@
     "desktop:build": "node scripts/ensure-dev-sidecar.mjs --require-frozen && node scripts/run-tauri.mjs build",
     "desktop-build": "npm run desktop:build",
     "engine": "edge/.venv/bin/python edge/launcher.py --no-browser",
-    "sidecar": "node scripts/ensure-dev-sidecar.mjs --require-frozen"
+    "sidecar": "node scripts/ensure-dev-sidecar.mjs --require-frozen --rebuild"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",

@@ -144,13 +144,45 @@ const dest = path.join(binaries, `inbound-engine-${triple}${ext}`);
 
 mkdirSync(binaries, { recursive: true });
 
-if (isFrozenBinary(dest)) {
-  console.log(`Using frozen sidecar: ${dest}`);
+function shouldRebuildSidecar(destFile) {
+  if (process.argv.includes("--rebuild") || process.argv.includes("--force")) {
+    return true;
+  }
+  if (!isFrozenBinary(destFile)) {
+    return true;
+  }
+  try {
+    const destMtime = statSync(destFile).mtimeMs;
+    const watchPaths = [
+      path.join(repo, "edge", "launcher.py"),
+      path.join(repo, "edge", "hub.html"),
+      path.join(repo, "edge", "inbound-engine.spec"),
+      path.join(repo, "edge", "build_sidecar.py"),
+      path.join(repo, "edge", "static", "supabase.js"),
+      path.join(repo, ".env"),
+      path.join(repo, "edge", ".env"),
+    ];
+    for (const wp of watchPaths) {
+      if (existsSync(wp) && statSync(wp).mtimeMs > destMtime) {
+        console.log(`[build] Source file modified: ${path.relative(repo, wp)} (newer than frozen sidecar)`);
+        return true;
+      }
+    }
+  } catch (_) {
+    return true;
+  }
+  return false;
+}
+
+const needsBuild = shouldRebuildSidecar(dest);
+
+if (!needsBuild && isFrozenBinary(dest)) {
+  console.log(`Using up-to-date frozen sidecar: ${dest}`);
   process.exit(0);
 }
 
-if (isProduction) {
-  console.log(`[build] Production build requested but frozen sidecar not found at: ${dest}`);
+if (isProduction || needsBuild) {
+  console.log(`[build] Standalone sidecar rebuild required.`);
   console.log(`[build] Building standalone sidecar using ${python} edge/build_sidecar.py...`);
   const buildSidecarPy = path.join(repo, "edge", "build_sidecar.py");
   try {

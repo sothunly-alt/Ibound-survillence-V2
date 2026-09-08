@@ -9,10 +9,13 @@
   <link rel="shortcut icon" href="/favicon.ico" />
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-  <link href="https://fonts.googleapis.com" rel="preconnect"/>
-  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/static/supabase.js"></script>
+  <script>
+    if (!window.supabase) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"><\/script>');
+    }
+  </script>
   <script id="tailwind-config">
     tailwind.config = {
       darkMode: "class",
@@ -1070,10 +1073,21 @@
       }
     }
 
+    const DEFAULT_SUPABASE_URL = "https://rmepwjywobowktdmkusu.supabase.co";
+    const DEFAULT_SUPABASE_ANON_KEY =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0.u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4";
+
     async function submitHubAuth(event) {
       event.preventDefault();
       if (!supabaseClient) {
-        showAuthMessage('Supabase is not configured. Restart the engine after setting .env.', true);
+        await bootHubAuth();
+      }
+      if (!supabaseClient) {
+        if (!window.supabase) {
+          showAuthMessage('Supabase library could not be loaded. Please check your internet connection.', true);
+        } else {
+          showAuthMessage('Supabase authentication is not configured.', true);
+        }
         return false;
       }
       const form = document.getElementById('auth-form');
@@ -1116,13 +1130,25 @@
 
     async function bootHubAuth() {
       try {
-        const res = await fetch('/api/public-config', { cache: 'no-store' });
-        const cfg = await res.json();
-        if (!cfg.configured || !window.supabase) {
-          showAuthMessage('Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env, then restart the engine.', true);
+        let cfg = {};
+        try {
+          const res = await fetch('/api/public-config', { cache: 'no-store' });
+          if (res.ok) cfg = await res.json();
+        } catch (_) {}
+
+        const supabaseUrl = (cfg && cfg.supabaseUrl ? cfg.supabaseUrl : DEFAULT_SUPABASE_URL).trim();
+        const supabaseAnonKey = (cfg && cfg.supabaseAnonKey ? cfg.supabaseAnonKey : DEFAULT_SUPABASE_ANON_KEY).trim();
+
+        if (!window.supabase) {
+          showAuthMessage('Supabase library failed to load. Please verify network connectivity.', true);
           return;
         }
-        supabaseClient = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        if (!supabaseUrl || !supabaseAnonKey) {
+          showAuthMessage('Supabase credentials missing.', true);
+          return;
+        }
+
+        supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
           auth: {
             persistSession: true,
             autoRefreshToken: true,
@@ -1134,7 +1160,7 @@
           if (session) void enterHub(session);
         });
         const { data } = await supabaseClient.auth.getSession();
-        if (data.session) await enterHub(data.session);
+        if (data && data.session) await enterHub(data.session);
       } catch (err) {
         showAuthMessage(err.message || 'Could not start authentication.', true);
       }
