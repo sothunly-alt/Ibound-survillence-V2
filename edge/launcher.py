@@ -55,6 +55,7 @@ DEFAULT_SUPABASE_ANON_KEY = (
     "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0."
     "u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4"
 )
+DEFAULT_TELEGRAM_BOT_TOKEN = "8987540090:AAEntu6IaceRsrnNl0Eow7ZrOYHBR90FkZU"
 
 
 def load_dotenv_files() -> None:
@@ -214,16 +215,20 @@ from vehicle import VehicleDetection, extract_vehicle_detections
 
 
 def find_free_port(default_port: int = 8765) -> int:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("127.0.0.1", default_port))
-            return default_port
-    except OSError:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+    for attempt in range(5):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                s.bind(("127.0.0.1", default_port))
+                return default_port
+        except OSError:
+            if attempt < 4:
+                time.sleep(0.3)
+                continue
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def get_config_path() -> Path:
@@ -240,11 +245,14 @@ def read_config() -> dict[str, Any]:
     path = get_config_path()
     with path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or str(data.get("telegram_bot_token") or "").strip()
+    token = (
+        os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        or str(data.get("telegram_bot_token") or "").strip()
+        or DEFAULT_TELEGRAM_BOT_TOKEN
+    )
     chat = os.environ.get("TELEGRAM_CHAT_ID", data.get("telegram_chat_id") or "")
     data["telegram_bot_token"] = token
     data["telegram_chat_id"] = chat
-    # Env wins for the shared bot; operators cannot replace it from the UI.
     if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
         data["telegram_bot_token"] = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     data["telegram_bot_configured"] = bool(data["telegram_bot_token"])
@@ -1508,7 +1516,10 @@ class LiveStreamEngine:
 
     def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         updates: dict[str, Any] = {}
-        # Bot token is engine-owned (TELEGRAM_BOT_TOKEN / config). Never accept UI replaces.
+        if "telegram_bot_token" in payload:
+            bot_token = str(payload.get("telegram_bot_token") or "").strip()
+            if bot_token:
+                updates["telegram_bot_token"] = bot_token
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
         if "venue" in payload:
@@ -1543,11 +1554,13 @@ class LiveStreamEngine:
         with self.lock:
             self.cfg.update(updates)
             save_config(updates)
-            if "telegram_chat_id" in updates:
+            if "telegram_bot_token" in updates or "telegram_chat_id" in updates:
                 self.bot = TelegramOut(
                     self.cfg.get("telegram_bot_token", ""),
                     self.cfg.get("telegram_chat_id", ""),
                 )
+            if "telegram_bot_token" in updates:
+                self.telegram_links.configure(self.cfg.get("telegram_bot_token", ""))
             snapshot = {key: self.cfg.get(key) for key in _SETTINGS_KEYS}
         snapshot["success"] = True
         snapshot["bays"] = list(self.cfg.get("bays") or [])
@@ -1555,7 +1568,7 @@ class LiveStreamEngine:
         snapshot["operating_hours"] = self.cfg.get("operating_hours")
         snapshot["telegram_bot_configured"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
         snapshot["telegram_bot_username"] = self.telegram_links.status().get("bot_username") or ""
-        snapshot.pop("telegram_bot_token", None)
+        snapshot["telegram_bot_token"] = str(self.cfg.get("telegram_bot_token") or "").strip()
         return snapshot
 
     def save_camera(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -3160,6 +3173,63 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/public-config":
             self._send_json(public_supabase_config())
 
+        elif parsed.path == "/api/auth-session":
+            session_file = DATA_DIR / "session.json"
+            if session_file.exists():
+                try:
+                    with session_file.open("r", encoding="utf-8") as f:
+                        saved = json.load(f)
+                    sess = saved.get("session") if (isinstance(saved, dict) and "session" in saved and isinstance(saved.get("session"), dict)) else saved
+                    self._send_json({"ok": True, "session": sess})
+                except Exception as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, status=500)
+            else:
+                self._send_json({"ok": False, "session": None})
+
+        elif parsed.path == "/api/profile/avatar":
+            avatars_dir = DATA_DIR / "avatars"
+            avatar_file = avatars_dir / "avatar.jpg"
+            if not avatar_file.exists():
+                avatar_file = avatars_dir / "avatar.png"
+            if avatar_file.exists():
+                try:
+                    content = avatar_file.read_bytes()
+                    ct = "image/png" if avatar_file.suffix.lower() == ".png" else "image/jpeg"
+                    self.send_response(200)
+                    self.send_header("Content-Type", ct)
+                    self.send_header("Cache-Control", "no-cache")
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                except Exception:
+                    pass
+            self.send_response(404)
+            self.end_headers()
+
+        elif parsed.path == "/api/profile":
+            cfg = GLOBAL_ENGINE.cfg or read_config()
+            avatar_exists = (DATA_DIR / "avatars" / "avatar.jpg").exists() or (DATA_DIR / "avatars" / "avatar.png").exists()
+            avatar_path = f"/api/profile/avatar?t={int(time.time())}" if avatar_exists else None
+            session_file = DATA_DIR / "session.json"
+            saved_profile = {}
+            if session_file.exists():
+                try:
+                    with session_file.open("r", encoding="utf-8") as f:
+                        sdata = json.load(f)
+                    saved_profile = sdata.get("profile") or {}
+                except Exception:
+                    pass
+            display_name = saved_profile.get("display_name") or cfg.get("garage_name") or cfg.get("venue") or "Operator"
+            venue_name = saved_profile.get("venue_name") or cfg.get("venue") or cfg.get("garage_name") or "Private operator"
+            self._send_json({
+                "ok": True,
+                "profile": {
+                    "display_name": display_name,
+                    "venue_name": venue_name,
+                    "avatar_url": avatar_path,
+                }
+            })
+
         elif parsed.path == "/api/config":
             self._send_json(GLOBAL_ENGINE.redacted_config())
 
@@ -3698,12 +3768,87 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             user_id = str(payload.get("user_id") or "").strip()
             self._send_json(GLOBAL_ENGINE.telegram_link_status(user_id))
 
+        elif parsed.path == "/api/auth-session":
+            session_file = DATA_DIR / "session.json"
+            try:
+                sess_data = payload.get("session") if (isinstance(payload, dict) and "session" in payload and isinstance(payload.get("session"), dict)) else payload
+                with session_file.open("w", encoding="utf-8") as f:
+                    json.dump(sess_data, f, indent=2)
+                self._send_json({"ok": True})
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=500)
+
+        elif parsed.path == "/api/profile":
+            updates = {}
+            if "display_name" in payload:
+                updates["display_name"] = str(payload.get("display_name") or "").strip()
+            if "venue_name" in payload:
+                updates["venue_name"] = str(payload.get("venue_name") or "").strip()
+                updates["venue"] = updates["venue_name"]
+                updates["garage_name"] = updates["venue_name"]
+            
+            if "venue" in updates:
+                GLOBAL_ENGINE.apply_hub_settings({"venue": updates["venue"]})
+            
+            session_file = DATA_DIR / "session.json"
+            if session_file.exists():
+                try:
+                    with session_file.open("r", encoding="utf-8") as f:
+                        sdata = json.load(f)
+                    prof = sdata.get("profile") or {}
+                    prof.update(updates)
+                    sdata["profile"] = prof
+                    with session_file.open("w", encoding="utf-8") as f:
+                        json.dump(sdata, f, indent=2)
+                except Exception:
+                    pass
+            self._send_json({"ok": True, "profile": updates})
+
+        elif parsed.path == "/api/profile/avatar":
+            import base64
+            image_data = payload.get("avatar") or payload.get("image") or payload.get("data")
+            if not image_data:
+                self._send_json({"ok": False, "error": "No image data provided"}, status=400)
+            else:
+                try:
+                    if "," in image_data:
+                        image_data = image_data.split(",", 1)[1]
+                    raw_bytes = base64.b64decode(image_data)
+                    avatars_dir = DATA_DIR / "avatars"
+                    avatars_dir.mkdir(parents=True, exist_ok=True)
+                    avatar_file = avatars_dir / "avatar.jpg"
+                    with avatar_file.open("wb") as f:
+                        f.write(raw_bytes)
+                    self._send_json({"ok": True, "url": f"/api/profile/avatar?t={int(time.time())}"})
+                except Exception as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, status=500)
+
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_DELETE(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/auth-session":
+            session_file = DATA_DIR / "session.json"
+            if session_file.exists():
+                try:
+                    session_file.unlink()
+                except Exception:
+                    pass
+            self._send_json({"ok": True})
+            return
+        elif parsed.path == "/api/profile/avatar":
+            avatars_dir = DATA_DIR / "avatars"
+            for ext in (".jpg", ".jpeg", ".png"):
+                f = avatars_dir / f"avatar{ext}"
+                if f.exists():
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+            self._send_json({"ok": True})
+            return
         parts = [urllib.parse.unquote(p) for p in parsed.path.split("/") if p]
         if self._handle_identities_write(parts, "DELETE", {}, []):
             return

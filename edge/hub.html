@@ -386,12 +386,18 @@
         <span>Password</span>
         <input id="auth-password" type="password" required placeholder="Password" autocomplete="current-password" />
       </label>
+      <div class="flex items-center justify-between text-xs text-on-surface-variant py-0.5">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" id="auth-remember" checked class="rounded border-outline-variant bg-surface-container-highest text-primary focus:ring-primary w-4 h-4" />
+          <span>Keep me signed in</span>
+        </label>
+      </div>
       <button id="auth-submit" type="submit" class="w-full bg-primary-container text-on-primary py-2.5 rounded-lg font-medium hover:bg-primary transition-colors">Sign in</button>
       <button id="auth-toggle" type="button" class="w-full border border-outline-variant py-2.5 rounded-lg text-sm hover:border-primary hover:text-primary" onclick="toggleHubAuthMode()">Create account</button>
     </form>
   </div>
   <nav class="sidebar fixed left-0 top-0 h-full w-[288px] flex flex-col py-edge-margin border-r border-outline-variant z-20 max-lg:static max-lg:w-full max-lg:h-auto max-lg:relative">
-    <div class="px-container-padding mb-6 flex items-center gap-3">
+    <div class="px-container-padding mb-6 flex items-center gap-3 cursor-pointer hover:bg-surface-container-high/60 p-2 rounded-xl transition-all" onclick="showConfigTab('profile')" title="Open Profile Settings">
       <img id="profile-avatar" src="/inb_surveillance.png" alt="" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)]" />
       <div class="min-w-0">
         <p id="greeting" class="text-on-surface font-bold text-base leading-snug truncate">Operator</p>
@@ -455,7 +461,7 @@
 
   <main class="ml-[288px] flex-1 flex flex-col h-full bg-black relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
-      <div class="flex items-center gap-3 min-w-0">
+      <div class="flex items-center gap-3 min-w-0 cursor-pointer hover:opacity-85 transition-opacity" onclick="showConfigTab('profile')" title="Open Profile Settings">
         <img id="header-avatar" src="/inb_surveillance.png" alt="" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0" />
         <h1 id="header-operator" class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Operator</h1>
         <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
@@ -595,6 +601,7 @@
           <button type="button" id="tab-source" class="tab-on px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('source')">Source Configuration</button>
           <button type="button" id="tab-alerts" class="tab-off px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('alerts')">Alert Rules</button>
           <button type="button" id="tab-integrations" class="tab-off px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('integrations')">Integrations</button>
+          <button type="button" id="tab-profile" class="tab-off px-4 py-3 font-medium text-sm whitespace-nowrap" onclick="showConfigTab('profile')">Profile</button>
         </div>
 
         <div id="panel-source" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -828,6 +835,16 @@
                 Capture &amp; Send Test
               </button>
             </div>
+            <div class="pt-2 border-t border-outline-variant/40 space-y-2">
+              <div class="flex flex-col gap-1.5">
+                <div class="flex justify-between items-center">
+                  <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-bot-token-input">Telegram Bot Token / Bot ID</label>
+                  <span id="tg-bot-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-mono-data">@Inbound_Surveillance_bot</span>
+                </div>
+                <input id="tg-bot-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="8987540090:AAEntu6IaceRsrnNl0Eow7ZrOYHBR90FkZU" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
+                <p class="text-[11px] text-on-surface-variant">Default shared bot is pre-configured. You can also paste your own bot token from @BotFather.</p>
+              </div>
+            </div>
             <details class="text-xs text-on-surface-variant">
               <summary class="cursor-pointer select-none">Advanced: paste chat ID manually</summary>
               <div class="mt-2 flex flex-col gap-1.5">
@@ -836,6 +853,55 @@
               </div>
             </details>
             <p id="tg-feedback" class="hidden text-sm"></p>
+          </div>
+        </div>
+
+        <div id="panel-profile" class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
+          <div class="rounded-xl border border-outline-variant bg-surface-container p-5 space-y-4">
+            <h3 class="text-sm font-semibold text-on-surface">Operator Profile Picture</h3>
+            <p class="text-xs text-on-surface-variant">Upload and crop your profile photo. It is cropped to a circle and displayed throughout the dashboard.</p>
+            
+            <div class="flex items-center gap-5 pt-2">
+              <div class="relative group cursor-pointer" onclick="openAvatarCropChooser()" title="Click to upload profile picture">
+                <img id="profile-avatar-preview" src="/inb_surveillance.png" alt="Profile avatar" class="w-24 h-24 rounded-full object-cover border-2 border-primary shadow-[0_0_16px_rgba(0,255,102,0.4)] transition-transform group-hover:scale-105" />
+                <div class="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-primary">
+                  <span class="material-symbols-outlined text-2xl">photo_camera</span>
+                  <span class="text-[10px] font-semibold">Change</span>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <button type="button" class="bg-primary hover:brightness-110 text-on-primary py-2 px-4 rounded-lg font-medium text-xs flex items-center gap-1.5 transition-colors" onclick="openAvatarCropChooser()">
+                  <span class="material-symbols-outlined text-sm">upload</span> Choose Photo
+                </button>
+                <button type="button" class="bg-surface-container-highest hover:bg-surface-bright text-on-surface py-1.5 px-3 rounded-lg text-xs border border-outline-variant transition-colors" onclick="resetAvatarToDefault()">
+                  Reset to Default
+                </button>
+                <p class="text-[11px] text-on-surface-variant">JPG, PNG, WebP. Circular crop tool included.</p>
+              </div>
+            </div>
+            <input type="file" id="profile-avatar-file" class="hidden" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onchange="handleAvatarFileSelected(event)" />
+          </div>
+
+          <div class="rounded-xl border border-outline-variant bg-surface-container p-5 space-y-4">
+            <h3 class="text-sm font-semibold text-on-surface">Account Information</h3>
+            <div class="flex flex-col gap-1.5">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="profile-name-input">Display Name</label>
+              <input id="profile-name-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Operator Name" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="profile-venue-input">Venue / Garage Name</label>
+              <input id="profile-venue-input" class="bg-surface-container-highest border-transparent text-on-surface text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Shop or site name" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="font-label-upper text-label-upper text-on-surface-variant" for="profile-email-input">Account Email</label>
+              <input id="profile-email-input" class="bg-surface-container-highest/60 border-transparent text-on-surface-variant text-sm rounded-lg block w-full p-2.5 cursor-not-allowed" type="email" readonly disabled />
+            </div>
+            <div class="pt-2 flex items-center justify-between">
+              <button type="button" id="btn-save-profile" class="bg-primary hover:brightness-110 text-on-primary py-2 px-6 rounded-lg font-medium text-sm transition-colors flex items-center gap-1.5" onclick="saveProfileSettings()">
+                <span class="material-symbols-outlined text-sm">save</span> Save Profile
+              </button>
+              <span id="profile-feedback" class="text-xs hidden"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -895,6 +961,41 @@
       <div class="flex justify-end gap-2">
         <button type="button" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg font-medium text-sm border border-outline-variant" onclick="cancelDiscoverConnect()">Cancel</button>
         <button type="button" id="btn-discover-connect" class="bg-primary-container hover:bg-primary text-on-primary py-2 px-5 rounded-lg font-medium text-sm" onclick="submitDiscoverConnect()">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="avatar-crop-modal" class="hidden fixed inset-0 z-[250] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="if (event.target === this) closeAvatarCropModal()">
+    <div class="bg-surface-container border border-outline-variant rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-xl">crop</span>
+          <h3 class="font-headline-sm text-base font-semibold text-on-surface">Crop Profile Picture</h3>
+        </div>
+        <button type="button" class="text-on-surface-variant hover:text-on-surface p-1" onclick="closeAvatarCropModal()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="text-xs text-on-surface-variant">Drag to position your photo. Everything inside the green circle will be displayed as your profile picture.</p>
+      
+      <div class="relative w-[280px] h-[280px] mx-auto rounded-xl overflow-hidden bg-black flex items-center justify-center border border-outline-variant select-none">
+        <canvas id="crop-canvas" width="280" height="280" class="cursor-grab active:cursor-grabbing block"></canvas>
+        <div class="absolute inset-0 pointer-events-none" style="box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65); border-radius: 50%; width: 220px; height: 220px; margin: auto; border: 2px solid #00FF66;"></div>
+      </div>
+
+      <div class="flex items-center gap-3 px-2 pt-1">
+        <span class="material-symbols-outlined text-on-surface-variant text-sm">zoom_out</span>
+        <input type="range" id="crop-zoom-slider" min="1" max="3" step="0.02" value="1" class="flex-1 h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer" oninput="onCropZoomChange(this.value)" />
+        <span class="material-symbols-outlined text-on-surface-variant text-sm">zoom_in</span>
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-3 border-t border-outline-variant">
+        <button type="button" class="bg-surface-container-highest hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg text-sm border border-outline-variant" onclick="closeAvatarCropModal()">
+          Cancel
+        </button>
+        <button type="button" id="btn-apply-crop" class="bg-primary hover:brightness-110 text-on-primary py-2 px-5 rounded-lg font-medium text-sm transition-colors flex items-center gap-1.5" onclick="applyAvatarCrop()">
+          <span class="material-symbols-outlined text-sm">check</span> Apply &amp; Save
+        </button>
       </div>
     </div>
   </div>
@@ -1029,7 +1130,13 @@
       hubAccountProfile = profile;
       const name = (profile && profile.display_name) || (user.email || '').split('@')[0] || 'Operator';
       const venue = (profile && profile.venue_name) || 'Private operator';
-      const avatar = profile ? await signedAvatarUrl(profile.avatar_path) : null;
+      let avatar = profile ? await signedAvatarUrl(profile.avatar_path) : null;
+      if (!avatar) {
+        try {
+          const checkAv = await fetch('/api/profile/avatar', { method: 'HEAD', cache: 'no-cache' });
+          if (checkAv.ok) avatar = '/api/profile/avatar?t=' + Date.now();
+        } catch (_) {}
+      }
       const greeting = document.getElementById('greeting');
       const venueEl = document.getElementById('profile-venue');
       const headerName = document.getElementById('header-operator');
@@ -1038,7 +1145,7 @@
       if (venueEl) venueEl.textContent = venue;
       if (headerName) headerName.textContent = name;
       if (crumb) crumb.textContent = venue;
-      ['profile-avatar', 'header-avatar'].forEach((id) => {
+      ['profile-avatar', 'header-avatar', 'profile-avatar-preview'].forEach((id) => {
         const img = document.getElementById(id);
         if (!img) return;
         img.src = avatar || '/inb_surveillance.png';
@@ -1065,8 +1172,19 @@
       if (!session || enteringHub) return;
       enteringHub = true;
       try {
+        // Sync session to local engine backend for persistent login across desktop app restarts
+        try {
+          await fetch('/api/auth-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session }),
+          });
+        } catch (_) {}
+
         document.body.classList.remove('auth-locked');
-        await loadAccountProfile(session.user);
+        if (session.user) {
+          await loadAccountProfile(session.user);
+        }
         startHub();
       } finally {
         enteringHub = false;
@@ -1096,8 +1214,18 @@
       const password = document.getElementById('auth-password').value;
       const displayName = document.getElementById('auth-name').value.trim();
       const venueName = document.getElementById('auth-venue').value.trim();
+      const remember = document.getElementById('auth-remember')?.checked;
+
       showAuthMessage('', false);
       try {
+        if (remember) {
+          localStorage.setItem('hub_remembered_email', email);
+          localStorage.setItem('hub_remember_me', '1');
+        } else {
+          localStorage.removeItem('hub_remembered_email');
+          localStorage.removeItem('hub_remember_me');
+        }
+
         if (signup) {
           if (password.length < 8) throw new Error('Password must be at least 8 characters.');
           const { data, error } = await supabaseClient.auth.signUp({
@@ -1111,8 +1239,11 @@
           if (error) throw error;
           if (!data.session) showAuthMessage('Account created. Confirm the email link, then sign in.', false);
         } else {
-          const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+          const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
           if (error) throw error;
+          if (data && data.session) {
+            await enterHub(data.session);
+          }
         }
       } catch (err) {
         showAuthMessage(err.message || 'Authentication failed.', true);
@@ -1124,12 +1255,34 @@
       try {
         await fetch('/api/disconnect', { method: 'POST' });
       } catch (_) {}
-      if (supabaseClient) await supabaseClient.auth.signOut();
+      try {
+        await fetch('/api/auth-session', { method: 'DELETE' });
+      } catch (_) {}
+      try {
+        localStorage.removeItem('hub_remembered_email');
+        localStorage.removeItem('hub_remember_me');
+      } catch (_) {}
+      if (supabaseClient) {
+        try {
+          await supabaseClient.auth.signOut();
+        } catch (_) {}
+      }
       window.location.reload();
     }
 
     async function bootHubAuth() {
       try {
+        // Pre-fill remembered email if saved
+        const rememberedEmail = localStorage.getItem('hub_remembered_email');
+        const emailInput = document.getElementById('auth-email');
+        const rememberCheckbox = document.getElementById('auth-remember');
+        if (rememberedEmail && emailInput && !emailInput.value) {
+          emailInput.value = rememberedEmail;
+        }
+        if (rememberCheckbox) {
+          rememberCheckbox.checked = localStorage.getItem('hub_remember_me') !== '0';
+        }
+
         let cfg = {};
         try {
           const res = await fetch('/api/public-config', { cache: 'no-store' });
@@ -1141,6 +1294,17 @@
 
         if (!window.supabase) {
           showAuthMessage('Supabase library failed to load. Please verify network connectivity.', true);
+          // Even if Supabase script failed (e.g. offline mode), check local session so operator can still run
+          try {
+            const sessRes = await fetch('/api/auth-session', { cache: 'no-store' });
+            if (sessRes.ok) {
+              const sessData = await sessRes.json();
+              if (sessData && sessData.session) {
+                await enterHub(sessData.session);
+                return;
+              }
+            }
+          } catch (_) {}
           return;
         }
         if (!supabaseUrl || !supabaseAnonKey) {
@@ -1159,22 +1323,437 @@
         supabaseClient.auth.onAuthStateChange((_event, session) => {
           if (session) void enterHub(session);
         });
+
+        // 1. Check local Supabase client session
         const { data } = await supabaseClient.auth.getSession();
-        if (data && data.session) await enterHub(data.session);
+        if (data && data.session) {
+          await enterHub(data.session);
+          return;
+        }
+
+        // 2. If webview session was cleared (restart / port reuse), check local engine session persistence
+        try {
+          const sessRes = await fetch('/api/auth-session', { cache: 'no-store' });
+          if (sessRes.ok) {
+            const sessData = await sessRes.json();
+            if (sessData && sessData.session) {
+              const saved = sessData.session;
+              if (saved.access_token && saved.refresh_token) {
+                const { data: restored, error: restoreErr } = await supabaseClient.auth.setSession({
+                  access_token: saved.access_token,
+                  refresh_token: saved.refresh_token,
+                });
+                if (!restoreErr && restored && restored.session) {
+                  await enterHub(restored.session);
+                  return;
+                }
+              }
+              // If setSession failed or offline, still enter hub with saved session data
+              await enterHub(saved);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Session restoration check error:', e);
+        }
       } catch (err) {
         showAuthMessage(err.message || 'Could not start authentication.', true);
       }
     }
 
     function showConfigTab(name) {
-      const tabs = { source: 'tab-source', alerts: 'tab-alerts', integrations: 'tab-integrations' };
-      const panels = { source: 'panel-source', alerts: 'panel-alerts', integrations: 'panel-integrations' };
+      const tabs = { source: 'tab-source', alerts: 'tab-alerts', integrations: 'tab-integrations', profile: 'tab-profile' };
+      const panels = { source: 'panel-source', alerts: 'panel-alerts', integrations: 'panel-integrations', profile: 'panel-profile' };
       Object.keys(tabs).forEach((key) => {
-        document.getElementById(tabs[key]).className = (key === name ? 'tab-on' : 'tab-off') + ' px-4 py-3 font-medium text-sm whitespace-nowrap';
-        document.getElementById(panels[key]).classList.toggle('hidden', key !== name);
+        const tabEl = document.getElementById(tabs[key]);
+        const panelEl = document.getElementById(panels[key]);
+        if (tabEl) tabEl.className = (key === name ? 'tab-on' : 'tab-off') + ' px-4 py-3 font-medium text-sm whitespace-nowrap';
+        if (panelEl) panelEl.classList.toggle('hidden', key !== name);
       });
+      if (name === 'profile') {
+        populateProfileForm();
+      }
       if (name !== 'source') {
         document.getElementById('config-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // --- Profile & Circular Avatar Cropper ---
+    let cropImage = null;
+    let cropCanvas = null;
+    let cropCtx = null;
+    let cropZoom = 1.0;
+    let cropBaseScale = 1.0;
+    let cropPanX = 140;
+    let cropPanY = 140;
+    let isCropDragging = false;
+    let cropDragStartX = 0;
+    let cropDragStartY = 0;
+    let cropInitialPanX = 140;
+    let cropInitialPanY = 140;
+    const CROP_CANVAS_CENTER = 140;
+    const CROP_CIRCLE_RADIUS = 110; // 220px diameter
+
+    function openAvatarCropChooser() {
+      const fileInput = document.getElementById('profile-avatar-file');
+      if (fileInput) fileInput.click();
+    }
+
+    function handleAvatarFileSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      event.target.value = '';
+      if (!file.type || !file.type.startsWith('image/')) {
+        showProfileFeedback(false, 'Please select a valid image file (JPG, PNG, WebP).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        openAvatarCropModal(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function openAvatarCropModal(imageSrc) {
+      const modal = document.getElementById('avatar-crop-modal');
+      if (!modal) return;
+      cropCanvas = document.getElementById('crop-canvas');
+      if (!cropCanvas) return;
+      cropCtx = cropCanvas.getContext('2d');
+
+      const img = new Image();
+      img.onload = () => {
+        cropImage = img;
+        cropBaseScale = Math.max((CROP_CIRCLE_RADIUS * 2) / img.naturalWidth, (CROP_CIRCLE_RADIUS * 2) / img.naturalHeight);
+        cropZoom = 1.0;
+        const slider = document.getElementById('crop-zoom-slider');
+        if (slider) slider.value = '1';
+        cropPanX = CROP_CANVAS_CENTER;
+        cropPanY = CROP_CANVAS_CENTER;
+        bindCropCanvasEvents();
+        renderCropCanvas();
+        modal.classList.remove('hidden');
+      };
+      img.src = imageSrc;
+    }
+
+    function closeAvatarCropModal() {
+      const modal = document.getElementById('avatar-crop-modal');
+      if (modal) modal.classList.add('hidden');
+      cropImage = null;
+    }
+
+    function onCropZoomChange(val) {
+      cropZoom = parseFloat(val) || 1.0;
+      renderCropCanvas();
+    }
+
+    function renderCropCanvas() {
+      if (!cropImage || !cropCanvas || !cropCtx) return;
+      cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+      const scale = cropBaseScale * cropZoom;
+      const drawW = cropImage.naturalWidth * scale;
+      const drawH = cropImage.naturalHeight * scale;
+
+      // Constrain panning so the circle (30..250) is always covered
+      const minPanX = (CROP_CANVAS_CENTER + CROP_CIRCLE_RADIUS) - drawW / 2;
+      const maxPanX = (CROP_CANVAS_CENTER - CROP_CIRCLE_RADIUS) + drawW / 2;
+      if (minPanX <= maxPanX) {
+        cropPanX = Math.max(minPanX, Math.min(maxPanX, cropPanX));
+      } else {
+        cropPanX = CROP_CANVAS_CENTER;
+      }
+
+      const minPanY = (CROP_CANVAS_CENTER + CROP_CIRCLE_RADIUS) - drawH / 2;
+      const maxPanY = (CROP_CANVAS_CENTER - CROP_CIRCLE_RADIUS) + drawH / 2;
+      if (minPanY <= maxPanY) {
+        cropPanY = Math.max(minPanY, Math.min(maxPanY, cropPanY));
+      } else {
+        cropPanY = CROP_CANVAS_CENTER;
+      }
+
+      const x = cropPanX - drawW / 2;
+      const y = cropPanY - drawH / 2;
+      cropCtx.drawImage(cropImage, x, y, drawW, drawH);
+    }
+
+    let cropEventsBound = false;
+    function bindCropCanvasEvents() {
+      if (cropEventsBound || !cropCanvas) return;
+      cropEventsBound = true;
+
+      const getPos = (e) => {
+        if (e.touches && e.touches.length) {
+          return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+      };
+
+      const onStart = (e) => {
+        isCropDragging = true;
+        const pos = getPos(e);
+        cropDragStartX = pos.x;
+        cropDragStartY = pos.y;
+        cropInitialPanX = cropPanX;
+        cropInitialPanY = cropPanY;
+        if (e.cancelable) e.preventDefault();
+      };
+
+      const onMove = (e) => {
+        if (!isCropDragging) return;
+        const pos = getPos(e);
+        cropPanX = cropInitialPanX + (pos.x - cropDragStartX);
+        cropPanY = cropInitialPanY + (pos.y - cropDragStartY);
+        renderCropCanvas();
+        if (e.cancelable) e.preventDefault();
+      };
+
+      const onEnd = () => {
+        isCropDragging = false;
+      };
+
+      cropCanvas.addEventListener('mousedown', onStart);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+
+      cropCanvas.addEventListener('touchstart', onStart, { passive: false });
+      window.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onEnd);
+
+      cropCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const slider = document.getElementById('crop-zoom-slider');
+        const delta = e.deltaY < 0 ? 0.08 : -0.08;
+        let newZoom = Math.min(3, Math.max(1, cropZoom + delta));
+        cropZoom = newZoom;
+        if (slider) slider.value = String(newZoom);
+        renderCropCanvas();
+      }, { passive: false });
+    }
+
+    async function applyAvatarCrop() {
+      if (!cropImage || !cropCanvas) return;
+      const btn = document.getElementById('btn-apply-crop');
+      if (btn) btn.disabled = true;
+
+      try {
+        const outCanvas = document.createElement('canvas');
+        const outSize = 256;
+        outCanvas.width = outSize;
+        outCanvas.height = outSize;
+        const outCtx = outCanvas.getContext('2d');
+        outCtx.imageSmoothingEnabled = true;
+        outCtx.imageSmoothingQuality = 'high';
+
+        const scaleFactor = outSize / (CROP_CIRCLE_RADIUS * 2);
+        const totalScale = cropBaseScale * cropZoom * scaleFactor;
+        const drawW = cropImage.naturalWidth * totalScale;
+        const drawH = cropImage.naturalHeight * totalScale;
+        const centerX = (outSize / 2) + (cropPanX - CROP_CANVAS_CENTER) * scaleFactor;
+        const centerY = (outSize / 2) + (cropPanY - CROP_CANVAS_CENTER) * scaleFactor;
+
+        outCtx.drawImage(cropImage, centerX - drawW / 2, centerY - drawH / 2, drawW, drawH);
+        const dataUrl = outCanvas.toDataURL('image/jpeg', 0.92);
+
+        // Update all avatar images immediately
+        ['profile-avatar', 'header-avatar', 'profile-avatar-preview'].forEach((id) => {
+          const img = document.getElementById(id);
+          if (img) img.src = dataUrl;
+        });
+
+        closeAvatarCropModal();
+        await saveAvatarData(dataUrl);
+      } catch (err) {
+        showProfileFeedback(false, err.message || 'Crop failed.');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function saveAvatarData(dataUrl) {
+      showProfileFeedback(false, 'Saving profile picture…', true);
+      try {
+        // 1. Post to local engine /api/profile/avatar
+        try {
+          await fetch('/api/profile/avatar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar: dataUrl }),
+          });
+        } catch (e) {
+          console.warn('Local avatar save warning:', e);
+        }
+
+        // 2. If logged into Supabase, upload to account-private bucket and update profile
+        if (supabaseClient && hubAccountUser) {
+          try {
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const avatarPath = `${hubAccountUser.id}/avatar/${Date.now()}.jpg`;
+            const uploadRes = await supabaseClient.storage
+              .from('account-private')
+              .upload(avatarPath, blob, {
+                contentType: 'image/jpeg',
+                upsert: true,
+              });
+            if (!uploadRes.error) {
+              const updateRes = await supabaseClient
+                .from('profiles')
+                .update({ avatar_path: avatarPath })
+                .eq('id', hubAccountUser.id)
+                .select('*')
+                .single();
+              if (!updateRes.error && updateRes.data) {
+                hubAccountProfile = updateRes.data;
+              }
+            }
+          } catch (sbErr) {
+            console.warn('Supabase avatar sync warning:', sbErr);
+          }
+        }
+        showProfileFeedback(true, 'Profile picture updated.');
+      } catch (err) {
+        showProfileFeedback(false, err.message || 'Failed to update avatar.');
+      }
+    }
+
+    async function resetAvatarToDefault() {
+      const defaultSrc = '/inb_surveillance.png';
+      ['profile-avatar', 'header-avatar', 'profile-avatar-preview'].forEach((id) => {
+        const img = document.getElementById(id);
+        if (img) img.src = defaultSrc;
+      });
+
+      showProfileFeedback(false, 'Resetting avatar…', true);
+      try {
+        try {
+          await fetch('/api/profile/avatar', { method: 'DELETE' });
+        } catch (_) {}
+
+        if (supabaseClient && hubAccountUser) {
+          const { data } = await supabaseClient
+            .from('profiles')
+            .update({ avatar_path: null })
+            .eq('id', hubAccountUser.id)
+            .select('*')
+            .single();
+          if (data) hubAccountProfile = data;
+        }
+        showProfileFeedback(true, 'Avatar reset to default.');
+      } catch (err) {
+        showProfileFeedback(false, err.message || 'Failed to reset avatar.');
+      }
+    }
+
+    function populateProfileForm() {
+      const nameInput = document.getElementById('profile-name-input');
+      const venueInput = document.getElementById('profile-venue-input');
+      const emailInput = document.getElementById('profile-email-input');
+      const avatarPreview = document.getElementById('profile-avatar-preview');
+
+      const name = (hubAccountProfile && hubAccountProfile.display_name) ||
+                   (hubAccountUser && hubAccountUser.user_metadata && hubAccountUser.user_metadata.display_name) ||
+                   (hubAccountUser && hubAccountUser.email ? hubAccountUser.email.split('@')[0] : '') ||
+                   document.getElementById('greeting')?.textContent || '';
+      const venue = (hubAccountProfile && hubAccountProfile.venue_name) ||
+                    (hubAccountUser && hubAccountUser.user_metadata && hubAccountUser.user_metadata.venue_name) ||
+                    document.getElementById('profile-venue')?.textContent || '';
+      const email = (hubAccountUser && hubAccountUser.email) || '';
+
+      if (nameInput) nameInput.value = name;
+      if (venueInput) venueInput.value = venue;
+      if (emailInput) emailInput.value = email;
+
+      const currentAvatarSrc = document.getElementById('profile-avatar')?.src;
+      if (avatarPreview && currentAvatarSrc) {
+        avatarPreview.src = currentAvatarSrc;
+      }
+    }
+
+    async function saveProfileSettings() {
+      const btn = document.getElementById('btn-save-profile');
+      const nameInput = document.getElementById('profile-name-input');
+      const venueInput = document.getElementById('profile-venue-input');
+      const displayName = nameInput ? nameInput.value.trim() : '';
+      const venueName = venueInput ? venueInput.value.trim() : '';
+
+      if (btn) btn.disabled = true;
+      showProfileFeedback(false, 'Saving profile…', true);
+
+      try {
+        try {
+          await fetch('/api/profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              display_name: displayName,
+              venue_name: venueName,
+            }),
+          });
+        } catch (_) {}
+
+        try {
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              venue: venueName,
+              garage_name: venueName,
+            }),
+          });
+        } catch (_) {}
+
+        if (supabaseClient && hubAccountUser) {
+          const { data, error } = await supabaseClient
+            .from('profiles')
+            .update({
+              display_name: displayName,
+              venue_name: venueName,
+            })
+            .eq('id', hubAccountUser.id)
+            .select('*')
+            .single();
+          if (error) {
+            console.warn('Could not update Supabase profile:', error);
+          } else if (data) {
+            hubAccountProfile = data;
+          }
+        }
+
+        const greeting = document.getElementById('greeting');
+        const venueEl = document.getElementById('profile-venue');
+        const headerName = document.getElementById('header-operator');
+        const crumb = document.getElementById('crumb-venue');
+        const venueField = document.getElementById('venue-input');
+        if (greeting) greeting.textContent = displayName || 'Operator';
+        if (venueEl) venueEl.textContent = venueName || 'Private operator';
+        if (headerName) headerName.textContent = displayName || 'Operator';
+        if (crumb) crumb.textContent = venueName || 'Surveillance';
+        if (venueField) venueField.value = venueName;
+
+        showProfileFeedback(true, 'Profile saved successfully.');
+      } catch (err) {
+        showProfileFeedback(false, err.message || 'Failed to save profile.');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function showProfileFeedback(ok, message, isPending) {
+      const el = document.getElementById('profile-feedback');
+      if (!el) return;
+      if (!message) {
+        el.className = 'text-xs hidden';
+        el.textContent = '';
+        return;
+      }
+      el.className = 'text-xs ' + (isPending ? 'text-on-surface-variant animate-pulse' : (ok ? 'text-primary' : 'text-error'));
+      el.textContent = message;
+      if (ok) {
+        setTimeout(() => {
+          el.className = 'text-xs hidden';
+          el.textContent = '';
+        }, 4000);
       }
     }
 
@@ -1539,8 +2118,10 @@
     }
 
     function hubSettingsPayload() {
+      const tgBotToken = document.getElementById('tg-bot-token-input')?.value?.trim();
       return {
         telegram_chat_id: document.getElementById('tg-chat-input').value,
+        telegram_bot_token: tgBotToken || undefined,
         venue: document.getElementById('venue-input').value,
         garage_name: document.getElementById('venue-input').value,
         open_time: document.getElementById('open-time-input').value,
@@ -1559,7 +2140,12 @@
         });
         const data = await res.json();
         if (data.success) {
-          currentConfig = Object.assign({}, currentConfig, payload);
+          currentConfig = Object.assign({}, currentConfig, payload, data);
+          paintTelegramLinkStatus({
+            telegram_chat_id: currentConfig.telegram_chat_id || '',
+            bot_username: currentConfig.telegram_bot_username || '',
+            telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
+          });
         }
       } catch (err) {
         console.error('Failed to save settings', err);
@@ -3404,6 +3990,10 @@
         if (currentConfig.flip !== undefined) flipMode = currentConfig.flip || 'none';
         paintOrient();
         if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
+        if (currentConfig.telegram_bot_token) {
+          const tgTokenEl = document.getElementById('tg-bot-token-input');
+          if (tgTokenEl) tgTokenEl.value = currentConfig.telegram_bot_token;
+        }
         paintTelegramLinkStatus({
           telegram_chat_id: currentConfig.telegram_chat_id || '',
           telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
@@ -4854,6 +5444,19 @@
         detail.textContent = linked
           ? ('Chat ID ' + chatId + (username ? ' · @' + username : ''))
           : (info && info.bot_username ? ('Bot @' + info.bot_username + ' · waiting for /start') : 'Chat ID —');
+      }
+      const botBadge = document.getElementById('tg-bot-badge');
+      if (botBadge) {
+        if (info && info.bot_username) {
+          botBadge.textContent = '@' + info.bot_username;
+          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
+        } else if (info && info.telegram_bot_token_set) {
+          botBadge.textContent = 'Configured';
+          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
+        } else {
+          botBadge.textContent = 'Default Bot';
+          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
+        }
       }
     }
 

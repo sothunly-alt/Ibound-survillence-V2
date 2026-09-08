@@ -93,7 +93,7 @@ faces_dir: "faces"
 models_dir: "models"
 face_match_threshold: 0.60
 
-telegram_bot_token: ""
+telegram_bot_token: "8987540090:AAEntu6IaceRsrnNl0Eow7ZrOYHBR90FkZU"
 telegram_chat_id: ""
 
 # Tier 2 AI Auditor (Fireworks VLM)
