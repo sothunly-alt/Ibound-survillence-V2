@@ -26,15 +26,6 @@ function tickClock(el, start = new Date()) {
 
 document.querySelectorAll("[data-hud-clock]").forEach((el) => tickClock(el));
 
-const heroTimer = document.querySelector("[data-hero-timer]");
-if (heroTimer) {
-  let seconds = 2 * 3600 + 14 * 60 + 33;
-  setInterval(() => {
-    seconds += 1;
-    heroTimer.textContent = formatHms(seconds);
-  }, 1000);
-}
-
 const bbox = document.querySelector("[data-bbox]");
 const bboxTimer = document.querySelector("[data-bbox-timer]");
 const phone = document.querySelector("[data-phone]");
@@ -267,6 +258,7 @@ function initRoiCalculator() {
   const minutesDisplay = root.querySelector("[data-roi-minutes-display]");
   const rateDisplay = root.querySelector("[data-roi-rate-display]");
   const annualEl = root.querySelector("[data-roi-annual]");
+  const monthlyTotalEl = root.querySelector("[data-roi-monthly-total]");
   const softwareEl = root.querySelector("[data-roi-software]");
   const paybackEls = document.querySelectorAll("[data-roi-payback], [data-roi-payback-eq]");
   const minutesEq = document.querySelector("[data-roi-minutes-eq]");
@@ -274,13 +266,19 @@ function initRoiCalculator() {
   const monthlyEl = document.querySelector("[data-roi-monthly]");
   const leakCopy = document.querySelector("[data-roi-leak-copy]");
 
+  const safeNumber = (value, fallback) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
   const render = () => {
-    const bays = Number(baysInput?.value || 3);
-    const minutes = Number(minutesInput?.value || 45);
-    const rate = Number(rateInput?.value || 35);
+    const bays = safeNumber(baysInput?.value, 3);
+    const minutes = safeNumber(minutesInput?.value, 45);
+    const rate = safeNumber(rateInput?.value, 35);
     const leakHours = minutes / 60;
     const monthlyPerBay = leakHours * rate * 24;
-    const annual = monthlyPerBay * 12 * bays;
+    const monthlyTotal = monthlyPerBay * bays;
+    const annual = monthlyTotal * 12;
     const softwareAnnual = 39 * 12 * bays;
     const dailyRecovery = leakHours * rate;
     const paybackDays = Math.max(1, Math.ceil(39 / Math.max(dailyRecovery, 0.01)));
@@ -289,6 +287,7 @@ function initRoiCalculator() {
     if (baysDisplay) baysDisplay.textContent = String(bays);
     if (minutesDisplay) minutesDisplay.textContent = `${minutes} min`;
     if (rateDisplay) rateDisplay.textContent = `$${rate}/hr`;
+    if (monthlyTotalEl) monthlyTotalEl.textContent = formatMoney(monthlyTotal);
     if (annualEl) annualEl.textContent = formatMoney(annual);
     if (softwareEl) softwareEl.textContent = formatMoney(softwareAnnual);
     if (minutesEq) minutesEq.innerHTML = `~${minutes}<small>min</small>`;
@@ -313,6 +312,9 @@ initRoiCalculator();
 
 let scrollTick = false;
 
+const stickyCta = document.getElementById("mobile-sticky-cta");
+const finalCta = document.querySelector(".final-cta");
+
 function updateScroll() {
   const y = window.scrollY;
   header?.classList.toggle("is-scrolled", y > 8);
@@ -320,6 +322,10 @@ function updateScroll() {
   const max = document.documentElement.scrollHeight - window.innerHeight;
   const pct = max > 0 ? Math.min(100, (y / max) * 100) : 0;
   document.documentElement.style.setProperty("--scroll", `${pct}%`);
+
+  const revealSecondary = y > window.innerHeight * 0.5;
+  stickyCta?.classList.toggle("is-revealed", revealSecondary);
+  finalCta?.classList.toggle("is-revealed", revealSecondary);
 
   const marker = y + window.innerHeight * 0.35;
   let activeId = null;

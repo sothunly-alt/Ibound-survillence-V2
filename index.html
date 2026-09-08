@@ -174,42 +174,39 @@
     <main id="top">
       <section class="hero">
         <div class="hero-media" aria-hidden="true">
-          <img src="assets/hero-garage.png" alt="Performance garage bay with cars under overhead lighting" fetchpriority="high" />
+          <img src="assets/hero-garage.png" alt="" fetchpriority="high" />
           <div class="hero-veil"></div>
         </div>
         <div class="container hero-content">
           <p class="eyebrow">
             <span class="pulse"></span>
-            Edge-AI · Local compute · Motorsport garages
+            &gt; INVISIBLE INFRASTRUCTURE FOR HIGH-END GARAGES
           </p>
-          <h1>Stop Losing Profit on Untracked Garage Labor.</h1>
+          <h1>STOP BLEEDING MARGINS. RECOVER UNBILLED WRENCH-TIME.</h1>
           <p class="lede">
-            Edge cameras clock billable wrench-time from full-body pose, not Face ID.
-            Face is the handshake. Skeletal tracking keeps the session alive under the hood,
-            then the scorecard lands on Telegram with zero taps.
+            The on-premise surveillance network that turns unlogged garage labor into billable
+            hours—without anyone touching a screen.
           </p>
           <div class="hero-cta">
-            <button class="btn btn-neon btn-lg" data-open-demo type="button">Book Pilot Bay</button>
+            <button class="btn btn-neon btn-lg" data-open-demo type="button">[ REQUEST PILOT BAY ]</button>
             <a class="btn btn-ghost btn-lg" href="#architecture">See how it works</a>
             <p class="social-inline">Built from floor interviews with Phnom Penh performance garages.</p>
           </div>
-          <div class="telemetry" aria-hidden="true">
-            <div class="tel-chip">
-              <span class="tel-label">BAY 01</span>
-              <span class="tel-value" data-hero-timer>02:14:33</span>
-              <span class="tel-state">POSE LOCK</span>
+          <figure class="hero-video">
+            <div class="hero-video-frame">
+              <video
+                src="assets/demo-cctv-placeholder.mp4"
+                poster="assets/demo-mechanic.png"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="metadata"
+                aria-label="Bay CCTV placeholder feed"
+              ></video>
             </div>
-            <div class="tel-chip">
-              <span class="tel-label">BAY 02</span>
-              <span class="tel-value">00:00:00</span>
-              <span class="tel-state idle">STANDBY</span>
-            </div>
-            <div class="tel-chip">
-              <span class="tel-label">EDGE</span>
-              <span class="tel-value">LOCAL</span>
-              <span class="tel-state">$0 CLOUD</span>
-            </div>
-          </div>
+            <figcaption class="hero-video-caption mono">&gt; LIVE TELEMETRY // REAL-TIME LOSS PREVENTION</figcaption>
+          </figure>
         </div>
       </section>
 
@@ -251,7 +248,7 @@
                     <p class="tg-meta">Inbound Bay Dispatch · Today 18:02</p>
                     <p class="tg-title">Shift summary · Bay 02</p>
                     <p class="tg-stat">Billable wrench-time: <em>4h 12m</em></p>
-                    <p class="tg-stat">Payroll attendance: <em>8h 04m</em></p>
+                    <p class="tg-stat">Idle / phone: <em>1h 08m</em></p>
                     <p class="tg-stat">Bay efficiency: <em>52%</em></p>
                     <p class="tg-note">Dual clocks · LOCAL_EDGE · zero taps</p>
                   </div>
@@ -322,9 +319,9 @@
           </header>
 
           <div class="roi-calc" data-roi-calc>
-            <p class="roi-calc-kicker">Calculate Projected Labor Recovery</p>
+            <p class="roi-calc-kicker">&gt; CALCULATE YOUR DAILY CAPITAL BLEED</p>
             <p class="roi-calc-baseline mono">
-              Global industry avg ≈ 1.2 hrs non-billable / tech / day (≈80% productivity KPI)
+              (Based on a conservative 45 min/day unbilled baseline reported by local operators)
             </p>
             <div class="roi-sliders">
               <label class="roi-slider">
@@ -349,7 +346,7 @@
                   aria-label="Estimated unbilled minutes per technician per day"
                 />
                 <span class="roi-slider-hint"
-                  >(Based on a conservative 45 min/day unbilled baseline vs. global 80% productivity KPI)</span
+                  >(Based on a conservative 45 min/day unbilled baseline reported by local operators)</span
                 >
               </label>
               <label class="roi-slider">
@@ -363,8 +360,8 @@
             <div class="roi-calc-result">
               <div class="roi-calc-pair">
                 <div>
-                  <p class="roi-calc-label">Projected annual recovery</p>
-                  <p class="roi-calc-value mono neon" data-roi-annual>$15,120</p>
+                  <p class="roi-calc-label">PROJECTED MONTHLY REVENUE RECOVERED</p>
+                  <p class="roi-calc-value mono neon" data-roi-monthly-total>$1,890</p>
                 </div>
                 <div>
                   <p class="roi-calc-label">Software cost ($39/bay/mo)</p>
@@ -372,7 +369,8 @@
                 </div>
               </div>
               <p class="roi-calc-meta">
-                At your estimate · Payback in <span data-roi-payback>DAY 02</span>
+                Annual projection <span class="mono neon" data-roi-annual>$22,680</span>
+                · Payback in <span data-roi-payback>DAY 02</span>
               </p>
             </div>
           </div>
@@ -502,32 +500,37 @@
                   <path d="M12 7V5h8v2" stroke="currentColor" stroke-width="1.5" />
                 </svg>
               </div>
-              <h3>Pose lock. Zero tablets.</h3>
+              <h3>ACTIVE REVENUE RECOVERY</h3>
               <p>
-                Face ID is the handshake. Full-body pose keeps the session alive under hoods, on lifts,
-                and behind masks — no punch cards, no grease on screens.
+                Automatically tracks active labor vs. idle/phone usage. Captures unbilled diagnostic
+                and custom fabrication hours so you never undercharge on variable projects.
               </p>
             </article>
             <article class="feature-card">
               <div class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 32 32" fill="none">
-                  <rect x="8" y="4" width="16" height="24" rx="3" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M12 10h8M12 14h8M12 18h5" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M6 24l6-8 5 4 9-12" stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="26" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
                 </svg>
               </div>
-              <h3>Telegram scorecards</h3>
-              <p>Dual-clock shift summaries on your phone at close. Zero taps.</p>
+              <h3>WORKFLOW &amp; ROUTE OPTIMIZATION</h3>
+              <p>
+                Traces mechanic floor movement and tool-retrieval paths. Cuts wasted floor transit
+                to accelerate bay turnover and increase daily job throughput.
+              </p>
             </article>
             <article class="feature-card">
               <div class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 32 32" fill="none">
-                  <rect x="6" y="8" width="20" height="14" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M10 26h12M16 22v4" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M12 13h8" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M16 4l10 5v8c0 6-4.5 10.5-10 12C10.5 27.5 6 23 6 17V9l10-5z" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M12 16l3 3 5-6" stroke="currentColor" stroke-width="1.5" />
                 </svg>
               </div>
-              <h3>Zero cloud video tax</h3>
-              <p>On-prem inference. Scorecard metadata only — no bay video stream to the cloud.</p>
+              <h3>LOSS PREVENTION &amp; SAFETY</h3>
+              <p>
+                Monitors high-risk zones under lifts and around active machinery. Instantly flags
+                protocol violations to reduce liability exposure and eliminate costly downtime.
+              </p>
             </article>
           </div>
         </div>

@@ -66,12 +66,22 @@
 - **Allowed:** Live indicator pulse, subtle HUD glow on active bay
 - **Forbidden:** Soft bounce, long parallax heroes, decorative blob motion
 
+## Messaging & Conversion Hierarchy (marketing)
+Money first. Edge-AI is infrastructure, not the headline.
+
+- **Hero:** zero AI / “Edge compute” jargon in H1 or eyebrow. Speak recovering unbilled labor, margins, liability. Proof plane is brutalist CCTV `<video>` (`1px solid #00FF41`, radius 0) — not Bay telemetry chips.
+- **Features (top 3 only):** (1) Active Revenue Recovery, (2) Workflow & Route Optimization / bay turnover, (3) Loss Prevention & Safety. **Attendance is never a primary feature** — payroll clock stays background telemetry / Telegram scorecard only.
+- **CTA budget:** max one neon primary booking CTA per viewport. Hero stays visible; final / mobile-sticky Book reveals only after ~50vh scroll.
+- **ROI framing:** kicker = daily capital bleed; primary metric = projected monthly revenue recovered. Interactive projection — owner sets minutes + rate.
+- **ROI honesty override (2026-09-08):** baseline copy may say “conservative 45 min/day unbilled baseline reported by local operators.” Still do not invent per-shop measured minutes for a named garage without written permission.
+
 ## Interaction / Hick’s lock (marketing)
 Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **one** primary path so a garage owner does not stall.
 
 - **One primary action:** open the bay-demo modal. Nothing else is a “main” conversion.
 - **Canonical labels:**
-  - Hero / final CTA / sticky: **Book Pilot Bay**
+  - Hero: **[ REQUEST PILOT BAY ]**
+  - Final CTA / sticky (scroll-gated): **Book Pilot Bay**
   - Header (space-constrained): **Book Pilot**
   - Modal submit: **Request Pilot**
 - **One accent treatment:** only the primary path uses `btn-neon` / Terminal Green fill. All other actions are `btn-ghost` or quiet text links.
@@ -79,9 +89,8 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 - **Nav (judge scan):** max four anchors — Problem (`#roi`), Engine (`#demo`), Field Notes (`#field-notes`), Team (`#team`) — plus one neon Book Pilot. Pricing / FAQ stay on-page, not in chrome.
 - **Pricing:** both plans visible for clarity; **only Turnkey** uses `btn-neon`. Software = `btn-ghost`. Both open the same demo modal with `data-plan`.
 - **Lead capture:** `#demo-form` `data-formspree` must be a live POST endpoint (Formspree `https://formspree.io/f/…`, bare Formspree ID, or FormSubmit AJAX). Prefer Formspree when the crew has a dashboard ID. Empty endpoint is forbidden for “silent success” UX — if unset, JS must fall back to mailto / loud failure, never fake a received lead.
-- **ROI honesty:** calculator is an interactive projection (owner sets unbilled minutes + rate). Default 45 min is a conservative model vs global ~80% technician productivity KPI — never claim shop-measured minutes without a permissioned pilot.
 - **Boot:** skip by default; opt-in theater only via `?boot=1`.
-- **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path; TBD / placeholder case outcomes on the live marketing surface.
+- **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path; TBD / placeholder case outcomes on the live marketing surface; Attendance as a hero/feature headline.
 
 ## Location / Map (marketing)
 Location is a **tactical node HUD**, not consumer map chrome. City hub only until a permanent shop address is published — never invent a street address.
@@ -119,3 +128,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-07 | Tactical PP-NODE location HUD | Carto Dark + neon pin; brand immunity vs pastel Google; city hub only |
 | 2026-09-08 | FirstWave AIM 70 landing lock | Judge-first scan: Book Pilot Bay; pruned nav; boot bypass; Field Discovery matrix; interactive ROI; kill TBD/cases |
 | 2026-09-08 | Desktop type scale raised | Hero/h2/lede/body clamps match Display XL; 1200px container at 1280px+; kill parallax; Request Pilot |
+| 2026-09-08 | Mentor revenue DNA pivot | Video-first hero; Revenue Recovery / Turnover / Loss Prevention; capital-bleed ROI; attendance demoted; REQUEST PILOT BAY |
