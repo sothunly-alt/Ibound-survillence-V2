@@ -29,7 +29,11 @@ RUNTIME_ALIASES = {
     "auto": "auto",
 }
 
-EDGE_WEIGHTS = "yolo11n-pose.pt"
+EDGE_WEIGHTS = (
+    "yolo11n_improved.pt"
+    if Path(__file__).resolve().parent.joinpath("yolo11n_improved.pt").is_file()
+    else "yolo11n-pose.pt"
+)
 SERVER_WEIGHTS = "yolo11s-pose.pt"
 
 

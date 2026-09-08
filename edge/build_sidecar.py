@@ -62,6 +62,10 @@ def detect_target_triple() -> str:
 
 
 def ensure_weights() -> None:
+    improved = EDGE / "yolo11n_improved.pt"
+    if improved.exists() and improved.stat().st_size > 1_000_000:
+        print(f"Using improved weights: {improved}", flush=True)
+
     for model_name, target_file in [
         ("yolo11n-pose.pt", WEIGHTS),
         ("yolo11n.pt", VEHICLE_WEIGHTS),

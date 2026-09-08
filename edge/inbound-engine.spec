@@ -66,6 +66,7 @@ hiddenimports = [
 ]
 
 for name in (
+    "yolo11n_improved.pt",
     "yolo11n-pose.pt",
     "yolo11n.pt",
     "config.example.yaml",

@@ -50,7 +50,7 @@ wifi_devices: []
 # detect_fps caps inference; the preview still follows the camera.
 # Dual-target runtime: cpu | openvino | cuda | tensorrt
 runtime: cpu
-weights: yolo11n-pose.pt
+weights: yolo11n_improved.pt  # Fine-tuned garage surveillance model (or yolo11n-pose.pt)
 server_weights: yolo11s-pose.pt
 person_conf: 0.35
 imgsz: 640

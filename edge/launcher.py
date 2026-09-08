@@ -2391,7 +2391,11 @@ class LiveStreamEngine:
         self.conn = connect(DATA_DIR / "events.db")
         self.runtime_profile = resolve_runtime(self.cfg)
         weights_path = resolve_weights_file(self.cfg, get_resource_path, DATA_DIR)
-        veh_weights_path = get_resource_path("yolo11n.pt")
+        veh_weights_path = get_resource_path("yolo11n_improved.pt")
+        if not veh_weights_path.exists():
+            veh_weights_path = DATA_DIR / "yolo11n_improved.pt"
+        if not veh_weights_path.exists():
+            veh_weights_path = get_resource_path("yolo11n.pt")
         if not veh_weights_path.exists():
             veh_weights_path = DATA_DIR / "yolo11n.pt"
         try:
