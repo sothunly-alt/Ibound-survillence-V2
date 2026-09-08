@@ -263,42 +263,51 @@ function initRoiCalculator() {
   if (!root) return;
 
   const baysInput = root.querySelector("[data-roi-bays]");
+  const minutesInput = root.querySelector("[data-roi-minutes]");
   const rateInput = root.querySelector("[data-roi-rate]");
   const baysDisplay = root.querySelector("[data-roi-bays-display]");
+  const minutesDisplay = root.querySelector("[data-roi-minutes-display]");
   const rateDisplay = root.querySelector("[data-roi-rate-display]");
   const annualEl = root.querySelector("[data-roi-annual]");
   const softwareEl = root.querySelector("[data-roi-software]");
   const paybackEls = document.querySelectorAll("[data-roi-payback], [data-roi-payback-eq]");
+  const minutesEq = document.querySelector("[data-roi-minutes-eq]");
   const rateEq = document.querySelector("[data-roi-rate-eq]");
   const monthlyEl = document.querySelector("[data-roi-monthly]");
   const leakCopy = document.querySelector("[data-roi-leak-copy]");
 
   const render = () => {
-    const bays = Number(baysInput.value);
-    const rate = Number(rateInput.value);
-    const monthlyPerBay = 0.75 * rate * 24;
+    const bays = Number(baysInput?.value || 3);
+    const minutes = Number(minutesInput?.value || 45);
+    const rate = Number(rateInput?.value || 35);
+    const leakHours = minutes / 60;
+    const monthlyPerBay = leakHours * rate * 24;
     const annual = monthlyPerBay * 12 * bays;
     const softwareAnnual = 39 * 12 * bays;
-    const paybackDays = Math.max(1, Math.ceil(39 / (0.75 * rate)));
+    const dailyRecovery = leakHours * rate;
+    const paybackDays = Math.max(1, Math.ceil(39 / Math.max(dailyRecovery, 0.01)));
     const payback = formatPayback(paybackDays);
 
     if (baysDisplay) baysDisplay.textContent = String(bays);
+    if (minutesDisplay) minutesDisplay.textContent = `${minutes} min`;
     if (rateDisplay) rateDisplay.textContent = `$${rate}/hr`;
     if (annualEl) annualEl.textContent = formatMoney(annual);
     if (softwareEl) softwareEl.textContent = formatMoney(softwareAnnual);
+    if (minutesEq) minutesEq.innerHTML = `~${minutes}<small>min</small>`;
     if (rateEq) rateEq.innerHTML = `$${rate}<small>/hr</small>`;
     if (monthlyEl) monthlyEl.innerHTML = `${formatMoney(monthlyPerBay)}<small>/bay</small>`;
     paybackEls.forEach((el) => {
       el.textContent = payback;
     });
     if (leakCopy) {
-      leakCopy.innerHTML = `Mechanics lose ~45 mins of untracked time a day. At $${rate}/hr across ~24 shop days,
-        that’s <strong>${formatMoney(monthlyPerBay)} lost per bay, every month.</strong>`;
+      leakCopy.innerHTML = `At your estimate of ${minutes} unbilled minutes/day and $${rate}/hr across ~24 shop days,
+        that’s <strong>${formatMoney(monthlyPerBay)} projected per bay, every month.</strong>`;
     }
   };
 
-  baysInput.addEventListener("input", render);
-  rateInput.addEventListener("input", render);
+  baysInput?.addEventListener("input", render);
+  minutesInput?.addEventListener("input", render);
+  rateInput?.addEventListener("input", render);
   render();
 }
 
@@ -469,16 +478,29 @@ function initBootSequence() {
     return;
   }
 
-  if (shot) {
+  const params = new URLSearchParams(location.search);
+  const forceBoot = params.has("boot") || params.get("boot") === "1";
+  const holdBoot = params.has("holdboot");
+
+  // Default: skip boot for judge/investor scans. Opt-in theater with ?boot=1
+  if (!forceBoot && !holdBoot && !shot) {
     overlay.remove();
     document.body.classList.remove("is-booting");
     return;
   }
 
-  const holdBoot = new URLSearchParams(location.search).has("holdboot");
+  overlay.hidden = false;
+
+  if (shot && !forceBoot) {
+    overlay.remove();
+    document.body.classList.remove("is-booting");
+    return;
+  }
+
+  document.body.classList.add("is-booting");
 
   try {
-    if (!holdBoot && sessionStorage.getItem("inbound_booted")) {
+    if (!holdBoot && !forceBoot && sessionStorage.getItem("inbound_booted")) {
       overlay.remove();
       document.body.classList.remove("is-booting");
       return;

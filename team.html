@@ -20,7 +20,7 @@
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>
-    <header class="site-header">
+    <header class="site-header" id="header">
       <div class="container header-inner">
         <a class="brand" href="index.html" aria-label="Inbound Surveillance home">
           <span class="brand-mark">
@@ -31,7 +31,15 @@
             <span class="brand-sub">SURVEILLANCE</span>
           </span>
         </a>
-        <a class="btn btn-neon btn-sm" href="index.html#demo">Request Demo</a>
+        <nav class="nav-desktop" aria-label="Primary">
+          <a href="index.html#roi">Problem</a>
+          <a href="index.html#demo">Engine</a>
+          <a href="index.html#field-notes">Field Notes</a>
+          <a href="team.html">Team</a>
+        </nav>
+        <div class="header-actions">
+          <button class="btn btn-neon btn-sm" data-open-demo type="button">Book Pilot</button>
+        </div>
       </div>
     </header>
 
@@ -193,9 +201,71 @@
       </div>
 
       <p class="team-page-cta">
-        <a class="btn btn-neon" href="index.html#demo">Book a bay walkthrough</a>
+        <button class="btn btn-neon" data-open-demo type="button">Book Pilot Bay</button>
         <a class="btn btn-ghost" href="about.html">About the system</a>
       </p>
     </main>
+
+    <div class="modal" id="demo-modal" hidden>
+      <div class="modal-backdrop" data-close-demo></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="demo-title">
+        <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
+        <p class="section-index">Bay Demo</p>
+        <h2 id="demo-title">Book a free pilot bay walkthrough.</h2>
+        <p class="modal-copy">
+          We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.
+          <span class="response-promise inline">Reply within one business day · Phnom Penh time.</span>
+        </p>
+        <form
+          class="demo-form"
+          id="demo-form"
+          data-formspree="https://formsubmit.co/ajax/inboundcrew82@gmail.com"
+        >
+          <label>
+            Name
+            <input type="text" name="name" required autocomplete="name" />
+          </label>
+          <label>
+            Shop name
+            <input type="text" name="shop" required />
+          </label>
+          <label>
+            Telegram or phone
+            <input type="text" name="contact" required autocomplete="tel" />
+          </label>
+          <label>
+            Number of bays
+            <input type="number" name="bays" min="1" max="40" value="2" required />
+          </label>
+          <label class="full">
+            Plan interest
+            <select name="plan" id="plan-select">
+              <option value="Software Only">Software Only — $39 / bay / month</option>
+              <option value="Turnkey Hardware Install">Turnkey Hardware Install — $250 + $39 / bay</option>
+            </select>
+          </label>
+          <label class="full consent-check">
+            <input type="checkbox" name="operator_ack" required />
+            <span>
+              <strong>Operator Acknowledgment:</strong>
+              Client confirms that Inbound Surveillance hardware will be deployed strictly for internal
+              labor accounting, bay occupancy auditing, and workflow automation. Client assumes sole
+              responsibility for notifying all personnel and contractors that automated optical labor
+              tracking is operational within designated service bays, indemnifying Inbound Surveillance
+              against unauthorized surveillance claims resulting from failure to provide adequate
+              workplace notice.
+              <a href="privacy.html">Privacy Policy</a>
+            </span>
+          </label>
+          <button class="btn btn-neon full-btn" type="submit">Request Demo</button>
+          <p class="form-error" id="form-error" hidden role="alert"></p>
+        </form>
+        <p class="form-success" id="form-success" hidden>
+          Request received. We’ll confirm on Telegram within one business day.
+        </p>
+      </div>
+    </div>
+
+    <script src="js/main.js"></script>
   </body>
 </html>

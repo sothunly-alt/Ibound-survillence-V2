@@ -23,9 +23,16 @@
 - Software: $39 / bay / month
 - Turnkey install: $250 + $39 / bay / month
 
+## Field validation (honest)
+- Discovery: 2 Phnom Penh performance garages + 4–6 retail/storefront exploratory interviews.
+- Beachhead locked on garages (grease barrier, paper job-cards, direct hourly revenue).
+- Zero signed LOIs yet; staging Pilot 01.
+- ROI calculator is an interactive projection using owner-set unbilled minutes + rate.
+- Default 45 min/day is a conservative model vs global ~80% technician productivity KPI (≈1+ hr non-billable/day in digital shops). Do not present it as a shop-measured statistic.
+
 ## Notes for models
 - Do not invent customer names, reviews, recovered-hour metrics, or street addresses.
 - Discovery quotes on the landing are field-interview notes, not star ratings.
-- Case study frames may still be DEMO placeholders until permissioned installs exist.
+- Field Discovery matrix replaces placeholder case studies.
 - Team identities above are real and publishable; use only those names/roles.
 - Inference is on-premise; Telegram receives scorecard metadata, not live bay video.

@@ -70,15 +70,17 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 
 - **One primary action:** open the bay-demo modal. Nothing else is a “main” conversion.
 - **Canonical labels:**
-  - Hero / final CTA / sticky: **Book a Free Bay Demo**
-  - Header (space-constrained): **Book Demo**
+  - Hero / final CTA / sticky: **Book Pilot Bay**
+  - Header (space-constrained): **Book Pilot**
   - Modal submit: **Request Demo**
 - **One accent treatment:** only the primary path uses `btn-neon` / Terminal Green fill. All other actions are `btn-ghost` or quiet text links.
 - **Choice budget per viewport (hero):** brand + one headline + one support line + **one** CTA group — primary only, or primary + one ghost “See how it works” → `#architecture`. No second neon in the hero fold.
-- **Nav:** section anchors allowed; **never more than one neon control in the header**. Team / About / legal stay footer or quiet links — not competing neon.
+- **Nav (judge scan):** max four anchors — Problem (`#roi`), Engine (`#demo`), Field Notes (`#field-notes`), Team (`#team`) — plus one neon Book Pilot. Pricing / FAQ stay on-page, not in chrome.
 - **Pricing:** both plans visible for clarity; **only Turnkey** uses `btn-neon`. Software = `btn-ghost`. Both open the same demo modal with `data-plan`.
 - **Lead capture:** `#demo-form` `data-formspree` must be a live POST endpoint (Formspree `https://formspree.io/f/…`, bare Formspree ID, or FormSubmit AJAX). Prefer Formspree when the crew has a dashboard ID. Empty endpoint is forbidden for “silent success” UX — if unset, JS must fall back to mailto / loud failure, never fake a received lead.
-- **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path.
+- **ROI honesty:** calculator is an interactive projection (owner sets unbilled minutes + rate). Default 45 min is a conservative model vs global ~80% technician productivity KPI — never claim shop-measured minutes without a permissioned pilot.
+- **Boot:** skip by default; opt-in theater only via `?boot=1`.
+- **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path; TBD / placeholder case outcomes on the live marketing surface.
 
 ## Location / Map (marketing)
 Location is a **tactical node HUD**, not consumer map chrome. City hub only until a permanent shop address is published — never invent a street address.
@@ -88,7 +90,7 @@ Location is a **tactical node HUD**, not consumer map chrome. City hub only unti
 - **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed; telemetry strip over the map is ambient, not a CTA.
 - **Directions:** one `btn-ghost` “Open directions” → Google Maps city search (or real address when published). Never neon on the location block.
 - **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
-- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with Book a Free Bay Demo.
+- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with Book Pilot Bay.
 
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
@@ -114,3 +116,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-04 | Pose/body primary; Face ID assist | Mechanics under cars / masked / facing away |
 | 2026-09-07 | Hick’s lock on marketing CTAs | One neon primary (Book a Free Bay Demo); kill decision fatigue before Thursday pitch |
 | 2026-09-07 | Tactical PP-NODE location HUD | Carto Dark + neon pin; brand immunity vs pastel Google; city hub only |
+| 2026-09-08 | FirstWave AIM 70 landing lock | Judge-first scan: Book Pilot Bay; pruned nav; boot bypass; Field Discovery matrix; interactive ROI; kill TBD/cases |

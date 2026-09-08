@@ -100,8 +100,8 @@
       }
     </style>
   </head>
-  <body class="is-booting">
-    <div id="boot-loader" class="boot-overlay" role="status" aria-live="polite" aria-busy="true">
+  <body>
+    <div id="boot-loader" class="boot-overlay" role="status" aria-live="polite" aria-busy="true" hidden>
       <div class="boot-modal">
         <div class="boot-header">
           <div class="boot-title-group">
@@ -147,18 +147,14 @@
         </a>
 
         <nav class="nav-desktop" aria-label="Primary">
-          <a href="#demo">System</a>
-          <a href="#architecture">Architecture</a>
-          <a href="#roi">The Math</a>
-          <a href="#features">Features</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#cases">Cases</a>
-          <a href="#faq">FAQ</a>
-          <a href="team.html">Team</a>
+          <a href="#roi">Problem</a>
+          <a href="#demo">Engine</a>
+          <a href="#field-notes">Field Notes</a>
+          <a href="#team">Team</a>
         </nav>
 
         <div class="header-actions">
-          <button class="btn btn-neon btn-sm" data-open-demo type="button">Book Demo</button>
+          <button class="btn btn-neon btn-sm" data-open-demo type="button">Book Pilot</button>
           <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
             <span></span>
             <span></span>
@@ -167,15 +163,11 @@
         </div>
       </div>
       <nav class="nav-mobile" id="mobile-nav" hidden>
-        <a href="#demo">System</a>
-        <a href="#architecture">Architecture</a>
-        <a href="#roi">The Math</a>
-        <a href="#features">Features</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#cases">Cases</a>
-        <a href="#faq">FAQ</a>
-        <a href="team.html">Team</a>
-        <button class="btn btn-neon" data-open-demo type="button">Book Demo</button>
+        <a href="#roi">Problem</a>
+        <a href="#demo">Engine</a>
+        <a href="#field-notes">Field Notes</a>
+        <a href="#team">Team</a>
+        <button class="btn btn-neon" data-open-demo type="button">Book Pilot</button>
       </nav>
     </header>
 
@@ -197,7 +189,7 @@
             then the scorecard lands on Telegram with zero taps.
           </p>
           <div class="hero-cta">
-            <button class="btn btn-neon btn-lg" data-open-demo type="button">Book a Free Bay Demo</button>
+            <button class="btn btn-neon btn-lg" data-open-demo type="button">Book Pilot Bay</button>
             <a class="btn btn-ghost btn-lg" href="#architecture">See how it works</a>
             <p class="social-inline">Built from floor interviews with Phnom Penh performance garages.</p>
           </div>
@@ -323,10 +315,17 @@
           <header class="section-head">
             <p class="section-index">[ 03 ] The Math</p>
             <h2>The leak is already on your floor.</h2>
+            <p class="section-copy">
+              Global automotive KPIs target ~80% technician productivity — leaving 1+ hours non-billable
+              per tech per day. Set your own estimate; we do not invent shop-measured minutes.
+            </p>
           </header>
 
           <div class="roi-calc" data-roi-calc>
-            <p class="roi-calc-kicker">Wrench-Time Recovery Calculator</p>
+            <p class="roi-calc-kicker">Calculate Projected Labor Recovery</p>
+            <p class="roi-calc-baseline mono">
+              Global industry avg ≈ 1.2 hrs non-billable / tech / day (≈80% productivity KPI)
+            </p>
             <div class="roi-sliders">
               <label class="roi-slider">
                 <span class="roi-slider-top">
@@ -337,17 +336,35 @@
               </label>
               <label class="roi-slider">
                 <span class="roi-slider-top">
-                  <span>Shop Labor Rate</span>
-                  <strong data-roi-rate-display>$80/hr</strong>
+                  <span>Estimated unbilled minutes / tech / day</span>
+                  <strong data-roi-minutes-display>45 min</strong>
                 </span>
-                <input type="range" min="40" max="150" value="80" step="5" data-roi-rate aria-label="Shop labor rate" />
+                <input
+                  type="range"
+                  min="15"
+                  max="90"
+                  value="45"
+                  step="5"
+                  data-roi-minutes
+                  aria-label="Estimated unbilled minutes per technician per day"
+                />
+                <span class="roi-slider-hint"
+                  >(Based on a conservative 45 min/day unbilled baseline vs. global 80% productivity KPI)</span
+                >
+              </label>
+              <label class="roi-slider">
+                <span class="roi-slider-top">
+                  <span>Shop Labor Rate</span>
+                  <strong data-roi-rate-display>$35/hr</strong>
+                </span>
+                <input type="range" min="20" max="80" value="35" step="5" data-roi-rate aria-label="Shop labor rate" />
               </label>
             </div>
             <div class="roi-calc-result">
               <div class="roi-calc-pair">
                 <div>
-                  <p class="roi-calc-label">Annual unbilled labor recovered</p>
-                  <p class="roi-calc-value mono neon" data-roi-annual>$51,840</p>
+                  <p class="roi-calc-label">Projected annual recovery</p>
+                  <p class="roi-calc-value mono neon" data-roi-annual>$15,120</p>
                 </div>
                 <div>
                   <p class="roi-calc-label">Software cost ($39/bay/mo)</p>
@@ -355,25 +372,24 @@
                 </div>
               </div>
               <p class="roi-calc-meta">
-                Assumes 45 min uncaptured wrench-time per bay per day ·
-                Payback in <span data-roi-payback>DAY 01</span>
+                At your estimate · Payback in <span data-roi-payback>DAY 02</span>
               </p>
             </div>
           </div>
 
           <div class="roi-grid">
             <article class="roi-card leak">
-              <p class="roi-kicker">The Leak</p>
+              <p class="roi-kicker">The Model</p>
               <p class="roi-equation">
-                <span class="mono">~45<small>min</small></span>
+                <span class="mono" data-roi-minutes-eq>~45<small>min</small></span>
                 <span class="op">×</span>
-                <span class="mono" data-roi-rate-eq>$80<small>/hr</small></span>
+                <span class="mono" data-roi-rate-eq>$35<small>/hr</small></span>
                 <span class="op">=</span>
-                <span class="mono loss" data-roi-monthly>$1,440<small>/bay</small></span>
+                <span class="mono loss" data-roi-monthly>$420<small>/bay</small></span>
               </p>
               <p data-roi-leak-copy>
-                Mechanics lose ~45 mins of untracked time a day. At $80/hr across ~24 shop days,
-                that’s <strong>$1,440 lost per bay, every month.</strong>
+                At your estimate of 45 unbilled minutes/day and $35/hr across ~24 shop days,
+                that’s <strong>$420 projected per bay, every month.</strong>
               </p>
             </article>
             <article class="roi-card fix">
@@ -381,11 +397,11 @@
               <p class="roi-equation">
                 <span class="mono neon">$39<small>/mo</small></span>
                 <span class="op">→</span>
-                <span class="mono neon" data-roi-payback-eq>DAY 01</span>
+                <span class="mono neon" data-roi-payback-eq>DAY 02</span>
               </p>
               <p>
-                Our system costs <strong>$39/month</strong>. It pays for itself fast.
-                The rest is <strong>pure recovered profit.</strong>
+                Software is <strong>$39/month per bay</strong>. At your estimate it pays back fast.
+                The rest is <strong>projected recovered margin.</strong>
               </p>
             </article>
           </div>
@@ -498,7 +514,7 @@
                 <small>/ month per bay</small>
               </p>
               <button class="btn btn-neon" data-open-demo data-plan="Turnkey Hardware Install" type="button">
-                Book a Free Bay Demo
+                Book Pilot Bay
                 <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
                 </svg>
@@ -518,9 +534,6 @@
           <p class="pricing-note">
             <span></span>
             Extra bays stay at the same per-bay rate. No overage tax.
-          </p>
-          <p class="guarantee-note mono">
-            Pilot guarantee: TBD — slot for written pilot terms.
           </p>
         </div>
       </section>
@@ -566,46 +579,47 @@
         </div>
       </section>
 
-      <section class="section cases-section" id="cases">
+      <section class="section field-notes-section" id="field-notes">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 07 ] Cases</p>
-            <h2>Demo case frames — replace with permissioned installs.</h2>
+            <p class="section-index">[ 07 ] Field Notes</p>
+            <p class="partners-label mono">> FIELD DISCOVERY // PHNOM PENH MARKET</p>
+            <h2>Global economics. Local concrete.</h2>
             <p class="section-copy">
-              Template slots only. Outcomes stay dashed until a shop signs off on publication.
+              We fuse industry baselines with floor walks in Sen Sok and Toul Kork — not invented logos,
+              not dashed case metrics.
             </p>
           </header>
 
-          <div class="cases-grid">
-            <article class="case-card">
-              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
-              <h3>Multi-bay tune shop · occlusion leak</h3>
-              <p class="case-label">Problem</p>
-              <p>Face-only clocks dropped whenever techs went under hoods or on lifts.</p>
-              <p class="case-label">Approach</p>
-              <p>Pose + bay polygons; Face ID assist on entry only.</p>
-              <p class="case-label">Outcome</p>
-              <p class="case-metric mono">— hrs recovered · TBD</p>
+          <div class="field-matrix">
+            <article class="field-col">
+              <p class="field-col-header mono">THE PRODUCTIVITY GAP</p>
+              <p class="field-datapoint mono">Global KPI target: 80% technician efficiency</p>
+              <p>
+                Global automotive KPIs target 80% technician efficiency, leaving over an hour unbilled
+                daily. In our interviews across Phnom Penh performance garages, operations still rely on
+                whiteboards and paper job-cards. When a standard 1.2-hour global leakage meets a manual
+                workflow, unbilled diagnostic time scales rapidly.
+              </p>
             </article>
-            <article class="case-card">
-              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
-              <h3>Motorsport prep · dual-clock payroll</h3>
-              <p class="case-label">Problem</p>
-              <p>Billable wrench-time and attendance were tracked on separate paper systems.</p>
-              <p class="case-label">Approach</p>
-              <p>On-prem dual clocks; Telegram scorecard at close.</p>
-              <p class="case-label">Outcome</p>
-              <p class="case-metric mono">— % efficiency delta · TBD</p>
+            <article class="field-col">
+              <p class="field-col-header mono">THE GREASE BARRIER</p>
+              <p class="field-datapoint mono">Hardware touches = 0</p>
+              <p>
+                Across the primary tuning bays we surveyed, mechanics working with 10W-40 and brake dust
+                will not deglove to tap a tablet. Standard Face-ID systems fail entirely when technicians
+                are actively wrenching beneath chassis lifts or deep inside engine bays.
+              </p>
             </article>
-            <article class="case-card">
-              <p class="case-badge">DEMO CASE · PLACEHOLDER</p>
-              <h3>Independent garage · zero-click admin</h3>
-              <p class="case-label">Problem</p>
-              <p>Owners refused any mechanic-facing app; scorecards had to arrive unprompted.</p>
-              <p class="case-label">Approach</p>
-              <p>Edge dispatch to @Inbound_Surveillance_bot; no cloud video stream.</p>
-              <p class="case-label">Outcome</p>
-              <p class="case-metric mono">— admin hrs / week · TBD</p>
+            <article class="field-col">
+              <p class="field-col-header mono">THE REVENUE PROXIMITY</p>
+              <p class="field-datapoint mono">Direct billable labor vs. passive monitoring</p>
+              <p>
+                We conducted exploratory surveys across 4 to 6 storefront operators regarding unattended
+                checkout desks. While retail monitoring solves a customer-experience pain, automotive
+                garages bleed direct, measurable hourly revenue. We locked onto garages as the beachhead
+                because the ROI of recovering a lost $35/hour wrenching session is instant.
+              </p>
             </article>
           </div>
         </div>
@@ -771,14 +785,14 @@
         <div class="container final-content">
           <p class="section-index">[ 11 ] Deploy</p>
           <h2>Start billing for the hours you actually work.</h2>
-          <button class="btn btn-neon btn-lg" data-open-demo type="button">Book a Free Bay Demo</button>
+          <button class="btn btn-neon btn-lg" data-open-demo type="button">Book Pilot Bay</button>
           <p class="response-promise">We reply on Telegram within one business day · Phnom Penh time</p>
         </div>
       </section>
     </main>
 
     <div class="mobile-sticky-cta" id="mobile-sticky-cta">
-      <button class="btn btn-neon" data-open-demo type="button">Book a Free Bay Demo</button>
+      <button class="btn btn-neon" data-open-demo type="button">Book Pilot Bay</button>
     </div>
 
     <!-- GA4: set window.INBOUND_GA4_ID = "G-XXXXXXXX" and restore consent UI when analytics is live. -->
@@ -822,7 +836,7 @@
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="demo-title">
         <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
         <p class="section-index">Bay Demo</p>
-        <h2 id="demo-title">Book a free bay walkthrough.</h2>
+        <h2 id="demo-title">Book a free pilot bay walkthrough.</h2>
         <p class="modal-copy">
           We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.
           <span class="response-promise inline">Reply within one business day · Phnom Penh time.</span>
