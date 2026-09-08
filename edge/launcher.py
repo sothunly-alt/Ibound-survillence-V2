@@ -951,6 +951,7 @@ class LiveStreamEngine:
         self.runtime_profile = None
         self.staff_names: list[str] = []
         self.identities: list[str] = []
+        self.force_infer = False
 
         # Telemetry stats
         self.fps = 0.0
@@ -1126,12 +1127,15 @@ class LiveStreamEngine:
             if self.face_rec is None:
                 return 0
         try:
-            count = self.face_rec.reload_enrolled_faces()
+            # Hold infer_lock so YuNet enrollment does not race live YOLO DNN.
+            with self.infer_lock:
+                count = self.face_rec.reload_enrolled_faces()
             if self.tracker is not None:
                 self.tracker.reset()
             if self.bay_manager is not None:
                 for bay in getattr(self.bay_manager, "_bays", []):
                     bay.locked_tracks.clear()
+            self.force_infer = True
             return count
         except Exception as exc:
             print(f"[FaceID] Reload failed: {exc}")
@@ -2576,8 +2580,9 @@ class LiveStreamEngine:
                 self.status_text = "AI DISABLED"
                 last_accepted = []
                 last_rejected = []
-            elif now - last_infer >= dynamic_interval:
+            elif self.force_infer or now - last_infer >= dynamic_interval:
                 last_infer = now
+                self.force_infer = False
                 try:
                     t_pred = time.perf_counter()
                     with self.infer_lock:
@@ -3772,5 +3777,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    start_unified_server(port=args.port, open_browser=not args.no_browser)
+    import multiprocessing
+    multiprocessing.freeze_support()
+    try:
+        args = parse_args()
+        start_unified_server(port=args.port, open_browser=not args.no_browser)
+    except Exception as _boot_err:
+        import traceback
+        print(f"[FATAL] Engine startup failed: {_boot_err}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        sys.exit(1)

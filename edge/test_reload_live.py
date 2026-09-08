@@ -16,14 +16,50 @@ if str(ROOT) not in sys.path:
 from face_id import try_create_face_recognizer, FaceRecognizer
 from launcher import LiveStreamEngine
 
-def test_live_reload():
-    cfg = {
-        "face_id": {
-            "enabled": True,
-            "faces_dir": str(ROOT / "faces"),
-            "similarity_threshold": 0.40,
-        }
+
+def _face_cfg() -> dict:
+    return {
+        "enable_face_id": True,
+        "faces_dir": str(ROOT / "faces"),
+        "face_match_threshold": 0.40,
     }
+
+
+def test_transient_miss_is_retried():
+    """A first-pass failed extract must not be cached as None forever."""
+    rec = try_create_face_recognizer(_face_cfg())
+    assert rec is not None
+    test_dir = ROOT / "faces" / "RetryStaff"
+    source_photo = list((ROOT / "faces" / "HourMeng").glob("*.jpg"))[0]
+    orig = rec.extract_embedding_from_image
+    calls = {"n": 0}
+
+    def flaky(img, detector=None, recognizer=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return orig(img, detector=detector, recognizer=recognizer)
+
+    rec.extract_embedding_from_image = flaky
+    try:
+        os.makedirs(test_dir, exist_ok=True)
+        shutil.copy(source_photo, test_dir / "ref.jpg")
+        rec.reload_enrolled_faces()
+        assert "RetryStaff" in rec.known_embeddings, "First extract miss was not retried in-reload"
+        retry_keys = [k for k in rec._embedding_cache if "RetryStaff" in k[0]]
+        assert retry_keys, "RetryStaff photo was not cached"
+        assert all(rec._embedding_cache[k] is not None for k in retry_keys)
+        print("[OK] Transient extract miss was retried instead of cached")
+    finally:
+        rec.extract_embedding_from_image = orig
+        if test_dir.exists():
+            shutil.rmtree(test_dir)
+        rec.reload_enrolled_faces()
+        assert "RetryStaff" not in rec.known_embeddings
+
+
+def test_live_reload():
+    cfg = _face_cfg()
     rec = try_create_face_recognizer(cfg)
     assert rec is not None, "Failed to create FaceRecognizer"
     initial_members = set(rec.known_embeddings.keys())
@@ -77,6 +113,7 @@ def test_live_reload():
         engine.face_rec = rec
         engine_res = engine.reload_face_id()
         assert engine_res == count
+        assert engine.force_infer is True
         print(f"[OK] LiveStreamEngine.reload_face_id succeeded, enrolled {engine_res} staff!")
 
     finally:
@@ -98,4 +135,5 @@ def test_live_reload():
     print("ALL TESTS PASSED!")
 
 if __name__ == "__main__":
+    test_transient_miss_is_retried()
     test_live_reload()

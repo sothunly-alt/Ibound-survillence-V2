@@ -1,19 +1,89 @@
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { engineBaseUrl, enginePort } from "./engine-url";
 
-const status = document.getElementById("status");
-let redirected = false;
+interface EngineFailure {
+  exit_code?: number | null;
+  error_summary: string;
+  log_path: string;
+  is_dll_error: boolean;
+}
 
-function setStatus(text: string) {
-  if (status) status.textContent = text;
+const status = document.getElementById("status");
+const pulseDot = document.querySelector(".pulse-dot") as HTMLElement | null;
+const errorPanel = document.getElementById("error-panel") as HTMLElement | null;
+const errorTitle = document.getElementById("error-title");
+const errorDesc = document.getElementById("error-desc");
+const vcredistBox = document.getElementById("vcredist-box") as HTMLElement | null;
+const errorLog = document.getElementById("error-log");
+const errorPath = document.getElementById("error-path");
+const btnRetry = document.getElementById("btn-retry");
+const btnOpenLog = document.getElementById("btn-open-log");
+const btnCopyError = document.getElementById("btn-copy-error");
+
+let redirected = false;
+let pollTimer: number | null = null;
+let lastFailure: EngineFailure | null = null;
+
+function setStatus(text: string, isError = false) {
+  if (status) {
+    status.textContent = text;
+    status.style.color = isError ? "#f87171" : "var(--color-surveillance-green)";
+  }
 }
 
 function openHub(port: number) {
   if (redirected) return;
   redirected = true;
+  if (pollTimer) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
+  }
   const url = `${engineBaseUrl(port)}/`;
   setStatus(`Connecting to camera hub on port ${port}…`);
   window.location.replace(url);
+}
+
+function showEngineFailure(failure: EngineFailure) {
+  if (redirected) return;
+  lastFailure = failure;
+
+  if (pollTimer) {
+    window.clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  setStatus("Engine process stopped", true);
+  if (pulseDot) pulseDot.style.display = "none";
+
+  if (errorPanel) {
+    errorPanel.style.display = "block";
+  }
+
+  if (errorTitle) {
+    errorTitle.textContent =
+      failure.exit_code !== undefined && failure.exit_code !== null
+        ? `Engine Exited (Code ${failure.exit_code})`
+        : "Engine Startup Failed";
+  }
+
+  if (errorDesc) {
+    errorDesc.textContent = failure.is_dll_error
+      ? "A required system C++ library is missing from this Windows installation."
+      : "The camera engine exited unexpectedly during startup.";
+  }
+
+  if (vcredistBox) {
+    vcredistBox.style.display = failure.is_dll_error ? "block" : "none";
+  }
+
+  if (errorLog) {
+    errorLog.textContent = failure.error_summary || "No error output recorded.";
+  }
+
+  if (errorPath && failure.log_path) {
+    errorPath.textContent = `Log file: ${failure.log_path}`;
+  }
 }
 
 async function probe(port: number): Promise<boolean> {
@@ -32,42 +102,107 @@ async function probe(port: number): Promise<boolean> {
   }
 }
 
+function startPolling() {
+  if (pollTimer) window.clearInterval(pollTimer);
+  const started = Date.now();
+  pollTimer = window.setInterval(async () => {
+    if (redirected) {
+      if (pollTimer) window.clearInterval(pollTimer);
+      return;
+    }
+    if (await probe(enginePort())) {
+      if (pollTimer) window.clearInterval(pollTimer);
+      openHub(enginePort());
+      return;
+    }
+    if (Date.now() - started > 90_000) {
+      if (pollTimer) window.clearInterval(pollTimer);
+      showEngineFailure({
+        exit_code: null,
+        error_summary: "Engine probe timed out after 90 seconds. Port 8765 did not respond.",
+        log_path: "",
+        is_dll_error: false,
+      });
+    }
+  }, 500);
+}
+
+function initErrorActions() {
+  btnRetry?.addEventListener("click", async () => {
+    if (errorPanel) errorPanel.style.display = "none";
+    if (pulseDot) pulseDot.style.display = "block";
+    setStatus("Restarting camera engine…");
+    try {
+      await invoke("retry_engine");
+    } catch (_) {}
+    startPolling();
+  });
+
+  btnOpenLog?.addEventListener("click", async () => {
+    try {
+      await invoke("open_engine_log");
+    } catch (_) {}
+  });
+
+  btnCopyError?.addEventListener("click", async () => {
+    const text = [
+      `Exit Code: ${lastFailure?.exit_code ?? "N/A"}`,
+      `Log Path: ${lastFailure?.log_path ?? "N/A"}`,
+      `Error Summary:\n${lastFailure?.error_summary ?? "N/A"}`,
+    ].join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      if (btnCopyError) btnCopyError.textContent = "Copied!";
+      window.setTimeout(() => {
+        if (btnCopyError) btnCopyError.textContent = "Copy Details";
+      }, 2000);
+    } catch (_) {}
+  });
+}
+
 async function boot() {
-  const initial = enginePort();
-  if (await probe(initial)) {
-    openHub(initial);
-    return;
-  }
+  initErrorActions();
+
+  // Expose hook on window so Rust eval can also trigger it directly
+  (window as unknown as { __onEngineFailed: (f: EngineFailure) => void }).__onEngineFailed =
+    showEngineFailure;
+
+  window.addEventListener(
+    "inbound-engine-failed",
+    ((event: CustomEvent<EngineFailure>) => {
+      if (event.detail) showEngineFailure(event.detail);
+    }) as EventListener
+  );
 
   window.addEventListener("inbound-engine-ready", ((event: CustomEvent<number>) => {
     if (typeof event.detail === "number") openHub(event.detail);
   }) as EventListener);
 
   try {
+    await listen<EngineFailure>("engine-failed", (event) => {
+      showEngineFailure(event.payload);
+    });
+  } catch {
+    // Running outside Tauri
+  }
+
+  try {
     await listen<number>("engine-ready", (event) => {
       openHub(event.payload);
     });
   } catch {
-    // Running outside Tauri (plain Vite). Poll the default engine port.
+    // Running outside Tauri
+  }
+
+  const initial = enginePort();
+  if (await probe(initial)) {
+    openHub(initial);
+    return;
   }
 
   setStatus("Starting local camera engine…");
-  const started = Date.now();
-  const poll = window.setInterval(async () => {
-    if (redirected) {
-      window.clearInterval(poll);
-      return;
-    }
-    if (await probe(enginePort())) {
-      window.clearInterval(poll);
-      openHub(enginePort());
-      return;
-    }
-    if (Date.now() - started > 90_000) {
-      window.clearInterval(poll);
-      setStatus("Engine did not start. Run python edge/launcher.py --no-browser and retry.");
-    }
-  }, 500);
+  startPolling();
 }
 
 void boot();
+

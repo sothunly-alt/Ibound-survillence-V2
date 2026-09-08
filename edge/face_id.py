@@ -232,7 +232,9 @@ class FaceRecognizer:
                     else:
                         emb = None
                         img = cv2.imread(resolved_path)
-                        if img is not None:
+                        if img is None:
+                            print(f"[FaceID] Could not read {img_file} for '{name}'.")
+                        else:
                             if enroll_det is None or enroll_rec is None:
                                 enroll_det, enroll_rec = self._get_reload_models()
                             emb = self.extract_embedding_from_image(
@@ -240,7 +242,19 @@ class FaceRecognizer:
                                 detector=enroll_det,
                                 recognizer=enroll_rec,
                             )
-                        self._embedding_cache[cache_key] = emb
+                            # One retry under the face DNN lock. A single concurrent
+                            # miss used to be cached forever and required a relaunch.
+                            if emb is None:
+                                emb = self.extract_embedding_from_image(
+                                    img,
+                                    detector=enroll_det,
+                                    recognizer=enroll_rec,
+                                )
+                        if emb is not None:
+                            self._embedding_cache[cache_key] = emb
+                        else:
+                            self._embedding_cache[cache_key] = None
+                            print(f"[FaceID] No face in {img_file.name} for '{name}'.")
 
                     if emb is not None:
                         embeddings.append(emb)
@@ -252,7 +266,7 @@ class FaceRecognizer:
                 new_embeddings[name] = embeddings
                 print(f"[FaceID] Enrolled '{name}' with {len(embeddings)} reference photos.")
 
-        # Prune dead cache keys
+        # Prune dead cache keys (including confirmed no-face photos).
         self._embedding_cache = {k: v for k, v in self._embedding_cache.items() if k in seen_files}
 
         # Atomically swap the new embeddings under lock
@@ -277,8 +291,6 @@ class FaceRecognizer:
         if h < 20 or w < 20:
             return None
 
-        # If using instance models directly, protect with lock against concurrent inference
-        needs_lock = detector is None or recognizer is None
         det = detector or self.detector
         rec = recognizer or self.recognizer
 
@@ -291,10 +303,10 @@ class FaceRecognizer:
             aligned_face = rec.alignCrop(img, face)
             return rec.feature(aligned_face)
 
-        if needs_lock:
-            with self._lock:
-                return _do_extract()
-        return _do_extract()
+        # Always serialize OpenCV face DNN. Isolated enroll models still race the
+        # live detector on the same backend if this lock is skipped.
+        with self._lock:
+            return _do_extract()
 
     def recognize_in_crop(
         self,
