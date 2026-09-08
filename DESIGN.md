@@ -80,13 +80,10 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 
 - **One primary action:** open the bay-demo modal. Nothing else is a “main” conversion.
 - **Canonical labels:**
-  - Hero: **[ REQUEST PILOT BAY ]**
-  - Final CTA / sticky (scroll-gated): **Book Pilot Bay**
-  - Header (space-constrained): **Book Pilot**
-  - Modal submit: **Request Pilot**
+  - Hero / final CTA / sticky / header / pricing Turnkey neon / modal submit: **`[ BOOK DEMO ]`**
 - **One accent treatment:** only the primary path uses `btn-neon` / Terminal Green fill. All other actions are `btn-ghost` or quiet text links.
 - **Choice budget per viewport (hero):** brand + one headline + one support line + **one** CTA group — primary only, or primary + one ghost “See how it works” → `#architecture`. No second neon in the hero fold.
-- **Nav (judge scan):** max four anchors — Problem (`#roi`), Engine (`#demo`), Field Notes (`#field-notes`), Team (`#team`) — plus one neon Book Pilot. Pricing / FAQ stay on-page, not in chrome.
+- **Nav (judge scan):** max four anchors — Problem (`#roi`), Engine (`#demo`), Field Notes (`#field-notes`), Team (`#team`) — plus one neon `[ BOOK DEMO ]`. Pricing / FAQ stay on-page, not in chrome.
 - **Pricing:** both plans visible for clarity; **only Turnkey** uses `btn-neon`. Software = `btn-ghost`. Both open the same demo modal with `data-plan`.
 - **Lead capture:** `#demo-form` `data-formspree` must be a live POST endpoint (Formspree `https://formspree.io/f/…`, bare Formspree ID, or FormSubmit AJAX). Prefer Formspree when the crew has a dashboard ID. Empty endpoint is forbidden for “silent success” UX — if unset, JS must fall back to mailto / loud failure, never fake a received lead.
 - **Boot:** skip by default; opt-in theater only via `?boot=1`.
@@ -100,7 +97,7 @@ Location is a **tactical node HUD**, not consumer map chrome. City hub only unti
 - **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed; telemetry strip over the map is ambient, not a CTA.
 - **Directions:** one `btn-ghost` “Open directions” → Google Maps city search (or real address when published). Never neon on the location block.
 - **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
-- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with Book Pilot Bay.
+- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with `[ BOOK DEMO ]`.
 
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
@@ -129,3 +126,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-08 | FirstWave AIM 70 landing lock | Judge-first scan: Book Pilot Bay; pruned nav; boot bypass; Field Discovery matrix; interactive ROI; kill TBD/cases |
 | 2026-09-08 | Desktop type scale raised | Hero/h2/lede/body clamps match Display XL; 1200px container at 1280px+; kill parallax; Request Pilot |
 | 2026-09-08 | Mentor revenue DNA pivot | Video-first hero; Revenue Recovery / Turnover / Loss Prevention; capital-bleed ROI; attendance demoted; REQUEST PILOT BAY |
+| 2026-09-08 | Primary CTA → `[ BOOK DEMO ]` | Hick’s lock: one verb on header, hero, pricing, sticky, team, modal submit |
