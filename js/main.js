@@ -596,16 +596,15 @@ function initPpNodeMap() {
 
   const map = L.map(el, {
     zoomControl: false,
-    attributionControl: true,
+    attributionControl: false,
     scrollWheelZoom: false,
     dragging: !window.matchMedia("(pointer: coarse)").matches,
   }).setView([lat, lng], 12);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer">OSM</a> &copy; <a href="https://carto.com/attributions" rel="noopener noreferrer">CARTO</a>',
     subdomains: "abcd",
     maxZoom: 19,
+    detectRetina: true,
   }).addTo(map);
 
   L.control.zoom({ position: "topright" }).addTo(map);
@@ -618,7 +617,7 @@ function initPpNodeMap() {
     iconAnchor: [14, 14],
   });
 
-  L.marker([lat, lng], { icon, keyboard: false, title: "PP-NODE // PHNOM PENH" }).addTo(map);
+  L.marker([lat, lng], { icon, keyboard: false, title: "Phnom Penh, Cambodia" }).addTo(map);
 
   // Leaflet needs a invalidate after layout settles (grid / fonts).
   requestAnimationFrame(() => map.invalidateSize());

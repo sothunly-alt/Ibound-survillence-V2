@@ -90,14 +90,16 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 - **Forbidden:** competing neon CTAs with different verbs in the same fold; a second “primary” accent color for buttons; inventing alternate primary labels (“Recover Your Lost Revenue”, “Book turnkey install” as neon hero verbs); form success UI without a real capture path; TBD / placeholder case outcomes on the live marketing surface; Attendance as a hero/feature headline.
 
 ## Location / Map (marketing)
-Location is a **tactical node HUD**, not consumer map chrome. City hub only until a permanent shop address is published — never invent a street address.
+Location is **city hub presence** — show we are based in Phnom Penh, Cambodia. Never invent a street address. No directions CTA.
 
-- **Basemap:** dark tiles (e.g. Leaflet + Carto Dark Matter). Suppress pastel Google roads / retail POIs.
-- **Pin:** one Terminal Green pulse marker at the published city coords (`11.5564, 104.9282` for Phnom Penh). Label: `PP-NODE // PHNOM PENH` in IBM Plex Mono.
-- **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed; telemetry strip over the map is ambient, not a CTA.
-- **Directions:** one `btn-ghost` “Open directions” → Google Maps city search (or real address when published). Never neon on the location block.
+- **Basemap:** Leaflet + Carto Dark Matter, retina tiles (`detectRetina`), taller frame (~400px). Suppress pastel Google roads / retail POIs.
+- **Pin:** one Terminal Green pulse marker at Phnom Penh city center (coords live in JS only — never displayed as UI “codes”).
+- **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed.
+- **Overlay label:** ambient mono strip — **`Phnom Penh · Cambodia`**. No lat/lng, no `PP-NODE` / tactical codes.
+- **Directions:** none. No “Open directions”, no Google Maps deep-link CTA on this block.
+- **Attribution:** on-map Leaflet/OSM/CARTO watermark forbidden. Required credit is a discreet **off-map** muted mono line under the frame.
 - **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
-- **Forbidden:** light Google Maps iframe as the hero visual; invented street address; second neon CTA competing with `[ BOOK DEMO ]`.
+- **Forbidden:** light Google Maps iframe; invented street address; displayed fake location codes; on-map API attribution badge; second neon CTA competing with `[ BOOK DEMO ]`.
 
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
@@ -127,3 +129,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-08 | Desktop type scale raised | Hero/h2/lede/body clamps match Display XL; 1200px container at 1280px+; kill parallax; Request Pilot |
 | 2026-09-08 | Mentor revenue DNA pivot | Video-first hero; Revenue Recovery / Turnover / Loss Prevention; capital-bleed ROI; attendance demoted; REQUEST PILOT BAY |
 | 2026-09-08 | Primary CTA → `[ BOOK DEMO ]` | Hick’s lock: one verb on header, hero, pricing, sticky, team, modal submit |
+| 2026-09-08 | Location → city presence | Drop directions + PP-NODE/coords theater; HD retina map; off-map OSM/CARTO credit only |
