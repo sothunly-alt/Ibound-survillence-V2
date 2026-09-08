@@ -601,11 +601,16 @@ function initPpNodeMap() {
     dragging: !window.matchMedia("(pointer: coarse)").matches,
   }).setView([lat, lng], 12);
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd",
-    maxZoom: 19,
-    detectRetina: true,
-  }).addTo(map);
+  // Esri World Dark Gray — no CARTO “API KEY REQUIRED” burn-in on tiles.
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 16 }
+  ).addTo(map);
+
+  L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 16, opacity: 0.9 }
+  ).addTo(map);
 
   L.control.zoom({ position: "topright" }).addTo(map);
 

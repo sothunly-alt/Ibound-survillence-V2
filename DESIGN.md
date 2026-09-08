@@ -92,14 +92,14 @@ Hick’s Law: more choices → slower decisions. Marketing surfaces lock to **on
 ## Location / Map (marketing)
 Location is **city hub presence** — show we are based in Phnom Penh, Cambodia. Never invent a street address. No directions CTA.
 
-- **Basemap:** Leaflet + Carto Dark Matter, retina tiles (`detectRetina`), taller frame (~400px). Suppress pastel Google roads / retail POIs.
+- **Basemap:** Leaflet + Esri World Dark Gray (base + reference labels), taller frame (~400px). No CARTO raster tiles (those burn “API KEY REQUIRED” without a key). Suppress pastel Google roads / retail POIs.
 - **Pin:** one Terminal Green pulse marker at Phnom Penh city center (coords live in JS only — never displayed as UI “codes”).
 - **Frame:** ≤4px radius, Terminal Green / stealth border, corner brackets allowed.
 - **Overlay label:** ambient mono strip — **`Phnom Penh · Cambodia`**. No lat/lng, no `PP-NODE` / tactical codes.
 - **Directions:** none. No “Open directions”, no Google Maps deep-link CTA on this block.
-- **Attribution:** on-map Leaflet/OSM/CARTO watermark forbidden. Required credit is a discreet **off-map** muted mono line under the frame.
+- **Attribution:** on-map Leaflet watermark forbidden. Required credit is a discreet **off-map** muted mono line under the frame (`Map © Esri`).
 - **Motion:** short pin pulse only; respect `prefers-reduced-motion` (static pin).
-- **Forbidden:** light Google Maps iframe; invented street address; displayed fake location codes; on-map API attribution badge; second neon CTA competing with `[ BOOK DEMO ]`.
+- **Forbidden:** light Google Maps iframe; invented street address; displayed fake location codes; on-map API attribution badge; CARTO unauthenticated watermarked tiles; second neon CTA competing with `[ BOOK DEMO ]`.
 
 ## Token contract (canonical)
 Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-overwatch.css`](src/theme/digital-overwatch.css)
@@ -130,3 +130,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-08 | Mentor revenue DNA pivot | Video-first hero; Revenue Recovery / Turnover / Loss Prevention; capital-bleed ROI; attendance demoted; REQUEST PILOT BAY |
 | 2026-09-08 | Primary CTA → `[ BOOK DEMO ]` | Hick’s lock: one verb on header, hero, pricing, sticky, team, modal submit |
 | 2026-09-08 | Location → city presence | Drop directions + PP-NODE/coords theater; HD retina map; off-map OSM/CARTO credit only |
+| 2026-09-08 | Basemap → Esri Dark Gray | Kill CARTO “API KEY REQUIRED” tile burn-in; keep dark city presence without keys |
