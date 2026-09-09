@@ -302,9 +302,19 @@ function initRoiCalculator() {
 initRoiCalculator();
 
 let scrollTick = false;
+let scrollHideTimer = null;
 
 const stickyCta = document.getElementById("mobile-sticky-cta");
 const finalCta = document.querySelector(".final-cta");
+
+function flashScrollbar() {
+  const root = document.documentElement;
+  root.classList.add("is-scrolling");
+  clearTimeout(scrollHideTimer);
+  scrollHideTimer = setTimeout(() => {
+    root.classList.remove("is-scrolling");
+  }, 900);
+}
 
 function updateScroll() {
   const y = window.scrollY;
@@ -337,7 +347,12 @@ function onScrollFrame() {
   });
 }
 
-window.addEventListener("scroll", onScrollFrame, { passive: true });
+function onScrollShowBar() {
+  flashScrollbar();
+  onScrollFrame();
+}
+
+window.addEventListener("scroll", onScrollShowBar, { passive: true });
 window.addEventListener("resize", onScrollFrame, { passive: true });
 updateScroll();
 
