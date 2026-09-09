@@ -57,11 +57,22 @@
             "operatingSystem": "On-premise edge appliance",
             "description": "Edge-AI pose tracking that clocks billable wrench-time and payroll attendance for performance garages, with Telegram scorecard dispatch.",
             "url": "https://inbound-surveillance-landing-page.vercel.app/",
-            "offers": {
-              "@type": "Offer",
-              "price": "39.00",
-              "priceCurrency": "USD"
-            }
+            "offers": [
+              {
+                "@type": "Offer",
+                "name": "Software Only",
+                "price": "99",
+                "priceCurrency": "USD",
+                "description": "Per bay / month"
+              },
+              {
+                "@type": "Offer",
+                "name": "Turnkey Hardware Install",
+                "price": "295",
+                "priceCurrency": "USD",
+                "description": "Upfront install; plus $99 per bay / month"
+              }
+            ]
           }
         ]
       }
@@ -364,13 +375,13 @@
                   <p class="roi-calc-value mono neon" data-roi-monthly-total>$1,890</p>
                 </div>
                 <div>
-                  <p class="roi-calc-label">Software cost ($39/bay/mo)</p>
-                  <p class="roi-calc-value mono muted" data-roi-software>$1,404</p>
+                  <p class="roi-calc-label">Software cost ($99/bay/mo)</p>
+                  <p class="roi-calc-value mono muted" data-roi-software>$3,564</p>
                 </div>
               </div>
               <p class="roi-calc-meta">
                 Annual projection <span class="mono neon" data-roi-annual>$22,680</span>
-                · Payback in <span data-roi-payback>DAY 02</span>
+                · Payback in <span data-roi-payback>DAY 04</span>
               </p>
             </div>
           </div>
@@ -393,13 +404,13 @@
             <article class="roi-card fix">
               <p class="roi-kicker">The Fix</p>
               <p class="roi-equation">
-                <span class="mono neon">$39<small>/mo</small></span>
+                <span class="mono neon">$99<small>/mo</small></span>
                 <span class="op">→</span>
-                <span class="mono neon" data-roi-payback-eq>DAY 02</span>
+                <span class="mono neon" data-roi-payback-eq>DAY 04</span>
               </p>
               <p>
-                Software is <strong>$39/month per bay</strong>. At your estimate it pays back fast.
-                The rest is <strong>projected recovered margin.</strong>
+                Software is <strong>$99/month per bay</strong>. At your estimated shop rate, the software pays for itself by <strong>Day 04</strong>.
+                The remaining 20+ days of the month are <strong>pure recovered margin.</strong>
               </p>
             </article>
           </div>
@@ -552,17 +563,17 @@
                 <p class="price-for">For shops with existing IP cameras.</p>
               </div>
               <p class="price-amount">
-                <span class="mono" data-count="39" data-prefix="$">$39</span>
+                <span class="mono" data-count="99" data-prefix="$">$99</span>
                 <small>/ month per bay</small>
               </p>
-              <button class="btn btn-ghost" data-open-demo data-plan="Software Only" type="button">Start with software</button>
+              <button class="btn btn-ghost" data-open-demo data-plan="Software Only" type="button">START WITH SOFTWARE</button>
               <div class="price-rule"></div>
               <ul>
-                <li>Bring your own RTSP camera</li>
-                <li>Local Edge AI software</li>
-                <li>Unlimited Telegram reports</li>
-                <li>Zero cloud processing fees</li>
-                <li>Per-bay wrench-time tracking</li>
+                <li>Bring your existing IP/CCTV cameras</li>
+                <li>Active wrench-time &amp; revenue tracking</li>
+                <li>Route optimization &amp; floor telemetry</li>
+                <li>Real-time safety &amp; hazard alerts</li>
+                <li>100% private (no cloud streaming fees)</li>
               </ul>
             </article>
 
@@ -576,10 +587,10 @@
                 <p class="popular">Most Popular</p>
               </div>
               <p class="price-amount">
-                <span class="mono" data-count="250" data-prefix="$">$250</span>
+                <span class="mono" data-count="295" data-prefix="$">$295</span>
                 <small>upfront install</small>
                 <span class="plus">+</span>
-                <span class="mono" data-count="39" data-prefix="$">$39</span>
+                <span class="mono" data-count="99" data-prefix="$">$99</span>
                 <small>/ month per bay</small>
               </p>
               <button class="btn btn-neon" data-open-demo data-plan="Turnkey Hardware Install" type="button">
@@ -591,11 +602,10 @@
               <div class="price-rule"></div>
               <ul>
                 <li>Everything in Software Only</li>
-                <li>Local on-site installation</li>
-                <li>4MP PoE WDR camera</li>
-                <li>Networking cables</li>
-                <li>Physical zone calibration</li>
-                <li>Bay walkthrough and Telegram setup</li>
+                <li>Commercial-grade 4MP PoE camera</li>
+                <li>On-site cable runs &amp; networking</li>
+                <li>Physical bay zone calibration</li>
+                <li>Manager Telegram setup &amp; training</li>
               </ul>
             </article>
           </div>
@@ -641,7 +651,7 @@
               <summary>How fast does a pilot bay happen?</summary>
               <p>
                 We respond within one business day on Telegram (Phnom Penh time), then map a single bay for a
-                live walkthrough. Software is $39/bay/mo; turnkey hardware install is $250 + the monthly rate.
+                live walkthrough. Software is $99/bay/mo; turnkey hardware install is $295 + the monthly rate.
               </p>
             </details>
             <details class="faq-item">
@@ -844,8 +854,8 @@
           <label class="full">
             Plan interest
             <select name="plan" id="plan-select">
-              <option value="Software Only">Software Only — $39 / bay / month</option>
-              <option value="Turnkey Hardware Install">Turnkey Hardware Install — $250 + $39 / bay</option>
+              <option value="Software Only">Software Only ($99/bay/mo)</option>
+              <option value="Turnkey Hardware Install">Turnkey Hardware ($295 setup + $99/bay/mo)</option>
             </select>
           </label>
           <label class="full consent-check">

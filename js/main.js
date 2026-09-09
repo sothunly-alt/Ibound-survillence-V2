@@ -279,9 +279,10 @@ function initRoiCalculator() {
     const monthlyPerBay = leakHours * rate * 24;
     const monthlyTotal = monthlyPerBay * bays;
     const annual = monthlyTotal * 12;
-    const softwareAnnual = 39 * 12 * bays;
+    const SOFTWARE_PER_BAY_MO = 99;
+    const softwareAnnual = SOFTWARE_PER_BAY_MO * 12 * bays;
     const dailyRecovery = leakHours * rate;
-    const paybackDays = Math.max(1, Math.ceil(39 / Math.max(dailyRecovery, 0.01)));
+    const paybackDays = Math.max(1, Math.ceil(SOFTWARE_PER_BAY_MO / Math.max(dailyRecovery, 0.01)));
     const payback = formatPayback(paybackDays);
 
     if (baysDisplay) baysDisplay.textContent = String(bays);
