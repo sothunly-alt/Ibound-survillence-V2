@@ -701,23 +701,59 @@ h3 {
   border-color: var(--neon);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--surveillance-green) 22%, transparent),
     0 0 24px color-mix(in srgb, var(--surveillance-green) 18%, transparent);
+  animation: telemetry-pulse 2s ease-in-out infinite;
 }
 
 .bbox-tag {
   position: absolute;
-  top: -24px;
+  top: -22px;
   left: -2px;
   display: flex;
-  gap: 8px;
-  max-width: min(220px, 70vw);
-  padding: 3px 6px;
-  background: rgba(0, 20, 12, 0.88);
-  color: var(--neon);
+  gap: 6px;
+  max-width: min(260px, 70vw);
+  padding: 2px 6px;
+  background: var(--neon);
+  color: #000;
   font-size: 10px;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-radius: 0;
+}
+
+/* Drag-handle nodes */
+.bbox-node {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: var(--neon);
+  pointer-events: none;
+}
+.node-tl { top: -3px; left: -3px; }
+.node-tr { top: -3px; right: -3px; }
+.node-bl { bottom: -3px; left: -3px; }
+.node-br { bottom: -3px; right: -3px; }
+.node-tm { top: -3px; left: calc(50% - 3px); }
+.node-bm { bottom: -3px; left: calc(50% - 3px); }
+.node-lm { top: calc(50% - 3px); left: -3px; }
+.node-rm { top: calc(50% - 3px); right: -3px; }
+
+/* Pose skeleton */
+.bbox-skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--neon);
+  pointer-events: none;
+}
+
+/* Live processing pulse */
+@keyframes telemetry-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
 }
 
 .phone {
