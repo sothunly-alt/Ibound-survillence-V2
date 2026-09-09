@@ -145,3 +145,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | Pitch triad lock + MVP privacy | Features = Active vs. Idle Tracking / Margins Loss Prevention / Safety Tracking; privacy.html pre-incorporation pilot entity; Zero-Cloud once in §1 |
 | 2026-09-09 | Sales contact unified | Public sales = inboundcrew82@gmail.com + Telegram +855 96 518 8669 everywhere; kill deploy@ drift; terms/thank-you/llms sales CTAs use founder line |
 | 2026-09-09 | Terms ↔ Privacy legal twin | terms.html MVP entity + disclaimer; scope = pitch triad; operator notice = safety/active-idle; contact stays inboundcrew82@gmail.com |
+| 2026-09-09 | FAQ rewritten for non-technical owners | Kill model/RTSP/edge jargon in FAQ; garage-owner language only |
