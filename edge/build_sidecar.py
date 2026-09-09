@@ -96,6 +96,48 @@ def exe_name() -> str:
     return "inbound-engine.exe" if sys.platform == "win32" else "inbound-engine"
 
 
+REQUIRED_PYZ_MODULES = (
+    "ai_auditor",
+    "occupancy",
+    "telegram_link",
+    "vehicle",
+    "paths",
+    "db",
+    "face_id",
+    "adapters.video_file",
+)
+
+
+def _assert_modules_bundled(work: Path) -> None:
+    """Fail the sidecar build if PyInstaller dropped a first-party module."""
+    engine_dir = work / "inbound-engine"
+    toc_blobs: list[str] = []
+    for name in ("PYZ-00.toc", "PKG-00.toc", "Analysis-00.toc"):
+        path = engine_dir / name
+        if path.is_file():
+            toc_blobs.append(path.read_text(encoding="utf-8", errors="replace"))
+    blob = "\n".join(toc_blobs)
+    if not blob:
+        raise SystemExit(f"PyInstaller did not write analysis files under {engine_dir}")
+
+    missing: list[str] = []
+    for module in REQUIRED_PYZ_MODULES:
+        as_py = module.replace(".", "/") + ".py"
+        if (
+            f"'{module}'" not in blob
+            and f'"{module}"' not in blob
+            and as_py not in blob
+            and module.replace(".", os.sep) + ".py" not in blob
+        ):
+            missing.append(module)
+    if missing:
+        raise SystemExit(
+            "PyInstaller bundle is missing required engine modules: "
+            + ", ".join(missing)
+        )
+    print("Verified first-party modules in sidecar bundle.", flush=True)
+
+
 def sidecar_name(target: str) -> str:
     ext = ".exe" if sys.platform == "win32" or target.endswith("windows-msvc") else ""
     return f"inbound-engine-{target}{ext}"
@@ -158,6 +200,8 @@ def main() -> None:
         ],
         cwd=str(REPO),
     )
+
+    _assert_modules_bundled(work)
 
     built = dist / exe_name()
     if not built.exists():

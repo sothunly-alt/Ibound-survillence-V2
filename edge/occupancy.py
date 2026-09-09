@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-try:
-    from ai_auditor import AIAuditorQueue, AIAuditVerdict
-except ImportError:
-    from edge.ai_auditor import AIAuditorQueue, AIAuditVerdict
+# Direct import only. A try/except ImportError fallback to `edge.ai_auditor`
+# makes PyInstaller mark this module as optional/missing, so the frozen
+# Windows sidecar crashes with ModuleNotFoundError: No module named 'ai_auditor'.
+from ai_auditor import AIAuditorQueue, AIAuditVerdict
 
 import re
 import time

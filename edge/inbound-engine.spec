@@ -69,6 +69,31 @@ hiddenimports = [
     "negatives",
 ]
 
+
+def _local_module_name(py: Path) -> str | None:
+    rel = py.relative_to(EDGE)
+    if rel.parts[0] in {"tools", "bin", "static", "faces", "models", "videos"}:
+        return None
+    if py.name.startswith("test_") or py.name == "build_sidecar.py":
+        return None
+    parts = list(rel.with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts) if parts else None
+
+
+# Always collect first-party modules from disk. A manual hiddenimports list
+# is not enough: PyInstaller can still drop a sibling module (this shipped a
+# Windows build where launcher imported ai_auditor but the PYZ lacked it).
+for py in sorted(EDGE.rglob("*.py")):
+    name = _local_module_name(py)
+    if not name:
+        continue
+    if name not in hiddenimports:
+        hiddenimports.append(name)
+    dest = "." if py.parent == EDGE else py.relative_to(EDGE).parent.as_posix()
+    datas.append((str(py), dest))
+
 for name in (
     "yolo11n_improved.pt",
     "yolo11n-pose.pt",
