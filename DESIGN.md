@@ -102,6 +102,7 @@ Location is **city hub presence** — show we are based in Phnom Penh, Cambodia.
 - **Forbidden:** light Google Maps iframe; invented street address; displayed fake location codes; on-map API attribution badge; CARTO unauthenticated watermarked tiles; second neon CTA competing with `[ BOOK DEMO ]`.
 
 ## Contact / sales channel
+- **Primary sales email:** `inboundcrew82@gmail.com` (footer, forms, legal pages, FormSubmit / mailto fallback). Never use a different public sales inbox.
 - **Primary sales contact:** direct Telegram founder line — display `+855 96 518 8669`, href `https://t.me/+855965188669` (new tab, `noopener noreferrer`).
 - **Footer Contact:** city line (Phnom Penh) + email + `> DIRECT TELEGRAM:` link. No `#location` footer link. Do not use `@Inbound_Surveillance_bot` as the primary sales CTA.
 - **Demo modal:** keep form submit; add bypass line under `[ BOOK DEMO ]`: `Or message us directly on Telegram: +855 96 518 8669`.
@@ -141,4 +142,5 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | Outcome-led pricing copy + PP pilot bonus | Bullets sell revenue/efficiency/setup outcomes; free on-site integration; $295 = camera + cable/mount only |
 | 2026-09-09 | [ROI UPDATE] Calculator UI consolidated into a single terminal grid; baseline aligned to $99/mo B2B anchor; redundant Model/Fix cards removed. | Monthly software vs monthly revenue apples-to-apples; Day 04 payback in footer |
 | 2026-09-09 | Sales contact → direct Telegram +855 96 518 8669 | Replace footer bot CTA with founder line; strip footer Location link; modal bypass; scorecard bot stays in product copy |
-| 2026-09-09 | Pitch triad lock + MVP privacy | Features = Active vs. Idle Tracking / Margins Loss Prevention / Safety Tracking; privacy.html pre-incorporation pilot entity; deploy@ + founder Telegram; Zero-Cloud once in §1 |
+| 2026-09-09 | Pitch triad lock + MVP privacy | Features = Active vs. Idle Tracking / Margins Loss Prevention / Safety Tracking; privacy.html pre-incorporation pilot entity; Zero-Cloud once in §1 |
+| 2026-09-09 | Sales contact unified | Public sales = inboundcrew82@gmail.com + Telegram +855 96 518 8669 everywhere; kill deploy@ drift; terms/thank-you/llms sales CTAs use founder line |

@@ -10,7 +10,8 @@
 - Team: https://inbound-surveillance-landing-page.vercel.app/team
 - Privacy: https://inbound-surveillance-landing-page.vercel.app/privacy
 - Contact email: inboundcrew82@gmail.com
-- Telegram bot: https://t.me/Inbound_Surveillance_bot
+- Direct Telegram: +855 96 518 8669 — https://t.me/+855965188669
+- Product scorecard bot (dispatch only): https://t.me/Inbound_Surveillance_bot
 
 ## Crew (KIT Hub)
 - Chanratharo Rath (Ratharo) — Founder · Architecture
