@@ -798,6 +798,14 @@ h3 {
   color: var(--text);
 }
 
+.architecture-section .section-copy {
+  max-width: 65ch;
+}
+
+.architecture-section .section-head {
+  margin-bottom: 3.5rem;
+}
+
 .arch-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -822,6 +830,20 @@ h3 {
   border-top: 1px solid var(--neon);
   border-left: 1px solid var(--neon);
   opacity: 0.5;
+  pointer-events: none;
+}
+
+.arch-icon {
+  width: 40px;
+  height: 40px;
+  color: var(--neon);
+  margin: 4px 0 16px;
+}
+
+.arch-icon svg {
+  width: 32px;
+  height: 32px;
+  display: block;
 }
 
 .arch-card.is-primary {
