@@ -2397,18 +2397,31 @@
       btn.textContent = 'Connect Stream';
     }
 
+    function showDisconnectedPlaceholder() {
+      if (currentLayoutMode === 'grid') return;
+      detachLiveFeed();
+      const stage = document.getElementById('video-stage');
+      const placeholder = document.getElementById('stream-placeholder');
+      if (stage) stage.style.display = 'none';
+      if (placeholder) placeholder.style.display = 'flex';
+      clearNativeFeedLayout();
+    }
+
+    function markPortClosed() {
+      isStreamActive = false;
+      liveStatusText = 'Port Closed';
+      showDisconnectedPlaceholder();
+      setLiveChrome(false, 'PORT CLOSED');
+      document.getElementById('telem-status').textContent = 'STANDBY';
+      document.getElementById('telem-health').textContent = 'Standby';
+      resetConnectButton();
+    }
+
     function markStreamOffline() {
       isStreamActive = false;
       lastFailedId = activeCameraId;
       liveStatusText = 'Connection Lost';
-      if (currentLayoutMode !== 'grid') {
-        detachLiveFeed();
-        const stage = document.getElementById('video-stage');
-        const placeholder = document.getElementById('stream-placeholder');
-        if (stage) stage.style.display = 'none';
-        if (placeholder) placeholder.style.display = 'flex';
-        clearNativeFeedLayout();
-      }
+      showDisconnectedPlaceholder();
       setLiveChrome(false, 'Offline');
       document.getElementById('telem-status').textContent = 'ERROR';
       document.getElementById('telem-health').textContent = 'Failed';
@@ -3875,9 +3888,7 @@
         if (data.success && Array.isArray(data.cameras)) {
           cameras = data.cameras;
           if (cam.id === activeCameraId && !targetState) {
-            detachLiveFeed();
-            isStreamActive = false;
-            setLiveChrome(false, 'PORT CLOSED');
+            markPortClosed();
           } else if (cam.id === activeCameraId && targetState) {
             connectAndStreamCamera();
           }
@@ -4122,6 +4133,7 @@
             rotate: payload.rotate,
             flip: payload.flip,
             roi: payload.roi,
+            enabled: true,
             telegram_chat_id: document.getElementById('tg-chat-input').value
           })
         });

@@ -1135,6 +1135,7 @@ class LiveStreamEngine:
             self.new_frame_event.set()
         self._drop_gateway_stream()
         self.camera_pool.stop()
+        self._fallback_grabber.clear_source()
 
     def stop(self):
         with self.lock:
@@ -1286,6 +1287,7 @@ class LiveStreamEngine:
             "protocol": payload.pop("protocol", ""),
             "vendor": payload.pop("vendor", ""),
             "username": str(payload.pop("username", "") or creds.get("username") or ""),
+            "enabled": True,
         }
         if "roi" in payload:
             camera_fields["roi"] = payload.pop("roi")
@@ -1297,6 +1299,7 @@ class LiveStreamEngine:
             camera_fields["trigger_mode"] = payload.pop("trigger_mode")
         if "ml_enabled" in payload:
             camera_fields["ml_enabled"] = bool(payload.pop("ml_enabled"))
+        payload.pop("enabled", None)
         with self.lock:
             self.cfg.update(payload)
             recovered = unwrap_local_video_source(self.cfg.get("source"))
@@ -1442,6 +1445,9 @@ class LiveStreamEngine:
                     main_source=main_source,
                 )
                 self.grabber.switch_source(adapter)
+            else:
+                # Pool owns capture; drop any leftover exclusive V4L2 handle.
+                self._fallback_grabber.clear_source()
         else:
             adapter = create_adapter(
                 source,
@@ -1692,6 +1698,16 @@ class LiveStreamEngine:
             new_state = (not current) if enabled is None else bool(enabled)
             target["enabled"] = new_state
             self.cfg["cameras"] = cameras
+            active_id = str(self.cfg.get("active_camera_id") or "")
+            closing_active = (not new_state) and cid == active_id
+            if closing_active:
+                self.is_streaming = False
+                self.current_frame_jpeg = None
+                self.current_frame_bgr = None
+                self.status_text = "STANDBY"
+                self.connection_state = "STANDBY"
+                self.mjpeg_generation += 1
+                self.new_frame_event.set()
             cfg_to_save = dict(self.cfg)
         save_config(cfg_to_save)
         if self.running or bool(self.camera_pool._workers):
@@ -1699,6 +1715,8 @@ class LiveStreamEngine:
                 self.camera_pool.sync_cameras(cameras)
             except Exception:
                 pass
+        if closing_active:
+            self._fallback_grabber.clear_source()
         return {
             "success": True,
             "camera_id": cid,

@@ -1162,6 +1162,113 @@ class GarageApiTests(unittest.TestCase):
         # Pool now syncs cam-2 back
         self.assertIn("cam-2", engine.camera_pool._workers)
 
+    def test_connect_camera_reopens_closed_port_without_fallback(self):
+        from unittest.mock import patch
+        from launcher import LiveStreamEngine, CameraStreamWorker
+
+        engine = LiveStreamEngine()
+        cam = {
+            "id": "cam-1",
+            "name": "Front Camera",
+            "source": 0,
+            "protocol": "webcam",
+            "enabled": True,
+        }
+        engine.cfg["cameras"] = [cam]
+        engine.cfg["source"] = 0
+        engine.cfg["protocol"] = "webcam"
+        engine.cfg["active_camera_id"] = "cam-1"
+        engine.running = True
+        engine.is_streaming = True
+        engine.current_frame_jpeg = b"LIVE_BEFORE_CLOSE"
+
+        worker = CameraStreamWorker("cam-1", cam)
+        worker.latest_jpeg = b"LIVE_BEFORE_CLOSE"
+        engine.camera_pool._workers["cam-1"] = worker
+
+        fallback_ops = []
+        engine._fallback_grabber.clear_source = lambda: fallback_ops.append("clear")
+        engine._fallback_grabber.switch_source = lambda adapter: fallback_ops.append("switch")
+
+        with patch("launcher.save_config"), patch.object(
+            CameraStreamWorker, "start", lambda self: None
+        ), patch.object(CameraStreamWorker, "stop", lambda self: None):
+            closed = engine.toggle_camera_port("cam-1", False)
+            self.assertTrue(closed["success"])
+            self.assertFalse(closed["enabled"])
+            self.assertNotIn("cam-1", engine.camera_pool._workers)
+            self.assertFalse(engine.is_streaming)
+            self.assertIsNone(engine.current_frame_jpeg)
+            self.assertIn("clear", fallback_ops)
+            frame, _ = engine.get_camera_frame("cam-1")
+            self.assertIsNone(frame)
+
+            result = engine.connect_camera({
+                "camera_id": "cam-1",
+                "camera_name": "Front Camera",
+                "source": 0,
+                "protocol": "webcam",
+            })
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["cameras"][0]["enabled"])
+        self.assertIn("cam-1", engine.camera_pool._workers)
+        self.assertTrue(engine.is_streaming)
+        self.assertGreaterEqual(fallback_ops.count("clear"), 2)
+        self.assertNotIn("switch", fallback_ops)
+
+        reopened = engine.camera_pool.get_worker("cam-1")
+        reopened.latest_jpeg = b"AFTER_RECONNECT"
+        frame, _ = engine.get_camera_frame("cam-1")
+        self.assertEqual(frame, b"AFTER_RECONNECT")
+
+    def test_disconnect_releases_fallback_grabber(self):
+        from launcher import LiveStreamEngine
+
+        engine = LiveStreamEngine()
+        engine.is_streaming = True
+        engine.current_frame_jpeg = b"LIVE"
+        clears = []
+        engine._fallback_grabber.clear_source = lambda: clears.append("clear")
+        engine._drop_gateway_stream = lambda: None
+        engine.camera_pool.stop = lambda: None
+
+        engine.disconnect()
+
+        self.assertEqual(clears, ["clear"])
+        self.assertFalse(engine.is_streaming)
+        self.assertIsNone(engine.current_frame_jpeg)
+        self.assertEqual(engine.status_text, "STANDBY")
+
+    def test_toggle_non_active_port_leaves_streaming_intact(self):
+        from unittest.mock import patch
+        from launcher import LiveStreamEngine, CameraStreamWorker
+
+        engine = LiveStreamEngine()
+        engine.cfg["cameras"] = [
+            {"id": "cam-1", "name": "Bay 1", "source": "0", "enabled": True},
+            {"id": "cam-2", "name": "Bay 2", "source": "1", "enabled": True},
+        ]
+        engine.cfg["active_camera_id"] = "cam-1"
+        engine.is_streaming = True
+        engine.current_frame_jpeg = b"ACTIVE_LIVE"
+        engine.camera_pool._workers["cam-1"] = CameraStreamWorker("cam-1", engine.cfg["cameras"][0])
+        engine.camera_pool._workers["cam-2"] = CameraStreamWorker("cam-2", engine.cfg["cameras"][1])
+        fallback_ops = []
+        engine._fallback_grabber.clear_source = lambda: fallback_ops.append("clear")
+
+        with patch("launcher.save_config"), patch.object(
+            CameraStreamWorker, "stop", lambda self: None
+        ):
+            res = engine.toggle_camera_port("cam-2", False)
+
+        self.assertTrue(res["success"])
+        self.assertFalse(res["enabled"])
+        self.assertTrue(engine.is_streaming)
+        self.assertEqual(engine.current_frame_jpeg, b"ACTIVE_LIVE")
+        self.assertEqual(fallback_ops, [])
+        self.assertIn("cam-1", engine.camera_pool._workers)
+
     def test_garage_telemetry_includes_nested_garage_object(self):
         from launcher import LiveStreamEngine
         engine = LiveStreamEngine()
