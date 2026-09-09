@@ -70,7 +70,7 @@
 Money first. Edge-AI is infrastructure, not the headline.
 
 - **Hero:** zero AI / “Edge compute” jargon in H1 or eyebrow. Speak recovering unbilled labor, margins, liability. Proof plane is brutalist CCTV `<video>` (`1px solid #00FF41`, radius 0) — not Bay telemetry chips.
-- **Features (top 3 only):** (1) Active Revenue Recovery, (2) Workflow & Route Optimization / bay turnover, (3) Loss Prevention & Safety. **Attendance is never a primary feature** — payroll clock stays background telemetry / Telegram scorecard only.
+- **Features (top 3 only):** (1) Active vs. Idle Tracking, (2) Margins Loss Prevention, (3) Safety Tracking. Pitch deck, landing feature copy, and [`privacy.html`](privacy.html) must use these exact names. **Attendance is never a primary feature** — payroll clock stays background telemetry / Telegram scorecard only.
 - **CTA budget:** max one neon primary booking CTA per viewport. Hero stays visible; final / mobile-sticky Book reveals only after ~50vh scroll.
 - **ROI framing:** kicker = daily capital bleed; primary metric = projected monthly revenue recovered. Interactive projection — owner sets minutes + rate.
 - **ROI honesty override (2026-09-08):** baseline copy may say “conservative 45 min/day unbilled baseline reported by local operators.” Still do not invent per-shop measured minutes for a named garage without written permission.
@@ -141,3 +141,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | Outcome-led pricing copy + PP pilot bonus | Bullets sell revenue/efficiency/setup outcomes; free on-site integration; $295 = camera + cable/mount only |
 | 2026-09-09 | [ROI UPDATE] Calculator UI consolidated into a single terminal grid; baseline aligned to $99/mo B2B anchor; redundant Model/Fix cards removed. | Monthly software vs monthly revenue apples-to-apples; Day 04 payback in footer |
 | 2026-09-09 | Sales contact → direct Telegram +855 96 518 8669 | Replace footer bot CTA with founder line; strip footer Location link; modal bypass; scorecard bot stays in product copy |
+| 2026-09-09 | Pitch triad lock + MVP privacy | Features = Active vs. Idle Tracking / Margins Loss Prevention / Safety Tracking; privacy.html pre-incorporation pilot entity; deploy@ + founder Telegram; Zero-Cloud once in §1 |
