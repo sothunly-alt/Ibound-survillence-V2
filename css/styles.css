@@ -41,15 +41,38 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: var(--header-h);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 65, 0.6) transparent;
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
+/* Custom Dissolving Terminal Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 255, 65, 0) 0%,
+    rgba(0, 255, 65, 0.6) 15%,
+    rgba(0, 255, 65, 0.6) 85%,
+    rgba(0, 255, 65, 0) 100%
+  );
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 255, 65, 0) 0%,
+    rgba(0, 255, 65, 1) 10%,
+    rgba(0, 255, 65, 1) 90%,
+    rgba(0, 255, 65, 0) 100%
+  );
 }
 
 html,
@@ -814,10 +837,11 @@ h3 {
 
 .arch-card {
   background: #0d0d0d;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   padding: 24px;
   position: relative;
+  box-shadow: var(--shadow-neon);
 }
 
 .arch-card::before {
@@ -844,11 +868,6 @@ h3 {
   width: 32px;
   height: 32px;
   display: block;
-}
-
-.arch-card.is-primary {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-neon);
 }
 
 .arch-layer {
