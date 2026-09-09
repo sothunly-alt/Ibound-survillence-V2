@@ -106,7 +106,6 @@ h3 {
 .tel-value,
 .bbox-tag strong,
 .price-amount .mono,
-.roi-equation .mono,
 .hud-clock,
 .hud-cam,
 .hud-live,
@@ -862,7 +861,7 @@ h3 {
 
 .roi-calc {
   margin-bottom: 24px;
-  padding: 28px;
+  padding: 2rem;
   background: #0d0d0d;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
@@ -881,13 +880,14 @@ h3 {
 .roi-sliders {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
-  margin-bottom: 24px;
+  gap: 2rem;
+  margin-bottom: 0;
 }
 
 .roi-slider {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .roi-slider-top {
@@ -896,15 +896,17 @@ h3 {
   align-items: baseline;
   gap: 12px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .roi-slider-top strong {
   color: var(--text);
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .roi-slider input[type="range"] {
@@ -942,14 +944,16 @@ h3 {
 
 .roi-calc-result {
   border-top: 1px solid var(--line);
-  padding-top: 20px;
+  margin-top: 2rem;
+  padding-top: 2rem;
 }
 
 .roi-calc-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: 2rem;
   margin-bottom: 12px;
+  text-align: left;
 }
 
 .roi-calc-label {
@@ -963,8 +967,15 @@ h3 {
 
 .roi-calc-value {
   margin: 0 0 10px;
+  font-family: var(--font-display);
   font-size: clamp(32px, 5vw, 52px);
   line-height: 1;
+  letter-spacing: 0.02em;
+  text-align: left;
+}
+
+.roi-calc-value.neon {
+  color: var(--neon);
 }
 
 .roi-calc-value.muted {
@@ -975,25 +986,21 @@ h3 {
 .roi-calc-meta {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
 }
 
 .roi-calc-meta span {
   color: var(--neon);
-  font-family: var(--font-mono);
   font-weight: 700;
 }
 
-.roi-grid,
 .feature-grid,
 .pricing-grid,
 .footer-grid {
   display: grid;
   gap: 20px;
-}
-
-.roi-grid {
-  grid-template-columns: 1fr 1fr;
 }
 
 .footer-grid {
@@ -1005,7 +1012,6 @@ h3 {
   align-items: stretch;
 }
 
-.roi-card,
 .feature-card,
 .price-card,
 .testimonial {
@@ -1029,7 +1035,6 @@ h3 {
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-.roi-card::before,
 .feature-card::before,
 .price-card::before {
   content: "";
@@ -1041,50 +1046,6 @@ h3 {
   border-top: 1px solid var(--neon);
   border-left: 1px solid var(--neon);
   opacity: 0.5;
-}
-
-.roi-kicker {
-  font-family: var(--font-mono);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-size: 11px;
-  color: var(--muted);
-  margin: 0 0 18px;
-}
-
-.roi-equation {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 10px;
-  margin: 0 0 18px;
-  font-size: clamp(28px, 4vw, 42px);
-  font-weight: 600;
-}
-
-.roi-equation small {
-  font-size: 12px;
-  color: var(--muted);
-  margin-left: 4px;
-}
-
-.roi-equation .op {
-  color: var(--muted);
-  font-size: 20px;
-}
-
-.roi-equation .loss {
-  color: var(--leak);
-}
-
-.roi-equation .neon,
-.price-amount .mono {
-  color: var(--neon);
-}
-
-.roi-card.fix {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow-neon);
 }
 
 .feature-grid {
@@ -1123,7 +1084,6 @@ h3 {
 }
 
 .feature-card p,
-.roi-card p,
 .price-for,
 .section-copy {
   color: var(--muted);
@@ -1185,6 +1145,7 @@ h3 {
 
 .price-amount .mono {
   font-size: 40px;
+  color: var(--neon);
 }
 
 .price-amount small,
@@ -1551,14 +1512,6 @@ h3 {
   letter-spacing: 0.04em;
   color: var(--muted);
   line-height: 1.45;
-}
-
-.roi-slider-hint {
-  display: block;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--muted);
-  line-height: 1.4;
 }
 
 .field-matrix {
@@ -2358,7 +2311,6 @@ h3 {
     display: flex;
   }
 
-  .roi-grid,
   .feature-grid,
   .pricing-grid,
   .flow-steps,

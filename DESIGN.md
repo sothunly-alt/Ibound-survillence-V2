@@ -133,3 +133,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-08 | Basemap → Esri Dark Gray | Kill CARTO “API KEY REQUIRED” tile burn-in; keep dark city presence without keys |
 | 2026-09-09 | [PRICING UPDATE] $99/mo/bay + $295 upfront | Replaced consumer baseline ($39/$250) with commercial B2B anchors across cards, ROI logic, FAQ, modals, and schema |
 | 2026-09-09 | Outcome-led pricing copy + PP pilot bonus | Bullets sell revenue/efficiency/setup outcomes; free on-site integration; $295 = camera + cable/mount only |
+| 2026-09-09 | [ROI UPDATE] Calculator UI consolidated into a single terminal grid; baseline aligned to $99/mo B2B anchor; redundant Model/Fix cards removed. | Monthly software vs monthly revenue apples-to-apples; Day 04 payback in footer |

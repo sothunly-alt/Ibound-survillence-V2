@@ -337,14 +337,14 @@
             <div class="roi-sliders">
               <label class="roi-slider">
                 <span class="roi-slider-top">
-                  <span>Number of Active Bays</span>
+                  <span>ACTIVE BAYS</span>
                   <strong data-roi-bays-display>3</strong>
                 </span>
                 <input type="range" min="1" max="10" value="3" step="1" data-roi-bays aria-label="Number of active bays" />
               </label>
               <label class="roi-slider">
                 <span class="roi-slider-top">
-                  <span>Estimated unbilled minutes / tech / day</span>
+                  <span>UNBILLED MIN / DAY</span>
                   <strong data-roi-minutes-display>45 min</strong>
                 </span>
                 <input
@@ -356,13 +356,10 @@
                   data-roi-minutes
                   aria-label="Estimated unbilled minutes per technician per day"
                 />
-                <span class="roi-slider-hint"
-                  >(Based on a conservative 45 min/day unbilled baseline reported by local operators)</span
-                >
               </label>
               <label class="roi-slider">
                 <span class="roi-slider-top">
-                  <span>Shop Labor Rate</span>
+                  <span>LABOR RATE</span>
                   <strong data-roi-rate-display>$35/hr</strong>
                 </span>
                 <input type="range" min="20" max="80" value="35" step="5" data-roi-rate aria-label="Shop labor rate" />
@@ -372,47 +369,22 @@
               <div class="roi-calc-pair">
                 <div>
                   <p class="roi-calc-label">PROJECTED MONTHLY REVENUE RECOVERED</p>
-                  <p class="roi-calc-value mono neon" data-roi-monthly-total>$1,890</p>
+                  <p class="roi-calc-value neon" data-roi-monthly-total>$1,890</p>
                 </div>
                 <div>
-                  <p class="roi-calc-label">Software cost ($99/bay/mo)</p>
-                  <p class="roi-calc-value mono muted" data-roi-software>$3,564</p>
+                  <p class="roi-calc-label">SOFTWARE COST ($99/BAY/MO)</p>
+                  <p class="roi-calc-value muted" data-roi-software>$297</p>
                 </div>
               </div>
-              <p class="roi-calc-meta">
-                Annual projection <span class="mono neon" data-roi-annual>$22,680</span>
-                · Payback in <span data-roi-payback>DAY 04</span>
+              <p class="roi-calc-meta mono">
+                Annual Revenue Recovered:
+                <span data-roi-annual>$22,680</span>
+                · Annual Software Cost:
+                <span data-roi-software-annual>$3,564</span>
+                · Payback
+                <span data-roi-payback>DAY 04</span>
               </p>
             </div>
-          </div>
-
-          <div class="roi-grid">
-            <article class="roi-card leak">
-              <p class="roi-kicker">The Model</p>
-              <p class="roi-equation">
-                <span class="mono" data-roi-minutes-eq>~45<small>min</small></span>
-                <span class="op">×</span>
-                <span class="mono" data-roi-rate-eq>$35<small>/hr</small></span>
-                <span class="op">=</span>
-                <span class="mono loss" data-roi-monthly>$420<small>/bay</small></span>
-              </p>
-              <p data-roi-leak-copy>
-                At your estimate of 45 unbilled minutes/day and $35/hr across ~24 shop days,
-                that’s <strong>$420 projected per bay, every month.</strong>
-              </p>
-            </article>
-            <article class="roi-card fix">
-              <p class="roi-kicker">The Fix</p>
-              <p class="roi-equation">
-                <span class="mono neon">$99<small>/mo</small></span>
-                <span class="op">→</span>
-                <span class="mono neon" data-roi-payback-eq>DAY 04</span>
-              </p>
-              <p>
-                Software is <strong>$99/month per bay</strong>. At your estimated shop rate, the software pays for itself by <strong>Day 04</strong>.
-                The remaining 20+ days of the month are <strong>pure recovered margin.</strong>
-              </p>
-            </article>
           </div>
         </div>
       </section>

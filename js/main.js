@@ -260,11 +260,8 @@ function initRoiCalculator() {
   const annualEl = root.querySelector("[data-roi-annual]");
   const monthlyTotalEl = root.querySelector("[data-roi-monthly-total]");
   const softwareEl = root.querySelector("[data-roi-software]");
-  const paybackEls = document.querySelectorAll("[data-roi-payback], [data-roi-payback-eq]");
-  const minutesEq = document.querySelector("[data-roi-minutes-eq]");
-  const rateEq = document.querySelector("[data-roi-rate-eq]");
-  const monthlyEl = document.querySelector("[data-roi-monthly]");
-  const leakCopy = document.querySelector("[data-roi-leak-copy]");
+  const softwareAnnualEl = root.querySelector("[data-roi-software-annual]");
+  const paybackEl = root.querySelector("[data-roi-payback]");
 
   const safeNumber = (value, fallback) => {
     const n = Number(value);
@@ -280,7 +277,8 @@ function initRoiCalculator() {
     const monthlyTotal = monthlyPerBay * bays;
     const annual = monthlyTotal * 12;
     const SOFTWARE_PER_BAY_MO = 99;
-    const softwareAnnual = SOFTWARE_PER_BAY_MO * 12 * bays;
+    const softwareMonthly = SOFTWARE_PER_BAY_MO * bays;
+    const softwareAnnual = softwareMonthly * 12;
     const dailyRecovery = leakHours * rate;
     const paybackDays = Math.max(1, Math.ceil(SOFTWARE_PER_BAY_MO / Math.max(dailyRecovery, 0.01)));
     const payback = formatPayback(paybackDays);
@@ -290,17 +288,9 @@ function initRoiCalculator() {
     if (rateDisplay) rateDisplay.textContent = `$${rate}/hr`;
     if (monthlyTotalEl) monthlyTotalEl.textContent = formatMoney(monthlyTotal);
     if (annualEl) annualEl.textContent = formatMoney(annual);
-    if (softwareEl) softwareEl.textContent = formatMoney(softwareAnnual);
-    if (minutesEq) minutesEq.innerHTML = `~${minutes}<small>min</small>`;
-    if (rateEq) rateEq.innerHTML = `$${rate}<small>/hr</small>`;
-    if (monthlyEl) monthlyEl.innerHTML = `${formatMoney(monthlyPerBay)}<small>/bay</small>`;
-    paybackEls.forEach((el) => {
-      el.textContent = payback;
-    });
-    if (leakCopy) {
-      leakCopy.innerHTML = `At your estimate of ${minutes} unbilled minutes/day and $${rate}/hr across ~24 shop days,
-        that’s <strong>${formatMoney(monthlyPerBay)} projected per bay, every month.</strong>`;
-    }
+    if (softwareEl) softwareEl.textContent = formatMoney(softwareMonthly);
+    if (softwareAnnualEl) softwareAnnualEl.textContent = formatMoney(softwareAnnual);
+    if (paybackEl) paybackEl.textContent = payback;
   };
 
   baysInput?.addEventListener("input", render);
@@ -354,7 +344,7 @@ updateScroll();
 function initScrollReveal() {
   if (reducedMotion) return;
   const nodes = document.querySelectorAll(
-    ".section-head, .hud-frame, .flow-steps, .arch-card, .roi-calc, .roi-card, .feature-card, .price-card, .partners, .testimonial, .final-content"
+    ".section-head, .hud-frame, .flow-steps, .arch-card, .roi-calc, .feature-card, .price-card, .partners, .testimonial, .final-content"
   );
   nodes.forEach((el, i) => {
     el.classList.add("reveal");
