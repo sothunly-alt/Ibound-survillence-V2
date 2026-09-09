@@ -63,6 +63,10 @@ hiddenimports = [
     "telegram_link",
     "service_patterns",
     "vehicle",
+    "bay_zoom",
+    "liveness",
+    "corroborate",
+    "negatives",
 ]
 
 for name in (
@@ -71,10 +75,15 @@ for name in (
     "yolo11n.pt",
     "config.example.yaml",
     "hub.html",
+    "inb_surveillance.png",
+    "inb_surveillance-removebg-preview.png",
 ):
     src = EDGE / name
     if src.exists():
         datas.append((str(src), "."))
+    repo_src = EDGE.parent / name
+    if repo_src.exists() and (str(repo_src), ".") not in datas:
+        datas.append((str(repo_src), "."))
 
 REPO = EDGE.parent
 for env_candidate in (EDGE / ".env", REPO / ".env"):

@@ -31,6 +31,7 @@ from db import (
 )
 from occupancy import (
     DEFAULT_BAYS,
+    UNKNOWN_WORKER,
     BayZoneManager,
     crouching_pose_keypoints,
     idle_standing_keypoints,
@@ -236,13 +237,24 @@ class PoseAndRoiTests(unittest.TestCase):
         self.assertGreaterEqual(snaps["bay_1"].wrench_seconds, 1.9)
         self.assertGreaterEqual(snaps["bay_1"].under_vehicle_seconds, 1.9)
 
-        # 2. Mechanic steps away from bay -> immediately switches to ON_BREAK and pauses work timer
+        # 2. Brief occlusion (ducking under the car) stays UNDER_VEHICLE
+        # last seen at t0+2, now t0+5 => 3s < 5s under_car_grace
         manager.update([], 1000, 1000, t0 + 5.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "UNDER_VEHICLE")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+        self.assertGreater(snaps["bay_1"].under_vehicle_seconds, 2.0)
+
+        # 3. Past under_car_grace_seconds -> ON_BREAK and wrench timer pauses
+        manager.update([], 1000, 1000, t0 + 8.0, kpt_conf=0.4)
         snaps = {s.bay_id: s for s in manager.snapshots()}
         self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
         self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
-        # Wrench time did not increase during break
-        self.assertAlmostEqual(snaps["bay_1"].wrench_seconds, 2.0, places=1)
+        wrench_at_break = snaps["bay_1"].wrench_seconds
+        manager.update([], 1000, 1000, t0 + 10.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+        self.assertAlmostEqual(snaps["bay_1"].wrench_seconds, wrench_at_break, places=1)
 
     def test_break_and_resume_continuity(self):
         manager = BayZoneManager(
@@ -272,6 +284,60 @@ class PoseAndRoiTests(unittest.TestCase):
         self.assertEqual(snaps["bay_1"].state, "WORKING")
         self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
         self.assertGreater(snaps["bay_1"].wrench_seconds, wrench_before_break + 1.5)
+
+    def test_working_occlusion_grace_holds_state(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            under_car_grace_seconds=5.0,
+            break_timeout_seconds=60.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        work = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([work], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        wrench_before = {s.bay_id: s.wrench_seconds for s in manager.snapshots()}["bay_1"]
+
+        manager.update([], 1000, 1000, t0 + 5.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "WORKING")
+        self.assertEqual(snaps["bay_1"].mechanic_name, "Hour-Meng")
+        self.assertGreater(snaps["bay_1"].wrench_seconds, wrench_before)
+
+        manager.update([], 1000, 1000, t0 + 8.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+
+    def test_under_car_grace_holds_twenty_seconds_then_breaks(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            under_car_grace_seconds=30.0,
+            break_timeout_seconds=3600.0,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        work = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([work], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([work], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        wrench_before = {s.bay_id: s.wrench_seconds for s in manager.snapshots()}["bay_1"]
+
+        # 20s of miss is still inside the 30s ducking grace — wrench keeps running.
+        manager.update([], 1000, 1000, t0 + 22.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "WORKING")
+        self.assertTrue(snaps["bay_1"].session_open)
+        self.assertGreater(snaps["bay_1"].wrench_seconds, wrench_before)
+
+        manager.update([], 1000, 1000, t0 + 33.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+        wrench_at_break = snaps["bay_1"].wrench_seconds
+        manager.update([], 1000, 1000, t0 + 35.0, kpt_conf=0.4)
+        snaps = {s.bay_id: s for s in manager.snapshots()}
+        self.assertEqual(snaps["bay_1"].state, "ON_BREAK")
+        self.assertAlmostEqual(snaps["bay_1"].wrench_seconds, wrench_at_break, places=1)
 
     def test_multi_bay_states_and_wrench_dt(self):
         manager = BayZoneManager(
@@ -492,6 +558,46 @@ class PoseAndRoiTests(unittest.TestCase):
         self.assertIn("George", snap.technicians_times)
         self.assertNotIn("Employee", snap.technicians_times)
 
+    def test_unverified_occupant_does_not_accrue_wrench(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        ghost = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Employee", staff=False)
+        t0 = 30.0
+        manager.update([ghost], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([ghost], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "WORKING")
+        self.assertEqual(snap.mechanic_name, UNKNOWN_WORKER)
+        self.assertEqual(snap.wrench_seconds, 0.0)
+        self.assertGreater(snap.unverified_seconds, 0.0)
+        self.assertNotIn(UNKNOWN_WORKER, snap.technicians_times)
+        badge = snap.as_dict()["badge"]
+        self.assertIn("WORKING", badge)
+        self.assertIn("unverified", badge)
+
+    def test_unverified_time_backfills_on_identity(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        ghost = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="Employee", staff=False)
+        t0 = 40.0
+        manager.update([ghost], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([ghost], 1000, 1000, t0 + 2.0, kpt_conf=0.4)
+        named = _det(_shift_kpts(working_pose_keypoints(), 80, 280), name="George", staff=True)
+        manager.update([named], 1000, 1000, t0 + 3.0, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.mechanic_name, "George")
+        self.assertIn("George", snap.technicians_times)
+        self.assertEqual(snap.unverified_seconds, 0.0)
+        self.assertGreater(snap.wrench_seconds, 0.0)
+        self.assertNotIn(UNKNOWN_WORKER, snap.technicians_times)
+        self.assertNotIn("unverified", snap.as_dict()["badge"])
+
     def test_idle_state_and_idle_seconds_accumulation(self):
         manager = BayZoneManager(
             DEFAULT_BAYS,
@@ -611,6 +717,7 @@ class AttendanceAndScorecardTests(unittest.TestCase):
     def test_sitting_pose_and_state(self):
         self.assertTrue(is_sitting_pose(sitting_keypoints()))
         self.assertFalse(is_sitting_pose(working_pose_keypoints()))
+        self.assertFalse(is_working_pose(sitting_keypoints()))
 
         manager = BayZoneManager(
             DEFAULT_BAYS,
@@ -629,6 +736,40 @@ class AttendanceAndScorecardTests(unittest.TestCase):
         self.assertEqual(snap.state, "NOT_WORKING")
         self.assertEqual(snap.not_working_reason, "SITTING")
         self.assertIn("NOT WORKING (SITTING)", snap.as_dict()["badge"])
+
+    def test_sitting_to_work_under_vehicle_stays_working(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        for b in manager._bays:
+            b.sitting_threshold_seconds = 1.0
+
+        under_car = _det(_shift_kpts(under_vehicle_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([under_car], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([under_car], 1000, 1000, t0 + 1.5, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "UNDER_VEHICLE")
+        self.assertNotEqual(snap.not_working_reason, "SITTING")
+
+    def test_crouch_to_adjust_car_stays_working(self):
+        manager = BayZoneManager(
+            DEFAULT_BAYS,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+        )
+        for b in manager._bays:
+            b.sitting_threshold_seconds = 1.0
+
+        crouch = _det(_shift_kpts(crouching_pose_keypoints(), 80, 280), name="Hour-Meng")
+        t0 = 100.0
+        manager.update([crouch], 1000, 1000, t0, kpt_conf=0.4)
+        manager.update([crouch], 1000, 1000, t0 + 1.5, kpt_conf=0.4)
+        snap = {s.bay_id: s for s in manager.snapshots()}["bay_1"]
+        self.assertEqual(snap.state, "WORKING")
+        self.assertIsNone(snap.not_working_reason)
 
     def test_default_to_working_in_bay(self):
         manager = BayZoneManager(
@@ -1104,7 +1245,12 @@ class GarageApiTests(unittest.TestCase):
         from occupancy import BayZoneManager, GhostCounter
         from person import Detection
         bays_cfg = [{"id": "bay_1", "name": "Bay 1", "type": "vehicle_bay", "roi": [0.2, 0.2, 0.4, 0.6]}]
-        mgr = BayZoneManager(bays_cfg)
+        mgr = BayZoneManager(
+            bays_cfg,
+            occupy_confirm_seconds=0.01,
+            occupy_clear_seconds=0.01,
+            under_car_grace_seconds=0.0,
+        )
         ghost = GhostCounter(absent_seconds=5.0, cooldown_seconds=10.0)
 
         # Step 1: Worker inside bay at t=0

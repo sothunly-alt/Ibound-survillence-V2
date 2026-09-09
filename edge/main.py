@@ -50,6 +50,7 @@ DATA_DIR = data_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from corroborate import veto_vehicle_interior
 from db import connect, has_opened_today, insert_event, upsert_minute
 from face_id import till_status_label, try_create_face_recognizer
 from occupancy import GhostCounter, GhostState, OccupancyGate
@@ -58,9 +59,21 @@ from proof import save_proof
 from reid import try_create_body_reid
 from report import build_report
 from roi_edit import RoiEditor, draw_roi_handles
-from runtime import resolve_runtime, resolve_weights_file
+from runtime import (
+    resolve_imgsz,
+    resolve_kpt_conf,
+    resolve_min_aspect,
+    resolve_min_keypoints,
+    resolve_min_person_height,
+    resolve_occupy_clear_seconds,
+    resolve_person_conf,
+    resolve_runtime,
+    resolve_weights_file,
+)
+from liveness import LivenessProbe
 from telegram_out import TelegramOut
 from tracker import PersonTracker, run_identity_pipeline
+from vehicle import extract_vehicle_detections
 
 WIN = "Inbound Garage Floor"
 ROTATES = (0, 90, 180, 270)
@@ -250,22 +263,19 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     proofs = DATA_DIR / "proofs"
     rotate_deg = resolve_rotate(cfg.get("rotate"), source)
     flip = parse_flip(cfg.get("flip"))
-    person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
-    min_person_height = float(
-        cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
-    )
-    min_aspect = float(cfg.get("min_aspect") if cfg.get("min_aspect") is not None else 1.1)
-    min_keypoints = int(cfg.get("min_keypoints") if cfg.get("min_keypoints") is not None else 4)
-    kpt_conf = float(cfg.get("kpt_conf") if cfg.get("kpt_conf") is not None else 0.4)
-    imgsz = max(32, int(cfg.get("imgsz") or 640) // 32 * 32)
+    person_conf = resolve_person_conf(cfg)
+    min_person_height = resolve_min_person_height(cfg)
+    min_aspect = resolve_min_aspect(cfg)
+    min_keypoints = resolve_min_keypoints(cfg)
+    kpt_conf = resolve_kpt_conf(cfg)
+    profile = resolve_runtime(cfg)
+    imgsz = resolve_imgsz(cfg, profile)
     confirm = float(
         cfg.get("occupy_confirm_seconds")
         if cfg.get("occupy_confirm_seconds") is not None
         else 1.0
     )
-    clear = float(
-        cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
-    )
+    clear = resolve_occupy_clear_seconds(cfg)
 
     if isinstance(source, int):
         from launcher import _open_webcam_index
@@ -284,12 +294,19 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
     open_preview_window(WIN, editor.on_mouse)
 
     weights = resolve_weights(cfg)
-    profile = resolve_runtime(cfg)
     model = YOLO(weights)
+    # Dual Neural Network Law: the COCO detector runs alongside pose so vehicle
+    # boxes are available to veto skeletons hallucinated onto engines and bikes.
+    try:
+        vehicle_model = YOLO(str(get_resource_path("yolo11n.pt")))
+    except Exception as exc:
+        print(f"[Vehicle] Detector unavailable ({exc}); skipping interior veto")
+        vehicle_model = None
     ghost = GhostCounter(absent, cooldown)
     gate = OccupancyGate(confirm, clear)
     face_rec = try_create_face_recognizer(cfg)
     reid = try_create_body_reid(cfg)
+    probe = LivenessProbe()
     tracker = PersonTracker(
         max_age=profile.track_max_age,
         min_hits=profile.track_min_hits,
@@ -351,12 +368,31 @@ def run_camera(cfg: dict, conn, bot: TelegramOut, cfg_path: Path) -> None:
                 min_keypoints=min_keypoints,
                 kpt_conf=kpt_conf,
             )
+            vehicles = []
+            if vehicle_model is not None:
+                try:
+                    veh_res = vehicle_model.predict(
+                        frame,
+                        imgsz=imgsz,
+                        classes=[2, 3, 5, 7],
+                        conf=0.18,
+                        device=profile.yolo_device,
+                        verbose=False,
+                    )[0]
+                    vehicles = extract_vehicle_detections(veh_res, w, h, conf_min=0.18)
+                except Exception as exc:
+                    print(f"[Vehicle] Prediction error: {exc}")
+            last_accepted, vetoed = veto_vehicle_interior(
+                last_accepted, vehicles, kpt_conf=kpt_conf
+            )
+            last_rejected.extend(vetoed)
             last_accepted = run_identity_pipeline(
                 frame,
                 last_accepted,
                 tracker,
                 face_rec=face_rec,
                 reid=reid,
+                probe=probe,
             )
             detected = any(det.in_roi(roi_px, kpt_conf) for det in last_accepted)
             occupied = gate.update(detected, now)

@@ -160,7 +160,7 @@ DEFAULT_BAYS: list[dict] = [
 BAY_TYPES = ("vehicle_bay", "tool_area")
 BAY_STATES = ("WORKING", "UNDER_VEHICLE", "NOT_WORKING", "ON_BREAK", "PARKED_WAITING", "IDLE", "EMPTY")
 IDLE_STATIONARY_SECONDS = 120.0
-UNDER_CAR_GRACE_SECONDS = 5.0
+UNDER_CAR_GRACE_SECONDS = 30.0
 BREAK_TIMEOUT_SECONDS = 3600.0
 PRESENCE_GRACE_SECONDS = 8.0
 PHONE_THRESHOLD_SECONDS = 12.0
@@ -364,7 +364,10 @@ def is_working_pose(keypoints: list, kpt_conf: float = 0.4) -> bool:
 
     if hips and knees and torso:
         thigh = abs(knees[1] - hips[1])
-        if thigh < 0.48 * torso:
+        dx = abs(knees[0] - hips[0])
+        # Wheel-well crouch: knees stay under the hips. Chair sitting stretches
+        # the thighs out horizontally and is not wrench work by itself.
+        if thigh < 0.48 * torso and dx < 0.35 * torso:
             return True
 
     if shoulders and hips and torso:
@@ -582,6 +585,9 @@ def fmt_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
+UNVERIFIED_SUFFIX = ", unverified"
+
+
 def bay_badge(
     state: str,
     technician: str | None,
@@ -590,11 +596,15 @@ def bay_badge(
     queue_seconds: float = 0.0,
     not_working_reason: str | None = None,
     ai_verdict: dict | None = None,
+    unverified: bool = False,
 ) -> str:
     ai_tag = ""
     if ai_verdict and ai_verdict.get("is_work_activity"):
         tool_label = ai_verdict.get("action_label") or ai_verdict.get("action") or ai_verdict.get("tool_or_object") or "Diagnostic"
         ai_tag = f" · {tool_label} [AI Verified]"
+
+    # Nobody has put a name to this occupant, so the clock is provisional.
+    dur = fmt_duration(wrench_seconds) + (UNVERIFIED_SUFFIX if unverified else "")
 
     if state == "EMPTY":
         return "EMPTY"
@@ -615,15 +625,15 @@ def bay_badge(
 
     name = technician or "Technician"
     if state == "UNDER_VEHICLE":
-        return f"UNDER VEHICLE - {name} ({fmt_duration(wrench_seconds)}){ai_tag}"
+        return f"UNDER VEHICLE - {name} ({dur}){ai_tag}"
     if state == "NOT_WORKING":
         reason_str = f" ({not_working_reason})" if not_working_reason else ""
-        return f"NOT WORKING{reason_str} - {name} (Paused: {fmt_duration(wrench_seconds)})"
+        return f"NOT WORKING{reason_str} - {name} (Paused: {dur})"
     if state == "ON_BREAK":
-        return f"ON BREAK - {name} (Paused: {fmt_duration(wrench_seconds)})"
+        return f"ON BREAK - {name} (Paused: {dur})"
     if state == "WORKING":
-        return f"WORKING - {name} ({fmt_duration(wrench_seconds)}){ai_tag}"
-    return f"IDLE - {name} ({fmt_duration(wrench_seconds)})"
+        return f"WORKING - {name} ({dur}){ai_tag}"
+    return f"IDLE - {name} ({dur})"
 
 
 def bay_draw_color(bay_id: str, state: str) -> tuple[int, int, int]:
@@ -658,8 +668,22 @@ class BaySnapshot:
     polygon: list[list[float]] | None = None
     ai_verdict: dict | None = None
     person_present: bool = False
+    session_open: bool = False
+    unverified_seconds: float = 0.0
+    unverified_today: float = 0.0
+
+    def badge_duration(self) -> tuple[float, bool]:
+        """Seconds to show on the badge, and whether that time is provisional."""
+        if self.mechanic_name and self.mechanic_name in (self.technicians_times or {}):
+            return self.technicians_times[self.mechanic_name], False
+        if self.unverified_seconds > 0.0 and not self.technicians_times:
+            return self.unverified_seconds, True
+        if self.wrench_seconds > 0.0 or not self.wrench_time_today:
+            return self.wrench_seconds, False
+        return self.wrench_time_today, False
 
     def as_dict(self) -> dict:
+        badge_seconds, badge_unverified = self.badge_duration()
         return {
             "bay_id": self.bay_id,
             "name": self.name,
@@ -680,21 +704,23 @@ class BaySnapshot:
             "queue_time_today": round(self.queue_time_today, 2),
             "is_working": self.is_working,
             "person_present": self.person_present,
+            "session_open": self.session_open,
             "job_id": self.job_id,
             "vehicle_present": self.vehicle_present,
             "technicians_times": {k: round(v, 2) for k, v in self.technicians_times.items()},
+            "unverified_seconds": round(self.unverified_seconds, 2),
+            "unverified_today": round(self.unverified_today, 2),
             "not_working_reason": self.not_working_reason,
             "ai_verdict": self.ai_verdict,
             "badge": bay_badge(
                 self.state,
                 self.mechanic_name,
-                self.technicians_times[self.mechanic_name]
-                if (self.mechanic_name and self.technicians_times and self.mechanic_name in self.technicians_times)
-                else (self.wrench_seconds if (self.wrench_seconds > 0.0 or not self.wrench_time_today) else self.wrench_time_today),
+                badge_seconds,
                 self.technicians_times,
                 self.queue_seconds,
                 not_working_reason=self.not_working_reason,
                 ai_verdict=self.ai_verdict,
+                unverified=badge_unverified,
             ),
         }
 
@@ -720,6 +746,11 @@ class _BayRuntime:
         self.locked_tracks: dict[int, str] = {}
         self.technicians_times: dict[str, float] = {}
         self.wrench_seconds = 0.0
+        # Time from occupants nobody has verified yet. Held apart from
+        # wrench_seconds so an unrecognised object or a walk-in customer cannot
+        # be billed as labour, and back-filled once a name is established.
+        self.unverified_seconds = 0.0
+        self.today_unverified = 0.0
         self.idle_seconds = 0.0
         self.under_vehicle_seconds = 0.0
         self.break_seconds = 0.0
@@ -784,9 +815,12 @@ class _BayRuntime:
             queue_time_today=self.today_queue,
             is_working=self.state in ("WORKING", "UNDER_VEHICLE"),
             person_present=self.state in ("WORKING", "UNDER_VEHICLE", "IDLE", "NOT_WORKING"),
+            session_open=self.session_open,
             job_id=self.job_id,
             vehicle_present=self.vehicle_present,
             technicians_times=dict(self.technicians_times),
+            unverified_seconds=self.unverified_seconds,
+            unverified_today=self.today_unverified,
             not_working_reason=self.not_working_reason,
             polygon=[list(pt) for pt in self.polygon] if self.polygon else None,
             ai_verdict=self.ai_verdict,
@@ -806,7 +840,7 @@ class BayZoneManager:
         *,
         idle_stationary_seconds: float = IDLE_STATIONARY_SECONDS,
         occupy_confirm_seconds: float = 1.0,
-        occupy_clear_seconds: float = 1.0,
+        occupy_clear_seconds: float = 5.0,
         under_car_grace_seconds: float = UNDER_CAR_GRACE_SECONDS,
         break_timeout_seconds: float = BREAK_TIMEOUT_SECONDS,
         departure_grace_seconds: float = 15.0,
@@ -847,6 +881,7 @@ class BayZoneManager:
             runtime.type = cfg["type"]
             runtime.roi = list(cfg["roi"])
             runtime.polygon = cfg.get("polygon")
+            runtime.under_car_grace_seconds = self.under_car_grace_seconds
             if cfg.get("job_id"):
                 runtime.job_id = cfg["job_id"]
             rebuilt.append(runtime)
@@ -953,6 +988,35 @@ class BayZoneManager:
                 dt = max(0.0, min(now - bay.last_t, MAX_ACTIVITY_DT))
             bay.last_t = now
 
+            time_since_active = (
+                (now - bay.last_active_t) if bay.last_active_t is not None else 999999.0
+            )
+            occluded_hold = (
+                not inside
+                and bay.session_open
+                and bay.type == "vehicle_bay"
+                and bay.state in ("WORKING", "UNDER_VEHICLE")
+                and time_since_active <= bay.under_car_grace_seconds
+            )
+            if occluded_hold:
+                technician = bay.last_working_technician or bay.technician
+                if technician:
+                    bay.technician = technician
+                if dt > 0:
+                    name = technician or UNKNOWN_WORKER
+                    if bay.state == "UNDER_VEHICLE":
+                        bay.under_vehicle_seconds += dt
+                        bay.today_under_vehicle += dt
+                    if name == UNKNOWN_WORKER:
+                        bay.unverified_seconds += dt
+                        bay.today_unverified += dt
+                    else:
+                        bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
+                        bay.wrench_seconds += dt
+                        bay.today_wrench += dt
+                ticks.append((bay.id, bay.technician, True, dt, bay.state, bay.job_id))
+                continue
+
             technician = _pick_technician(inside) or bay.last_working_technician
 
             under_vehicle = any(
@@ -1043,7 +1107,7 @@ class BayZoneManager:
                     bay.state = "NOT_WORKING"
                     bay.not_working_reason = "PHONE"
                     is_not_working = True
-                elif sitting_elapsed >= bay.sitting_threshold_seconds:
+                elif sitting_elapsed >= bay.sitting_threshold_seconds and not under_vehicle and not working_pose:
                     bay.state = "NOT_WORKING"
                     bay.not_working_reason = "SITTING"
                     is_not_working = True
@@ -1065,19 +1129,37 @@ class BayZoneManager:
 
                 # Track each employee in the bay individually
                 active_names: list[str] = []
+                unverified_present = False
                 for det in inside:
                     name = _resolve_occupant_name(det, inside, bay)
                     track_id = getattr(det, "track_id", None)
                     if track_id is not None and name != UNKNOWN_WORKER:
                         bay.locked_tracks[int(track_id)] = name
                     if dt > 0 and not is_not_working:
-                        bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
-                    det.active_time_str = fmt_duration(bay.technicians_times.get(name, bay.wrench_seconds + dt))
+                        if name == UNKNOWN_WORKER:
+                            unverified_present = True
+                        else:
+                            bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + dt
+                    if name == UNKNOWN_WORKER:
+                        det.verified = False
+                    else:
+                        det.active_time_str = fmt_duration(
+                            bay.technicians_times.get(name, bay.wrench_seconds + dt)
+                        )
+                        det.verified = True
                     det.bay_name = bay.name
                     if name not in active_names:
                         active_names.append(name)
+                if unverified_present and dt > 0 and not is_not_working:
+                    bay.unverified_seconds += dt
+                    bay.today_unverified += dt
+                unverified_label = fmt_duration(bay.unverified_seconds)
+                for det in inside:
+                    if getattr(det, "verified", None) is False:
+                        det.active_time_str = unverified_label
 
                 named_staff = [n for n in active_names if n != UNKNOWN_WORKER]
+                _backfill_provisional_time(bay, named_staff, active_names, now)
                 if len(named_staff) == 1:
                     bay.last_working_technician = named_staff[0]
                 elif len(named_staff) > 1 and bay.last_working_technician not in named_staff:
@@ -1088,15 +1170,20 @@ class BayZoneManager:
                 elif not bay.technician:
                     bay.technician = technician or UNKNOWN_WORKER
 
+                # Only verified occupants add to billable wrench time; anyone
+                # unnamed already went to the provisional bucket above.
+                verified_present = bool(named_staff)
                 if dt > 0:
                     if bay.state == "UNDER_VEHICLE":
                         bay.under_vehicle_seconds += dt
                         bay.today_under_vehicle += dt
-                        bay.wrench_seconds += dt
-                        bay.today_wrench += dt
+                        if verified_present:
+                            bay.wrench_seconds += dt
+                            bay.today_wrench += dt
                     elif bay.state == "WORKING":
-                        bay.wrench_seconds += dt
-                        bay.today_wrench += dt
+                        if verified_present:
+                            bay.wrench_seconds += dt
+                            bay.today_wrench += dt
                     else:
                         bay.idle_seconds += dt
                         bay.today_idle += dt
@@ -1131,6 +1218,8 @@ class BayZoneManager:
                     bay.last_working_technician = None
                     bay.locked_tracks.clear()
                     bay.ai_verdict = None
+                    # Nobody ever claimed this time; it never becomes labour.
+                    bay.unverified_seconds = 0.0
 
                 if bay.state != prev_state:
                     bay.log_event(now, f"State transitioned to {bay.state}")
@@ -1143,6 +1232,29 @@ class BayZoneManager:
 
     def activity_ticks(self) -> list[tuple[str, str | None, bool, float, str, str | None]]:
         return list(getattr(self, "_last_ticks", []))
+
+
+def _backfill_provisional_time(
+    bay: _BayRuntime,
+    named_staff: list[str],
+    active_names: list[str],
+    now: float,
+) -> None:
+    """Hand provisional time to a name once identity finally lands.
+
+    Only when the bay holds exactly one person: with two occupants there is no
+    way to know whose the unverified seconds were, so they stay quarantined.
+    """
+    if bay.unverified_seconds <= 0 or len(named_staff) != 1 or len(active_names) != 1:
+        return
+    name = named_staff[0]
+    owed = bay.unverified_seconds
+    bay.technicians_times[name] = bay.technicians_times.get(name, 0.0) + owed
+    bay.wrench_seconds += owed
+    bay.today_wrench += owed
+    bay.today_unverified = max(0.0, bay.today_unverified - owed)
+    bay.unverified_seconds = 0.0
+    bay.log_event(now, f"Back-filled {fmt_duration(owed)} of provisional time to {name}")
 
 
 def _is_named_staff(det) -> bool:

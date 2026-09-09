@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,8 +15,8 @@ if str(ROOT) not in sys.path:
 
 from person import Detection, standing_person_keypoints
 from reid import BodyReIDExtractor, appearance_embedding
-from runtime import resolve_runtime
-from tracker import PersonTracker
+from runtime import DEFAULT_KPT_CONF, resolve_kpt_conf, resolve_runtime
+from tracker import PersonTracker, Track
 
 
 def _det(
@@ -44,6 +45,10 @@ class RuntimeProfileTests(unittest.TestCase):
         self.assertEqual(profile.yolo_device, "cpu")
         self.assertTrue(profile.reid_enabled)
         self.assertGreaterEqual(profile.track_min_hits, 2)
+
+    def test_default_kpt_conf_matches_anatomy_helpers(self):
+        self.assertGreaterEqual(DEFAULT_KPT_CONF, 0.35)
+        self.assertGreaterEqual(resolve_kpt_conf({}), 0.35)
 
     def test_cuda_falls_back_without_gpu(self):
         profile = resolve_runtime({"runtime": "cuda"})
@@ -92,6 +97,87 @@ class TrackerIdentityTests(unittest.TestCase):
         tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3)
         out = tracker.update([_det(name="George", staff=True)])
         self.assertEqual(out, [])
+        missed = tracker.update([])
+        self.assertEqual(missed, [])
+
+    def test_confirmed_track_coasts_on_miss(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3)
+        confirmed = []
+        for _ in range(3):
+            confirmed = tracker.update([_det(name="George", staff=True)])
+        self.assertEqual(len(confirmed), 1)
+        track_id = confirmed[0].track_id
+        coasted = tracker.update([])
+        self.assertEqual(len(coasted), 1)
+        self.assertEqual(coasted[0].identity, "George")
+        self.assertTrue(coasted[0].is_staff)
+        self.assertEqual(coasted[0].track_id, track_id)
+        for _ in range(11):
+            coasted = tracker.update([])
+        self.assertEqual(coasted, [])
+
+    def test_coasted_track_does_not_keep_skeleton(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3)
+        confirmed = []
+        for _ in range(3):
+            confirmed = tracker.update([_det(name="George", staff=True)])
+        self.assertTrue(confirmed[0].keypoints)
+        coasted = tracker.update([])
+        self.assertEqual(len(coasted), 1)
+        self.assertTrue(coasted[0].coasting)
+        self.assertEqual(coasted[0].keypoints, [])
+        self.assertEqual(coasted[0].identity, "George")
+
+    def test_static_low_conf_unknown_is_clutter(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3, static_hits=20)
+        out = []
+        for _ in range(8):
+            det = _det(name=None, staff=False)
+            det.conf = 0.40
+            out = tracker.update([det])
+        self.assertEqual(out, [])
+        self.assertFalse(any(t.hits >= tracker.min_hits for t in tracker.tracks))
+
+    def test_static_high_conf_unknown_is_clutter(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3, static_hits=20)
+        out = []
+        for _ in range(8):
+            det = _det(name=None, staff=False)
+            det.conf = 0.75
+            out = tracker.update([det])
+        self.assertEqual(out, [])
+        self.assertFalse(any(t.hits >= tracker.min_hits for t in tracker.tracks))
+
+    def test_moving_high_conf_unknown_is_kept(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3, static_hits=20)
+        out = []
+        for i in range(8):
+            det = _det(x1=80 + i * 12, y1=40, x2=160 + i * 12, y2=280, name=None, staff=False)
+            det.conf = 0.75
+            out = tracker.update([det])
+        self.assertEqual(len(out), 1)
+        self.assertFalse(out[0].coasting)
+
+    def test_static_staff_is_not_cluttered_by_low_conf(self):
+        tracker = PersonTracker(max_age=10, min_hits=3, iou_threshold=0.3, static_hits=20)
+        out = []
+        for _ in range(8):
+            det = _det(name="George", staff=True)
+            det.conf = 0.40
+            out = tracker.update([det])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].identity, "George")
+
+    def test_shrunk_box_stays_on_same_track(self):
+        tracker = PersonTracker(max_age=10, min_hits=2, iou_threshold=0.3)
+        out = []
+        for _ in range(2):
+            out = tracker.update([_det(x1=80, y1=40, x2=160, y2=280, name="George", staff=True)])
+        track_id = out[0].track_id
+        shrunk = tracker.update([_det(x1=100, y1=180, x2=150, y2=250, name="Employee", staff=False)])
+        self.assertEqual(len(shrunk), 1)
+        self.assertEqual(shrunk[0].track_id, track_id)
+        self.assertEqual(shrunk[0].identity, "George")
 
 
 class ReIDEmbeddingTests(unittest.TestCase):
@@ -133,6 +219,35 @@ class ReIDEmbeddingTests(unittest.TestCase):
     def test_appearance_embedding_rejects_empty_crop(self):
         zeros = appearance_embedding(np.zeros((4, 4, 3), dtype=np.uint8))
         self.assertEqual(float(np.linalg.norm(zeros)), 0.0)
+
+
+class LivenessAndNegativesTests(unittest.TestCase):
+    def test_box_motion_energy_separates_static_from_moving(self):
+        from liveness import DEAD_MOTION_ENERGY, box_motion_energy, to_probe_gray
+
+        still = np.zeros((120, 120, 3), dtype=np.uint8)
+        still[20:80, 20:80] = 80
+        moved = still.copy()
+        moved[20:80, 20:80] = 200
+        gray_a = to_probe_gray(still)
+        gray_b = to_probe_gray(moved)
+        self.assertLess(box_motion_energy(gray_a, gray_a, (20, 20, 80, 80)), DEAD_MOTION_ENERGY)
+        self.assertGreater(box_motion_energy(gray_b, gray_a, (20, 20, 80, 80)), DEAD_MOTION_ENERGY)
+
+    def test_bank_hard_negatives_writes_crop(self):
+        from negatives import bank_hard_negatives
+
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            frame = np.zeros((120, 120, 3), dtype=np.uint8)
+            frame[20:80, 20:80] = 80
+            trk = Track(track_id=7, bbox=(20, 20, 80, 80), conf=0.75)
+            paths = bank_hard_negatives(frame, [trk], Path(tmp.name))
+            self.assertEqual(len(paths), 1)
+            self.assertTrue(paths[0].is_file())
+            self.assertTrue(paths[0].with_suffix(".json").is_file())
+        finally:
+            tmp.cleanup()
 
 
 if __name__ == "__main__":

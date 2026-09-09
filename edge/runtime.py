@@ -36,6 +36,20 @@ EDGE_WEIGHTS = (
 )
 SERVER_WEIGHTS = "yolo11s-pose.pt"
 
+# Person-detect defaults: keep far / crouched workers instead of shrinking
+# 1080p to 640px and dropping anyone shorter than 12% of the frame.
+DEFAULT_PERSON_CONF = 0.25
+DEFAULT_MIN_PERSON_HEIGHT = 0.05
+DEFAULT_MIN_ASPECT = 1.1
+DEFAULT_MIN_KEYPOINTS = 3
+DEFAULT_KPT_CONF = 0.35
+DEFAULT_OCCUPY_CLEAR_SECONDS = 5.0
+DEFAULT_UNDER_CAR_GRACE_SECONDS = 30.0
+DEFAULT_IMGSZ = 960
+GPU_IMGSZ = 1280
+DEFAULT_BAY_ZOOM = True
+DEFAULT_BAY_ZOOM_PAD = 0.08
+
 
 @dataclass(frozen=True)
 class RuntimeProfile:
@@ -77,6 +91,72 @@ def _dnn_constants() -> tuple[int, int, int, int]:
 def normalize_runtime_name(raw: object) -> str:
     name = str(raw or "cpu").strip().lower()
     return RUNTIME_ALIASES.get(name, "cpu")
+
+
+def resolve_person_conf(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("person_conf")
+    return float(value) if value is not None else DEFAULT_PERSON_CONF
+
+
+def resolve_min_person_height(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("min_person_height")
+    return float(value) if value is not None else DEFAULT_MIN_PERSON_HEIGHT
+
+
+def resolve_min_aspect(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("min_aspect")
+    return float(value) if value is not None else DEFAULT_MIN_ASPECT
+
+
+def resolve_min_keypoints(cfg: dict | None = None) -> int:
+    cfg = cfg or {}
+    value = cfg.get("min_keypoints")
+    return int(value) if value is not None else DEFAULT_MIN_KEYPOINTS
+
+
+def resolve_kpt_conf(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("kpt_conf")
+    return float(value) if value is not None else DEFAULT_KPT_CONF
+
+
+def resolve_occupy_clear_seconds(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("occupy_clear_seconds")
+    return float(value) if value is not None else DEFAULT_OCCUPY_CLEAR_SECONDS
+
+
+def resolve_under_car_grace_seconds(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("under_car_grace_seconds")
+    return float(value) if value is not None else DEFAULT_UNDER_CAR_GRACE_SECONDS
+
+
+def resolve_bay_zoom(cfg: dict | None = None) -> bool:
+    cfg = cfg or {}
+    if "bay_zoom" not in cfg:
+        return DEFAULT_BAY_ZOOM
+    return bool(cfg.get("bay_zoom"))
+
+
+def resolve_bay_zoom_pad(cfg: dict | None = None) -> float:
+    cfg = cfg or {}
+    value = cfg.get("bay_zoom_pad")
+    pad = float(value) if value is not None else DEFAULT_BAY_ZOOM_PAD
+    return max(0.0, min(0.5, pad))
+
+
+def resolve_imgsz(cfg: dict | None = None, profile: RuntimeProfile | None = None) -> int:
+    """Letterboxed inference size. GPU can run 1280 when imgsz is omitted."""
+    cfg = cfg or {}
+    raw = cfg.get("imgsz")
+    if raw is not None and str(raw).strip() != "":
+        return max(32, int(raw) // 32 * 32)
+    default = GPU_IMGSZ if (profile is not None and profile.is_gpu) else DEFAULT_IMGSZ
+    return max(32, int(default) // 32 * 32)
 
 
 def resolve_runtime(cfg: dict | None = None) -> RuntimeProfile:

@@ -194,6 +194,7 @@ from face_id import (
 from ai_auditor import AIAuditorQueue, AIAuditVerdict, TokenSaverGate
 from occupancy import (
     DEFAULT_BAYS,
+    UNKNOWN_WORKER,
     BayZoneManager,
     GhostCounter,
     GhostState,
@@ -201,11 +202,28 @@ from occupancy import (
     normalize_bays,
     roi_to_pixels,
 )
+from bay_zoom import occupancy_hints, zoom_empty_bays
+from corroborate import veto_vehicle_interior
+from liveness import LivenessProbe
+from negatives import bank_hard_negatives
 from person import Detection, draw_detection, person_detections
 from proof import save_proof, scale_roi_px
 from reid import try_create_body_reid
 from report import build_report
-from runtime import resolve_runtime, resolve_weights_file
+from runtime import (
+    resolve_bay_zoom,
+    resolve_bay_zoom_pad,
+    resolve_imgsz,
+    resolve_kpt_conf,
+    resolve_min_aspect,
+    resolve_min_keypoints,
+    resolve_min_person_height,
+    resolve_occupy_clear_seconds,
+    resolve_person_conf,
+    resolve_runtime,
+    resolve_under_car_grace_seconds,
+    resolve_weights_file,
+)
 from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
 from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
 from telegram_link import TelegramLinkService
@@ -956,6 +974,7 @@ class LiveStreamEngine:
         self.face_rec = None
         self.tracker: PersonTracker | None = None
         self.reid = None
+        self.liveness_probe: LivenessProbe | None = None
         self.runtime_profile = None
         self.staff_names: list[str] = []
         self.identities: list[str] = []
@@ -983,6 +1002,11 @@ class LiveStreamEngine:
         self.bot = TelegramOut(self.cfg.get("telegram_bot_token", ""), self.cfg.get("telegram_chat_id", ""))
         self.telegram_links = TelegramLinkService()
         self.telegram_links.configure(self.cfg.get("telegram_bot_token", ""))
+        if self.cfg.get("telegram_chat_id"):
+            self.telegram_links.set_active_chat(
+                str(self.cfg.get("telegram_chat_id")),
+                str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
+            )
         proofs_audit_dir = Path(__file__).parent / "proofs" / "ai_audits"
         audit_cooldown = float(self.cfg.get("ai_audit_cooldown_seconds") or 45.0)
         self.ai_auditor = AIAuditorQueue(
@@ -994,6 +1018,7 @@ class LiveStreamEngine:
             self.cfg.get("bays"),
             fallback_roi=parse_roi(self.cfg.get("roi")),
             ai_auditor=self.ai_auditor,
+            under_car_grace_seconds=resolve_under_car_grace_seconds(self.cfg),
         )
         self.wifi = WifiTracker(self.cfg.get("wifi_devices"))
         self.bay_telemetry = self.bay_manager.telemetry()
@@ -1124,6 +1149,10 @@ class LiveStreamEngine:
             pass
         try:
             self.media.stop()
+        except Exception:
+            pass
+        try:
+            self.telegram_links.stop()
         except Exception:
             pass
         if self.thread and self.thread.is_alive():
@@ -1561,6 +1590,11 @@ class LiveStreamEngine:
                 )
             if "telegram_bot_token" in updates:
                 self.telegram_links.configure(self.cfg.get("telegram_bot_token", ""))
+            if "telegram_chat_id" in updates:
+                self.telegram_links.set_active_chat(
+                    self.cfg.get("telegram_chat_id", ""),
+                    str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
+                )
             snapshot = {key: self.cfg.get(key) for key in _SETTINGS_KEYS}
         snapshot["success"] = True
         snapshot["bays"] = list(self.cfg.get("bays") or [])
@@ -1955,6 +1989,46 @@ class LiveStreamEngine:
             save_config(self.cfg)
         return {"success": True, "wifi_devices": parsed}
 
+    def _bank_hard_negatives(self, frame, tracks: list) -> None:
+        if not tracks:
+            return
+        bank_hard_negatives(frame, tracks, DATA_DIR)
+
+    def _apply_bay_zoom(
+        self,
+        frame,
+        bays: list,
+        accepted: list[Detection],
+        rejected: list[Detection],
+        *,
+        imgsz: int,
+        person_conf: float,
+        min_person_height: float,
+        min_aspect: float,
+        min_keypoints: int,
+        kpt_conf: float,
+        occupancy_by_id: dict | None = None,
+    ) -> tuple[list[Detection], list[Detection]]:
+        cfg = self.cfg or {}
+        if not resolve_bay_zoom(cfg) or self.model is None:
+            return accepted, rejected
+        return zoom_empty_bays(
+            self.model,
+            frame,
+            bays or [],
+            accepted,
+            rejected,
+            imgsz=imgsz,
+            device=self.runtime_profile.yolo_device if self.runtime_profile else None,
+            person_conf=person_conf,
+            min_height_frac=min_person_height,
+            min_aspect=min_aspect,
+            min_keypoints=min_keypoints,
+            kpt_conf=kpt_conf,
+            pad=resolve_bay_zoom_pad(cfg),
+            occupancy_by_id=occupancy_by_id,
+        )
+
     def _evaluate_background_camera(
         self, camera_id: str, frame: np.ndarray, cam_cfg: dict[str, Any]
     ) -> bool:
@@ -1994,22 +2068,49 @@ class LiveStreamEngine:
                 except Exception:
                     pass
 
+            cfg = dict(self.cfg)
+            person_conf = resolve_person_conf(cfg)
+            min_person_height = resolve_min_person_height(cfg)
+            min_aspect = resolve_min_aspect(cfg)
+            min_keypoints = resolve_min_keypoints(cfg)
+            kpt_conf = resolve_kpt_conf(cfg)
+            imgsz = resolve_imgsz(cfg, self.runtime_profile)
+
+            bays = cam_cfg.get("bays") or []
+            if not bays:
+                roi = parse_roi(cam_cfg.get("roi")) or [0.30, 0.20, 0.40, 0.60]
+                bays = [{"id": f"{camera_id}_bay", "name": "Bay 1", "roi": roi, "type": "vehicle_bay"}]
+
             person_res = self.model.predict(
                 frame,
-                imgsz=640,
-                conf=0.35,
+                imgsz=imgsz,
+                conf=person_conf,
                 device=self.runtime_profile.yolo_device if self.runtime_profile else None,
                 verbose=False,
             )[0]
-            persons, _ = person_detections(
+            persons, rejected = person_detections(
                 person_res,
                 h,
-                conf_min=0.35,
-                min_height_frac=0.12,
-                min_aspect=1.1,
-                min_keypoints=4,
-                kpt_conf=0.4,
+                conf_min=person_conf,
+                min_height_frac=min_person_height,
+                min_aspect=min_aspect,
+                min_keypoints=min_keypoints,
+                kpt_conf=kpt_conf,
             )
+            persons, rejected = self._apply_bay_zoom(
+                frame,
+                bays,
+                persons,
+                rejected,
+                imgsz=imgsz,
+                person_conf=person_conf,
+                min_person_height=min_person_height,
+                min_aspect=min_aspect,
+                min_keypoints=min_keypoints,
+                kpt_conf=kpt_conf,
+            )
+            persons, vetoed = veto_vehicle_interior(persons, vehicles, kpt_conf=kpt_conf)
+            rejected.extend(vetoed)
 
             triggered = False
             event_desc = ""
@@ -2025,11 +2126,6 @@ class LiveStreamEngine:
                     triggered = True
                     event_desc = f"{len(vehicles)} vehicle{'s' if len(vehicles) > 1 else ''} detected"
             else:
-                bays = cam_cfg.get("bays") or []
-                if not bays:
-                    roi = parse_roi(cam_cfg.get("roi")) or [0.30, 0.20, 0.40, 0.60]
-                    bays = [{"id": f"{camera_id}_bay", "name": "Bay 1", "roi": roi}]
-
                 persons_in_bays = []
                 for det in persons:
                     for b in bays:
@@ -2248,6 +2344,10 @@ class LiveStreamEngine:
         chat = str(chat_id or "").strip()
         if not chat:
             return {"success": False, "error": "chat_id required."}
+        self.telegram_links.set_active_chat(
+            chat,
+            str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
+        )
         return self.apply_hub_settings({"telegram_chat_id": chat})
 
     def begin_telegram_link(
@@ -2424,6 +2524,7 @@ class LiveStreamEngine:
             )
             self.face_rec = try_create_face_recognizer(self.cfg)
             self.reid = try_create_body_reid(self.cfg)
+            self.liveness_probe = LivenessProbe()
             self.tracker = PersonTracker(
                 max_age=self.runtime_profile.track_max_age,
                 min_hits=self.runtime_profile.track_min_hits,
@@ -2442,12 +2543,12 @@ class LiveStreamEngine:
         source: int | str = 0
         absent = 10.0
         interval = 1.0 / 8.0
-        person_conf = 0.35
-        min_person_height = 0.12
-        min_aspect = 1.1
-        min_keypoints = 4
-        kpt_conf = 0.4
-        imgsz = 640
+        person_conf = resolve_person_conf()
+        min_person_height = resolve_min_person_height()
+        min_aspect = resolve_min_aspect()
+        min_keypoints = resolve_min_keypoints()
+        kpt_conf = resolve_kpt_conf()
+        imgsz = resolve_imgsz(profile=self.runtime_profile)
         ghost = GhostCounter(absent, 30.0)
         last_accepted: list[Detection] = []
         last_rejected: list[Detection] = []
@@ -2503,22 +2604,18 @@ class LiveStreamEngine:
                 cooldown = float(cfg.get("cooldown_seconds") or 30)
                 detect_fps = max(0.5, float(cfg.get("detect_fps") or 8.0))
                 interval = 1.0 / detect_fps
-                person_conf = float(cfg.get("person_conf") if cfg.get("person_conf") is not None else 0.35)
-                min_person_height = float(
-                    cfg.get("min_person_height") if cfg.get("min_person_height") is not None else 0.12
-                )
-                min_aspect = float(cfg.get("min_aspect") if cfg.get("min_aspect") is not None else 1.1)
-                min_keypoints = int(cfg.get("min_keypoints") if cfg.get("min_keypoints") is not None else 4)
-                kpt_conf = float(cfg.get("kpt_conf") if cfg.get("kpt_conf") is not None else 0.4)
-                imgsz = max(32, int(cfg.get("imgsz") or 640) // 32 * 32)
+                person_conf = resolve_person_conf(cfg)
+                min_person_height = resolve_min_person_height(cfg)
+                min_aspect = resolve_min_aspect(cfg)
+                min_keypoints = resolve_min_keypoints(cfg)
+                kpt_conf = resolve_kpt_conf(cfg)
+                imgsz = resolve_imgsz(cfg, self.runtime_profile)
                 confirm = float(
                     cfg.get("occupy_confirm_seconds")
                     if cfg.get("occupy_confirm_seconds") is not None
                     else 1.0
                 )
-                clear = float(
-                    cfg.get("occupy_clear_seconds") if cfg.get("occupy_clear_seconds") is not None else 1.0
-                )
+                clear = resolve_occupy_clear_seconds(cfg)
                 clock_out_grace = float(cfg.get("clock_out_seconds") or 600)
                 idle_hold = float(cfg.get("idle_stationary_seconds") or 120)
                 print(f"[LiveStreamEngine] Ingesting camera stream: {redact_source(source)}")
@@ -2526,6 +2623,7 @@ class LiveStreamEngine:
                 self.bay_manager.confirm = confirm
                 self.bay_manager.clear = clear
                 self.bay_manager.idle_stationary_seconds = idle_hold
+                self.bay_manager.under_car_grace_seconds = resolve_under_car_grace_seconds(cfg)
                 self.bay_manager.set_bays(cfg.get("bays"), fallback_roi=parse_roi(cfg.get("roi")))
                 last_accepted = []
                 last_rejected = []
@@ -2579,8 +2677,9 @@ class LiveStreamEngine:
 
             # Dynamic AI Cadence: High FPS during active motion/work; Low-compute Sleep during static wait
             has_active_work = any(s.state in ("WORKING", "UNDER_VEHICLE") for s in snapshots)
-            if motion_score > 1.2 or has_active_work:
-                dynamic_interval = interval  # Full high-cadence AI (8 FPS)
+            has_open_session = any(getattr(s, "session_open", False) for s in snapshots)
+            if motion_score > 1.2 or has_active_work or has_open_session:
+                dynamic_interval = interval  # Full high-cadence AI while a bay session is open
             elif any(s.state in ("PARKED_WAITING", "ON_BREAK") for s in snapshots):
                 dynamic_interval = 2.0  # Low-compute check (0.5 FPS during customer consultation wait)
             else:
@@ -2645,6 +2744,25 @@ class LiveStreamEngine:
                         min_keypoints=min_keypoints,
                         kpt_conf=kpt_conf,
                     )
+                    zoom_bays = self.bay_manager.configs() or (cfg.get("bays") or [])
+                    with self.infer_lock:
+                        last_accepted, last_rejected = self._apply_bay_zoom(
+                            frame,
+                            zoom_bays,
+                            last_accepted,
+                            last_rejected,
+                            imgsz=imgsz,
+                            person_conf=person_conf,
+                            min_person_height=min_person_height,
+                            min_aspect=min_aspect,
+                            min_keypoints=min_keypoints,
+                            kpt_conf=kpt_conf,
+                            occupancy_by_id=occupancy_hints(snapshots),
+                        )
+                    last_accepted, vetoed = veto_vehicle_interior(
+                        last_accepted, vehicles, kpt_conf=kpt_conf
+                    )
+                    last_rejected.extend(vetoed)
                     if self.tracker is not None:
                         last_accepted = run_identity_pipeline(
                             frame,
@@ -2652,12 +2770,23 @@ class LiveStreamEngine:
                             self.tracker,
                             face_rec=self.face_rec,
                             reid=self.reid,
+                            probe=self.liveness_probe,
                         )
+                        self._bank_hard_negatives(frame, self.tracker.clutter_events)
                     elif self.face_rec is not None:
                         self.face_rec.annotate_detections(frame, last_accepted)
                     snapshots = self.bay_manager.update(
                         last_accepted, w, h, now, kpt_conf=kpt_conf, frame=frame
                     )
+                    if self.tracker is not None:
+                        # A worker wedged under a chassis is legitimately frozen;
+                        # spare them from next tick's inanimate sweep.
+                        under = {s.name for s in snapshots if s.state == "UNDER_VEHICLE"}
+                        self.tracker.protected_ids = {
+                            int(d.track_id)
+                            for d in last_accepted
+                            if d.track_id is not None and d.bay_name in under
+                        }
                     ghost.absent_seconds = float(cfg.get("absent_seconds") or 10)
                     ghost.cooldown_seconds = float(cfg.get("cooldown_seconds") or 30)
                     any_occupied = any(
@@ -2733,7 +2862,7 @@ class LiveStreamEngine:
                                         device=self.runtime_profile.yolo_device if self.runtime_profile else None,
                                         verbose=False,
                                     )[0]
-                                bg_persons, _ = person_detections(
+                                bg_persons, bg_rejected = person_detections(
                                     bg_res,
                                     bg_h,
                                     conf_min=person_conf,
@@ -2742,6 +2871,19 @@ class LiveStreamEngine:
                                     min_keypoints=min_keypoints,
                                     kpt_conf=kpt_conf,
                                 )
+                                with self.infer_lock:
+                                    bg_persons, bg_rejected = self._apply_bay_zoom(
+                                        bg_frame,
+                                        bg_bays,
+                                        bg_persons,
+                                        bg_rejected,
+                                        imgsz=imgsz,
+                                        person_conf=person_conf,
+                                        min_person_height=min_person_height,
+                                        min_aspect=min_aspect,
+                                        min_keypoints=min_keypoints,
+                                        kpt_conf=kpt_conf,
+                                    )
                                 bg_in_roi = [
                                     det for det in bg_persons
                                     if any(detection_in_bay(det, b, bg_w, bg_h, kpt_conf=kpt_conf) for b in bg_bays)
@@ -2873,16 +3015,18 @@ class LiveStreamEngine:
                 continue
             if state != "EMPTY":
                 occupied_ids.add(bay_id)
-            update_technician_activity(self.conn, technician, bay_id, is_working, dt, stamp)
+            named = technician if technician and technician != UNKNOWN_WORKER else None
+            if named:
+                update_technician_activity(self.conn, named, bay_id, is_working, dt, stamp)
 
-            if bay_id:
+            if bay_id and named:
                 active_job = job_id or get_or_create_vehicle_job(
-                    self.conn, bay_id, primary_technician=technician, timestamp=stamp
+                    self.conn, bay_id, primary_technician=named, timestamp=stamp
                 )
                 active_dt = dt if state in ("WORKING", "UNDER_VEHICLE") else 0.0
                 break_dt = dt if state == "ON_BREAK" else 0.0
                 update_vehicle_job_activity(
-                    self.conn, active_job, active_dt, break_dt, technician, stamp, status=state
+                    self.conn, active_job, active_dt, break_dt, named, stamp, status=state
                 )
         close_empty_bays(self.conn, occupied_ids, stamp)
 
@@ -3110,30 +3254,55 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             "/inb_surveillance.png",
             "/inb_surveillance.jpg",
             "/INB Surveillance.jpg",
+            "/inb_surveillance-removebg-preview.png",
+            "/logo.png",
         ):
             filename = parsed.path.lstrip("/")
-            candidates = [
-                ROOT / "public" / filename,
-                ROOT.parent / "public" / filename,
-                ROOT / filename,
-                ROOT.parent / filename,
-                Path(filename),
+            names_to_try = [filename]
+            if "inb_surveillance" in filename or filename == "logo.png":
+                names_to_try = [
+                    filename,
+                    "inb_surveillance-removebg-preview.png",
+                    "inb_surveillance.png",
+                    "inb_surveillance.jpg",
+                    "INB Surveillance.jpg",
+                ]
+
+            search_dirs = [
+                ROOT,
+                ROOT / "public",
+                ROOT.parent,
+                ROOT.parent / "public",
+                Path(__file__).resolve().parent,
+                Path(__file__).resolve().parent / "public",
+                Path(__file__).resolve().parent.parent,
+                Path(__file__).resolve().parent.parent / "public",
+                DATA_DIR,
+                Path.cwd(),
+                Path.cwd() / "public",
             ]
             content = None
-            for cand in candidates:
-                if cand.exists() and cand.is_file():
-                    try:
-                        content = cand.read_bytes()
-                        break
-                    except Exception:
-                        pass
+            resolved_ext = Path(filename).suffix.lower()
+            for name in names_to_try:
+                for sdir in search_dirs:
+                    cand = sdir / name
+                    if cand.exists() and cand.is_file():
+                        try:
+                            content = cand.read_bytes()
+                            resolved_ext = cand.suffix.lower()
+                            break
+                        except Exception:
+                            pass
+                if content:
+                    break
+
             if content:
                 content_type = "image/png"
-                if filename.endswith(".ico"):
+                if resolved_ext == ".ico":
                     content_type = "image/x-icon"
-                elif filename.endswith(".svg"):
+                elif resolved_ext == ".svg":
                     content_type = "image/svg+xml"
-                elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
+                elif resolved_ext in (".jpg", ".jpeg"):
                     content_type = "image/jpeg"
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)

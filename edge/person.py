@@ -1,9 +1,10 @@
 """Accept a detection as a person only when it has a plausible body skeleton.
 
-YOLO-pose will happily emit 17 noisy keypoints on shoes, bags, and jackets.
-Those blobs are rejected here with a kinematic tree check: a living worker must
-show a connected torso (or a connected under-vehicle leg chain), not two
-floating ankle points.
+YOLO-pose will happily emit 17 noisy keypoints on shoes, bags, jackets, and
+shop-floor machinery (open engines, motorcycle frames). A connected keypoint
+graph is not proof of a human: joints must spread like a body tree, hood-lean
+heads sit above the shoulders, and low-confidence boxes cannot use the
+upper-body shortcuts that catch far / under-car workers at high confidence.
 """
 
 from __future__ import annotations
@@ -86,6 +87,11 @@ SKELETON = (
 
 Keypoint = tuple[float, float, float]
 
+# Hood-lean / head+shoulder shortcuts need this floor. Real workers in the
+# garage CCTV frames sat at 0.61–0.84; engine/bike FPs sat at 0.36–0.47.
+SHORTCUT_MIN_CONF = 0.50
+CLUSTER_SPAN_FRAC = 0.32
+
 
 @dataclass
 class Detection:
@@ -103,6 +109,11 @@ class Detection:
     reid_feat: np.ndarray | None = None
     active_time_str: str | None = None
     bay_name: str | None = None
+    coasting: bool = False
+    liveness: float | None = None
+    # None until occupancy resolves the occupant; False means the time on this
+    # box is provisional and has not been billed to anyone.
+    verified: bool | None = None
 
     def box(self) -> tuple[float, float, float, float]:
         return self.x1, self.y1, self.x2, self.y2
@@ -193,6 +204,8 @@ def count_valid_bones(
 
 def is_face_closeup(keypoints: list[Keypoint], kpt_conf: float) -> bool:
     """Laptop webcam: head fills the frame, shoulders are often cropped out."""
+    if _count_visible(keypoints, (L_SHOULDER, R_SHOULDER), kpt_conf) >= 2:
+        return False
     return _count_visible(keypoints, FACE, kpt_conf) >= 3 and _count_visible(
         keypoints, FACE_CORE, kpt_conf
     ) >= 2
@@ -205,6 +218,103 @@ def anatomy_is_weak(keypoints: list[Keypoint], kpt_conf: float) -> bool:
     return head_visible == 0 and torso_visible < 2
 
 
+def _visible_xy(keypoints: list[Keypoint], kpt_conf: float) -> list[tuple[float, float]]:
+    return [(float(x), float(y)) for x, y, c in keypoints if c >= kpt_conf]
+
+
+def _segments_intersect(
+    a: tuple[float, float] | None,
+    b: tuple[float, float] | None,
+    c: tuple[float, float] | None,
+    d: tuple[float, float] | None,
+) -> bool:
+    """True when ab and cd properly cross. Shared endpoints are ignored."""
+    if a is None or b is None or c is None or d is None:
+        return False
+    if a == c or a == d or b == c or b == d:
+        return False
+
+    def orient(p, q, r) -> float:
+        return (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
+
+    o1 = orient(a, b, c)
+    o2 = orient(a, b, d)
+    o3 = orient(c, d, a)
+    o4 = orient(c, d, b)
+    return o1 * o2 < 0 and o3 * o4 < 0
+
+
+def keypoints_are_clustered(
+    keypoints: list[Keypoint],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    kpt_conf: float,
+) -> bool:
+    """True when visible joints pile up in a blob instead of spanning a body."""
+    if is_face_closeup(keypoints, kpt_conf):
+        return False
+    pts = _visible_xy(keypoints, kpt_conf)
+    if len(pts) < 4:
+        return False
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    span = ((max(xs) - min(xs)) ** 2 + (max(ys) - min(ys)) ** 2) ** 0.5
+    diag = _bbox_diag(x1, y1, x2, y2)
+    return span < CLUSTER_SPAN_FRAC * diag
+
+
+def bones_cross(keypoints: list[Keypoint], kpt_conf: float) -> bool:
+    """Pipes and forks often cross; a living upper body rarely does."""
+    ls = _pt(keypoints, L_SHOULDER, kpt_conf)
+    le = _pt(keypoints, L_ELBOW, kpt_conf)
+    lw = _pt(keypoints, L_WRIST, kpt_conf)
+    rs = _pt(keypoints, R_SHOULDER, kpt_conf)
+    re = _pt(keypoints, R_ELBOW, kpt_conf)
+    rw = _pt(keypoints, R_WRIST, kpt_conf)
+    if _segments_intersect(ls, le, rs, re):
+        return True
+    if _segments_intersect(ls, lw or le, rs, rw or re):
+        return True
+    lh = _pt(keypoints, L_HIP, kpt_conf)
+    rh = _pt(keypoints, R_HIP, kpt_conf)
+    return _segments_intersect(ls, lh, rs, rh)
+
+
+def head_is_above_shoulders(keypoints: list[Keypoint], kpt_conf: float) -> bool | None:
+    """Image y grows downward. None when there is not enough anatomy to judge."""
+    head_ys = [
+        keypoints[i][1]
+        for i in HEAD_POINTS
+        if i < len(keypoints) and keypoints[i][2] >= kpt_conf
+    ]
+    shoulder_ys = [
+        keypoints[i][1]
+        for i in (L_SHOULDER, R_SHOULDER)
+        if i < len(keypoints) and keypoints[i][2] >= kpt_conf
+    ]
+    if not head_ys or not shoulder_ys:
+        return None
+    return (sum(head_ys) / len(head_ys)) + 4.0 <= (sum(shoulder_ys) / len(shoulder_ys))
+
+
+def skeleton_is_plausible(
+    keypoints: list[Keypoint],
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    kpt_conf: float,
+) -> bool:
+    """Reject engine/bike hallucinations: clustered joints or crossing limbs."""
+    if keypoints_are_clustered(keypoints, x1, y1, x2, y2, kpt_conf):
+        return False
+    if bones_cross(keypoints, kpt_conf):
+        return False
+    return True
+
+
 def is_creeper_or_underbody_pose(
     x1: float,
     y1: float,
@@ -214,10 +324,13 @@ def is_creeper_or_underbody_pose(
     frame_h: int,
     min_dim_frac: float = 0.08,
     kpt_conf: float = 0.35,
+    allow_head_shoulder: bool = True,
 ) -> bool:
     """Worker lying horizontally under a chassis or on a creeper.
 
     Requires a connected torso or a connected hip–knee–ankle chain.
+    Head+shoulders without hips is optional and must be gated by confidence
+    so an open engine cannot use this path.
     A pair of shoes (two hallucinated ankles, no hips) is not a worker.
     """
     width = max(x2 - x1, 1e-6)
@@ -229,8 +342,25 @@ def is_creeper_or_underbody_pose(
     torso_visible = _count_visible(keypoints, TORSO_POINTS, kpt_conf)
     legs_visible = _count_visible(keypoints, LEG_POINTS, kpt_conf)
     hips_visible = _count_visible(keypoints, HIP_POINTS, kpt_conf)
+    head_visible = _count_visible(keypoints, HEAD_POINTS, kpt_conf)
+    shoulders_visible = _count_visible(keypoints, (L_SHOULDER, R_SHOULDER), kpt_conf)
     torso_bones = count_valid_bones(keypoints, TORSO_EDGES, x1, y1, x2, y2, kpt_conf)
     leg_bones = count_valid_bones(keypoints, LEG_EDGES, x1, y1, x2, y2, kpt_conf)
+    upper_bones = count_valid_bones(
+        keypoints,
+        (
+            (NOSE, L_EYE),
+            (NOSE, R_EYE),
+            (L_SHOULDER, R_SHOULDER),
+            (L_SHOULDER, L_ELBOW),
+            (R_SHOULDER, R_ELBOW),
+        ),
+        x1,
+        y1,
+        x2,
+        y2,
+        kpt_conf,
+    )
 
     # Standing/crouching torso plus at least one connected limb.
     if torso_visible >= 2 and torso_bones >= 1 and (legs_visible >= 1 or torso_visible >= 3):
@@ -242,7 +372,96 @@ def is_creeper_or_underbody_pose(
     # Two disconnected shoe points never form a hip–knee bone.
     if hips_visible >= 1 and legs_visible >= 2 and leg_bones >= 2:
         return True
+
+    # Chassis hides the legs: head + shoulders. Engines hallucinate this
+    # graph, so callers must disable it for low-confidence boxes.
+    if (
+        allow_head_shoulder
+        and head_visible >= 1
+        and shoulders_visible >= 1
+        and upper_bones >= 2
+        and head_is_above_shoulders(keypoints, kpt_conf) is not False
+    ):
+        return True
     return False
+
+
+def is_hood_lean_pose(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    keypoints: list[Keypoint],
+    frame_h: int,
+    min_dim_frac: float = 0.035,
+    kpt_conf: float = 0.35,
+) -> bool:
+    """Mechanic leaning into an engine bay or over a bumper.
+
+    From a high camera the box stays taller than wide while legs vanish into
+    the car. Require a real head or shoulder girdle plus connected upper-body
+    bones so shoes and bags still fail.
+    """
+    width = max(x2 - x1, 1e-6)
+    height = max(y2 - y1, 1e-6)
+    if max(width, height) < min_dim_frac * max(frame_h, 1):
+        return False
+    if anatomy_is_weak(keypoints, kpt_conf):
+        return False
+    head_visible = _count_visible(keypoints, HEAD_POINTS, kpt_conf)
+    shoulders_visible = _count_visible(keypoints, (L_SHOULDER, R_SHOULDER), kpt_conf)
+    if head_visible < 1 or shoulders_visible < 1:
+        return False
+    if head_is_above_shoulders(keypoints, kpt_conf) is False:
+        return False
+    upper_bones = count_valid_bones(
+        keypoints,
+        (
+            (NOSE, L_EYE),
+            (NOSE, R_EYE),
+            (L_SHOULDER, R_SHOULDER),
+            (L_SHOULDER, L_ELBOW),
+            (R_SHOULDER, R_ELBOW),
+            (L_SHOULDER, L_HIP),
+            (R_SHOULDER, R_HIP),
+        ),
+        x1,
+        y1,
+        x2,
+        y2,
+        kpt_conf,
+    )
+    if upper_bones < 2:
+        return False
+    return True
+
+
+def is_crouch_or_sit_pose(
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    keypoints: list[Keypoint],
+    frame_h: int,
+    min_dim_frac: float = 0.035,
+    kpt_conf: float = 0.35,
+) -> bool:
+    """Squat, sit, or kneel with a real torso/head — not two floating ankles."""
+    width = max(x2 - x1, 1e-6)
+    height = max(y2 - y1, 1e-6)
+    if max(width, height) < min_dim_frac * max(frame_h, 1):
+        return False
+    if anatomy_is_weak(keypoints, kpt_conf):
+        return False
+    bones = count_valid_bones(keypoints, KINEMATIC_EDGES, x1, y1, x2, y2, kpt_conf)
+    if bones < 2:
+        return False
+    head_visible = _count_visible(keypoints, HEAD_POINTS, kpt_conf)
+    torso_visible = _count_visible(keypoints, TORSO_POINTS, kpt_conf)
+    compressed = height / width <= 1.15
+    if not compressed:
+        return False
+    return head_visible >= 1 or torso_visible >= 2
 
 
 def is_human_pose(
@@ -252,20 +471,43 @@ def is_human_pose(
     y2: float,
     keypoints: list[Keypoint],
     frame_h: int,
-    min_height_frac: float = 0.10,
+    min_height_frac: float = 0.05,
     min_aspect: float = 0.85,
-    min_keypoints: int = 4,
+    min_keypoints: int = 3,
     kpt_conf: float = 0.35,
+    box_conf: float = 1.0,
 ) -> bool:
     """Rigorous human pose kinematic validation.
 
-    Rejects inanimate objects (shoes, backpacks, jackets, chairs) whose
-    keypoints are disconnected or lack an upper-body / hip girdle.
+    Rejects inanimate objects (shoes, backpacks, jackets, chairs, engines)
+    whose keypoints are clustered, crossing, or lack an upper-body / hip girdle.
     """
     height = y2 - y1
     width = max(x2 - x1, 1e-6)
+    allow_shortcuts = float(box_conf) >= SHORTCUT_MIN_CONF
+
+    if not skeleton_is_plausible(keypoints, x1, y1, x2, y2, kpt_conf):
+        return False
 
     if is_creeper_or_underbody_pose(
+        x1,
+        y1,
+        x2,
+        y2,
+        keypoints,
+        frame_h,
+        min_height_frac * 0.7,
+        kpt_conf,
+        allow_head_shoulder=allow_shortcuts,
+    ):
+        return True
+
+    if allow_shortcuts and is_hood_lean_pose(
+        x1, y1, x2, y2, keypoints, frame_h, min_height_frac * 0.7, kpt_conf
+    ):
+        return True
+
+    if is_crouch_or_sit_pose(
         x1, y1, x2, y2, keypoints, frame_h, min_height_frac * 0.7, kpt_conf
     ):
         return True
@@ -275,8 +517,9 @@ def is_human_pose(
     bones = count_valid_bones(keypoints, KINEMATIC_EDGES, x1, y1, x2, y2, kpt_conf)
     torso_visible = _count_visible(keypoints, TORSO_POINTS, kpt_conf)
     legs_visible = _count_visible(keypoints, LEG_POINTS, kpt_conf)
+    hips_visible = _count_visible(keypoints, HIP_POINTS, kpt_conf)
     if bones >= 2 and (torso_visible >= 2 or legs_visible >= 2):
-        effective_min_h *= 0.55
+        effective_min_h *= 0.35
 
     if height < effective_min_h:
         return False
@@ -296,8 +539,15 @@ def is_human_pose(
     if bones < 2:
         return False
 
+    # Low-confidence boxes cannot use an upper-body-only standing pass —
+    # that is the same graph YOLO paints on engines and bike frames.
+    if not allow_shortcuts and hips_visible < 1 and legs_visible < 2:
+        return False
+
     if (head_visible >= 1 or torso_visible >= 2) and (torso_visible >= 1 or legs_visible >= 1):
         if min_aspect > 0 and height / width < min_aspect * 0.35 and torso_visible < 2:
+            return False
+        if allow_shortcuts and head_is_above_shoulders(keypoints, kpt_conf) is False:
             return False
         return True
 
@@ -307,11 +557,11 @@ def is_human_pose(
 def person_detections(
     result,
     frame_h: int,
-    conf_min: float = 0.5,
-    min_height_frac: float = 0.12,
+    conf_min: float = 0.25,
+    min_height_frac: float = 0.05,
     min_aspect: float = 1.1,
-    min_keypoints: int = 4,
-    kpt_conf: float = 0.4,
+    min_keypoints: int = 3,
+    kpt_conf: float = 0.25,
 ) -> tuple[list[Detection], list[Detection]]:
     accepted: list[Detection] = []
     rejected: list[Detection] = []
@@ -335,18 +585,55 @@ def person_detections(
             min_aspect=min_aspect,
             min_keypoints=min_keypoints,
             kpt_conf=kpt_conf,
+            box_conf=conf,
         )
         (accepted if det.accepted else rejected).append(det)
     return accepted, rejected
 
 
-def draw_skeleton(frame, keypoints: list[Keypoint], kpt_conf: float = 0.30, color=(100, 240, 100)) -> None:
+DRAW_KPT_FLOOR = 0.35
+DRAW_BBOX_MARGIN = 0.08
+
+
+def draw_skeleton(
+    frame,
+    keypoints: list[Keypoint],
+    kpt_conf: float = 0.30,
+    color=(100, 240, 100),
+    bbox: tuple[float, float, float, float] | None = None,
+) -> None:
+    """Draw only anatomically plausible bones that land inside the box.
+
+    The accept path already runs `_bone_ok`. Drawing used to skip that check,
+    so a box accepted on two good torso bones still painted YOLO's scattered
+    wrist/ankle points across the shop floor.
+    """
+    floor = max(float(kpt_conf), DRAW_KPT_FLOOR)
+    clip: tuple[float, float, float, float] | None = None
+    diag = 1.0
+    if bbox is not None:
+        x1, y1, x2, y2 = bbox
+        diag = _bbox_diag(x1, y1, x2, y2)
+        mx = DRAW_BBOX_MARGIN * max(x2 - x1, 1.0)
+        my = DRAW_BBOX_MARGIN * max(y2 - y1, 1.0)
+        clip = (x1 - mx, y1 - my, x2 + mx, y2 + my)
+
+    def _in_box(x: float, y: float) -> bool:
+        if clip is None:
+            return True
+        cx1, cy1, cx2, cy2 = clip
+        return cx1 <= x <= cx2 and cy1 <= y <= cy2
+
     for a, b in SKELETON:
         if a >= len(keypoints) or b >= len(keypoints):
             continue
         xa, ya, ca = keypoints[a]
         xb, yb, cb = keypoints[b]
-        if ca < kpt_conf or cb < kpt_conf:
+        if ca < floor or cb < floor:
+            continue
+        if bbox is not None and not _bone_ok(keypoints, a, b, diag, floor):
+            continue
+        if not _in_box(xa, ya) or not _in_box(xb, yb):
             continue
         cv2.line(
             frame,
@@ -357,7 +644,9 @@ def draw_skeleton(frame, keypoints: list[Keypoint], kpt_conf: float = 0.30, colo
             cv2.LINE_AA,
         )
     for x, y, c in keypoints:
-        if c < kpt_conf:
+        if c < floor:
+            continue
+        if not _in_box(x, y):
             continue
         cv2.circle(frame, (int(x), int(y)), 3, color, -1, cv2.LINE_AA)
 
@@ -382,7 +671,8 @@ def draw_detection(
         else:
             label = f"person{time_badge} {det.conf:.2f}"
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        draw_skeleton(frame, det.keypoints, kpt_conf, color)
+        if not det.coasting and det.keypoints:
+            draw_skeleton(frame, det.keypoints, kpt_conf, color, det.box())
     else:
         color = (120, 120, 120)
         label = f"blob {det.conf:.2f}"
@@ -411,6 +701,49 @@ def draw_detection(
         thickness,
         cv2.LINE_AA,
     )
+
+
+def crouch_sit_keypoints() -> list[Keypoint]:
+    """Squat / sit-under-bumper: connected torso and head, compressed legs."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (100.0, 70.0, 0.9)
+    pts[1] = (92.0, 62.0, 0.8)
+    pts[2] = (108.0, 62.0, 0.8)
+    pts[5] = (80.0, 95.0, 0.9)
+    pts[6] = (120.0, 98.0, 0.9)
+    pts[7] = (70.0, 118.0, 0.75)
+    pts[8] = (130.0, 120.0, 0.75)
+    pts[11] = (85.0, 130.0, 0.85)
+    pts[12] = (118.0, 132.0, 0.85)
+    pts[13] = (82.0, 142.0, 0.8)
+    pts[14] = (120.0, 144.0, 0.8)
+    return pts
+
+
+def occluded_upper_body_keypoints() -> list[Keypoint]:
+    """Head and shoulders visible; legs hidden under a chassis."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (160.0, 90.0, 0.9)
+    pts[1] = (150.0, 80.0, 0.85)
+    pts[2] = (170.0, 80.0, 0.85)
+    pts[5] = (120.0, 115.0, 0.9)
+    pts[6] = (200.0, 118.0, 0.9)
+    pts[7] = (110.0, 145.0, 0.75)
+    pts[8] = (210.0, 148.0, 0.75)
+    return pts
+
+
+def hood_lean_keypoints() -> list[Keypoint]:
+    """Head and shoulders at a bumper; legs hidden in the engine bay."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (140.0, 70.0, 0.85)
+    pts[1] = (132.0, 62.0, 0.70)
+    pts[2] = (148.0, 62.0, 0.70)
+    pts[5] = (110.0, 110.0, 0.80)
+    pts[6] = (170.0, 112.0, 0.80)
+    pts[7] = (100.0, 150.0, 0.55)
+    pts[8] = (180.0, 148.0, 0.55)
+    return pts
 
 
 def standing_person_keypoints() -> list[Keypoint]:
@@ -452,4 +785,38 @@ def backpack_clutter_keypoints() -> list[Keypoint]:
     pts[13] = (95.0, 170.0, 0.36)
     pts[15] = (140.0, 200.0, 0.41)
     pts[16] = (60.0, 205.0, 0.37)
+    return pts
+
+
+def engine_bay_keypoints() -> list[Keypoint]:
+    """YOLO hallucination on an open engine: joints piled on the block.
+
+    Head sits below the shoulder line and the arm bones cross — the pattern
+    seen on Camera 06 when the pose head maps hoses onto a COCO skeleton.
+    """
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (148.0, 175.0, 0.42)
+    pts[1] = (142.0, 170.0, 0.38)
+    pts[2] = (154.0, 172.0, 0.36)
+    pts[5] = (130.0, 150.0, 0.40)
+    pts[6] = (155.0, 148.0, 0.39)
+    pts[7] = (160.0, 165.0, 0.37)
+    pts[8] = (125.0, 168.0, 0.36)
+    pts[11] = (138.0, 162.0, 0.33)
+    pts[12] = (150.0, 164.0, 0.32)
+    return pts
+
+
+def motorcycle_frame_keypoints() -> list[Keypoint]:
+    """YOLO hallucination on a motorcycle frame / forks as a fake torso."""
+    pts = [(0.0, 0.0, 0.0)] * 17
+    pts[0] = (80.0, 95.0, 0.38)
+    pts[1] = (76.0, 92.0, 0.34)
+    pts[2] = (84.0, 93.0, 0.33)
+    pts[5] = (70.0, 88.0, 0.40)
+    pts[6] = (90.0, 90.0, 0.39)
+    pts[7] = (92.0, 100.0, 0.35)
+    pts[8] = (68.0, 102.0, 0.34)
+    pts[11] = (75.0, 98.0, 0.33)
+    pts[12] = (85.0, 99.0, 0.32)
     return pts

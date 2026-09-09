@@ -49,18 +49,24 @@ wifi_devices: []
 # Shoes, bags, and jackets fail: no head/torso tree. Blankets still fail.
 # detect_fps caps inference; the preview still follows the camera.
 # Dual-target runtime: cpu | openvino | cuda | tensorrt
+# imgsz 960 keeps far 1080p workers large enough; set 1280 on cuda/tensorrt.
 runtime: cpu
 weights: yolo11n_improved.pt  # Fine-tuned garage surveillance model (or yolo11n-pose.pt)
 server_weights: yolo11s-pose.pt
-person_conf: 0.35
-imgsz: 640
-min_person_height: 0.12
+person_conf: 0.25
+imgsz: 960
+min_person_height: 0.05
 min_aspect: 1.1
-min_keypoints: 4
-kpt_conf: 0.4
+min_keypoints: 3
+kpt_conf: 0.35
+# Zoom empty vehicle bays (SAHI-style crop) when full-frame YOLO misses a crouch.
+bay_zoom: true
+bay_zoom_pad: 0.08
 detect_fps: 15
 occupy_confirm_seconds: 1.0
-occupy_clear_seconds: 1.0
+occupy_clear_seconds: 5.0
+# Keep WORKING while a mechanic ducks under a car; then ON_BREAK.
+under_car_grace_seconds: 30
 idle_stationary_seconds: 120
 clock_out_seconds: 600
 
