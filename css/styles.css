@@ -1887,41 +1887,22 @@ h3 {
   filter: contrast(1.05);
 }
 
-.team-frame .corner {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid var(--neon);
-  z-index: 2;
+/* Inset L-brackets — drawn inside overflow:hidden so all 4 corners stay visible */
+.team-frame::after {
+  content: "";
   pointer-events: none;
-}
-
-.team-frame .c-tl {
-  top: -1px;
-  left: -1px;
-  border-right: none;
-  border-bottom: none;
-}
-
-.team-frame .c-tr {
-  top: -1px;
-  right: -1px;
-  border-left: none;
-  border-bottom: none;
-}
-
-.team-frame .c-bl {
-  bottom: -1px;
-  left: -1px;
-  border-right: none;
-  border-top: none;
-}
-
-.team-frame .c-br {
-  bottom: -1px;
-  right: -1px;
-  border-left: none;
-  border-top: none;
+  position: absolute;
+  inset: 6px;
+  z-index: 2;
+  background:
+    linear-gradient(var(--neon), var(--neon)) top left / 14px 1.5px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) top left / 1.5px 14px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) top right / 14px 1.5px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) top right / 1.5px 14px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) bottom left / 14px 1.5px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) bottom left / 1.5px 14px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) bottom right / 14px 1.5px no-repeat,
+    linear-gradient(var(--neon), var(--neon)) bottom right / 1.5px 14px no-repeat;
 }
 
 .team-placeholder {
