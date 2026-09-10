@@ -851,8 +851,11 @@ h3 {
 .tg-chat {
   flex: 1;
   min-height: 0;
-  padding: 12px 10px;
+  padding: 10px 8px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   background:
     radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.03), transparent 40%),
     #0e1621;
@@ -861,23 +864,49 @@ h3 {
 .telegram-bubble {
   position: relative;
   max-width: 100%;
-  padding: 10px 12px 18px;
+  flex-shrink: 1;
+  min-height: 0;
+  padding: 8px 10px 16px;
   background: #182533;
   border-radius: 12px 12px 12px 2px;
   color: #e8eef4;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.telegram-bubble--photo {
+  padding: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tg-alert-photo {
+  display: block;
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px 12px 0 0;
+  flex-shrink: 0;
+}
+
+.tg-bubble-body {
+  position: relative;
+  padding: 8px 10px 0;
+  min-height: 0;
 }
 
 .tg-bubble-title {
-  margin: 0 0 8px;
-  font-size: 12px;
+  margin: 0 0 6px;
+  font-size: 11px;
   font-weight: 700;
   color: #fff;
+  line-height: 1.3;
 }
 
 .tg-stat {
-  margin: 6px 0 0;
-  font-size: 11px;
+  margin: 4px 0 0;
+  font-size: 10px;
   color: #c5d0db;
   line-height: 1.35;
 }
@@ -889,18 +918,28 @@ h3 {
   font-weight: 700;
 }
 
-.tg-note {
-  margin: 8px 0 0;
-  font-size: 10px;
-  color: #8a96a3;
+.tg-audit {
+  margin: 6px 0 0;
+  font-size: 9px;
+  color: #a8b4c0;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tg-time {
   position: absolute;
   right: 8px;
-  bottom: 5px;
-  font-size: 10px;
+  bottom: 4px;
+  font-size: 9px;
   color: #7f8b97;
+}
+
+.telegram-bubble--photo .tg-time {
+  right: 10px;
+  bottom: 4px;
 }
 
 .tg-composer {
@@ -2634,12 +2673,20 @@ h3 {
 
   .tg-stat,
   .tg-bubble-title {
-    font-size: 10px;
+    font-size: 9px;
   }
 
-  .tg-note,
+  .tg-audit {
+    font-size: 8px;
+    -webkit-line-clamp: 3;
+  }
+
+  .tg-alert-photo {
+    height: 72px;
+  }
+
   .tg-time {
-    font-size: 9px;
+    font-size: 8px;
   }
 }
 
