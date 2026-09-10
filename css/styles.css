@@ -650,6 +650,13 @@ h3 {
   -ms-overflow-style: none;
 }
 
+.hud-media {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .hud-stage::-webkit-scrollbar,
 .hud-frame::-webkit-scrollbar,
 .tg-chat::-webkit-scrollbar {
@@ -2521,12 +2528,25 @@ h3 {
   }
 
   .hud-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    aspect-ratio: auto;
+    height: auto;
+    overflow: visible;
+  }
+
+  .hud-media {
+    width: 100%;
+    height: auto;
     aspect-ratio: 3 / 4;
   }
 
+  /* Stack Telegram under the bay feed — no fullscreen phone takeover */
   .demo-section.is-phone-focus .hud-stage {
-    aspect-ratio: 3 / 4;
-    max-height: min(62svh, 560px);
+    aspect-ratio: auto;
+    max-height: none;
   }
 
   .demo-section.is-phone-focus .section-head,
@@ -2536,39 +2556,44 @@ h3 {
   .demo-section.is-phone-focus .hud-feed,
   .demo-section.is-phone-focus .scanlines,
   .demo-section.is-phone-focus .bbox {
-    filter: blur(10px);
-    opacity: 0.42;
+    filter: none;
+    opacity: 1;
   }
 
   .demo-section.is-phone-focus .hud-stage::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    background: rgba(0, 8, 4, 0.45);
-    pointer-events: none;
+    content: none;
+    display: none;
   }
 
   .phone {
-    width: min(210px, 52%);
-    bottom: 5%;
-    right: 3%;
-  }
-
-  .phone.is-on {
-    inset: 20px 16px;
-    width: auto;
+    position: relative;
+    inset: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    display: none;
+    width: 100%;
+    max-width: 320px;
     height: auto;
     filter: none;
     transform: none;
-    z-index: 5;
+    z-index: 1;
   }
 
+  .phone.is-on {
+    display: block;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  .phone-mockup,
   .phone.is-on .phone-mockup {
     width: 100%;
+    max-width: 320px;
+    height: auto;
     max-height: none;
-    height: 100%;
-    aspect-ratio: auto;
+    aspect-ratio: 9 / 17;
   }
 
   .bbox {
@@ -2584,12 +2609,6 @@ h3 {
 }
 
 @media (max-width: 520px) {
-  .phone {
-    width: min(200px, 58%);
-    right: 3%;
-    bottom: 5%;
-  }
-
   .tg-name {
     font-size: 12px;
   }
