@@ -660,10 +660,10 @@ h3 {
 
 .bbox {
   position: absolute;
-  left: 48%;
-  top: 30%;
-  width: 20%;
-  height: 54%;
+  left: 36%;
+  top: 42%;
+  width: 18%;
+  height: 48%;
   border: 2px solid color-mix(in srgb, var(--surveillance-green) 22%, transparent);
   opacity: 0;
   transform: scale(0.96);
@@ -2637,10 +2637,10 @@ h3 {
   }
 
   .bbox {
-    left: 42%;
-    top: 28%;
-    width: 26%;
-    height: 52%;
+    left: 34%;
+    top: 40%;
+    width: 24%;
+    height: 48%;
   }
 
   .hero {
