@@ -336,19 +336,62 @@
       display: grid;
       gap: 12px;
     }
-    .auth-card input {
+    .auth-card input:not([type="checkbox"]):not([type="radio"]) {
       width: 100%;
       background: #000000;
       border: 1px solid #2b2b2b;
       color: #FAFAFA;
       border-radius: 10px;
       padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    .auth-card label span {
+    .auth-card input:not([type="checkbox"]):not([type="radio"]):focus {
+      border-color: #00FF66;
+      box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.3);
+    }
+    .auth-card label:not(.checkbox-row) > span {
       display: block;
       font-size: 12px;
       font-weight: 600;
       margin-bottom: 6px;
+    }
+    .auth-checkbox {
+      width: 16px !important;
+      height: 16px !important;
+      min-width: 16px !important;
+      min-height: 16px !important;
+      max-width: 16px !important;
+      max-height: 16px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      cursor: pointer;
+      accent-color: #00FF66;
+      border-radius: 4px;
+      background-color: #1a1a1a !important;
+      border: 1px solid #333333 !important;
+    }
+    .checkbox-row {
+      display: inline-flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 8px !important;
+      margin: 0 !important;
+      cursor: pointer !important;
+      user-select: none !important;
+    }
+    .checkbox-text {
+      display: inline !important;
+      margin: 0 !important;
+      font-size: 12px !important;
+      font-weight: 400 !important;
+      line-height: 1.2 !important;
+      white-space: nowrap !important;
+      color: #A5A5A5;
+      transition: color 0.15s ease;
+    }
+    .checkbox-row:hover .checkbox-text {
+      color: #FAFAFA;
     }
     @media (prefers-reduced-motion: reduce) {
       .animate-pulse { animation: none; }
@@ -359,7 +402,12 @@
   <div id="auth-gate" class="fixed inset-0 z-[200]">
     <form id="auth-form" class="auth-card" data-mode="signin" onsubmit="return submitHubAuth(event)">
       <div class="flex items-center gap-3">
-        <img src="/inb_surveillance.png" alt="" class="w-9 h-9 rounded-full object-cover border border-primary" />
+        <img
+          src="/inb_surveillance.png"
+          alt="Inbound Surveillance"
+          class="w-9 h-9 rounded-full object-cover border border-primary bg-black shrink-0"
+          onerror="if (!this.dataset.fallback) { this.dataset.fallback='1'; this.src='/inb_surveillance-removebg-preview.png'; }"
+        />
         <div>
           <p class="font-bold">Inbound Surveillance</p>
           <p class="text-on-surface-variant text-xs">Private operator console</p>
@@ -386,10 +434,15 @@
         <span>Password</span>
         <input id="auth-password" type="password" required placeholder="Password" autocomplete="current-password" />
       </label>
-      <div class="flex items-center justify-between text-xs text-on-surface-variant py-0.5">
-        <label class="flex items-center gap-2 cursor-pointer select-none">
-          <input type="checkbox" id="auth-remember" checked class="rounded border-outline-variant bg-surface-container-highest text-primary focus:ring-primary w-4 h-4" />
-          <span>Keep me signed in</span>
+      <div class="flex items-center justify-between py-1">
+        <label class="checkbox-row group">
+          <input
+            type="checkbox"
+            id="auth-remember"
+            checked
+            class="auth-checkbox shrink-0"
+          />
+          <span class="checkbox-text">Keep me signed in</span>
         </label>
       </div>
       <button id="auth-submit" type="submit" class="w-full bg-primary-container text-on-primary py-2.5 rounded-lg font-medium hover:bg-primary transition-colors">Sign in</button>
@@ -398,7 +451,7 @@
   </div>
   <nav class="sidebar fixed left-0 top-0 h-full w-[288px] flex flex-col py-edge-margin border-r border-outline-variant z-20 max-lg:static max-lg:w-full max-lg:h-auto max-lg:relative">
     <div class="px-container-padding mb-6 flex items-center gap-3 cursor-pointer hover:bg-surface-container-high/60 p-2 rounded-xl transition-all" onclick="showConfigTab('profile')" title="Open Profile Settings">
-      <img id="profile-avatar" src="/inb_surveillance.png" alt="" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)]" />
+      <img id="profile-avatar" src="/inb_surveillance.png" alt="" class="w-10 h-10 rounded-full object-cover border-2 border-primary shrink-0 shadow-[0_0_12px_rgba(0,255,102,0.4)] bg-black" onerror="if (!this.dataset.fallback) { this.dataset.fallback='1'; this.src='/inb_surveillance-removebg-preview.png'; }" />
       <div class="min-w-0">
         <p id="greeting" class="text-on-surface font-bold text-base leading-snug truncate">Operator</p>
         <p id="profile-venue" class="text-on-surface-variant text-xs truncate">Private operator</p>
@@ -462,7 +515,7 @@
   <main class="ml-[288px] flex-1 flex flex-col h-full bg-black relative min-w-0 max-lg:ml-0">
     <header class="flex justify-between items-center w-full px-edge-margin h-16 bg-surface-dim border-b border-outline-variant shrink-0 gap-4">
       <div class="flex items-center gap-3 min-w-0 cursor-pointer hover:opacity-85 transition-opacity" onclick="showConfigTab('profile')" title="Open Profile Settings">
-        <img id="header-avatar" src="/inb_surveillance.png" alt="" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0" />
+        <img id="header-avatar" src="/inb_surveillance.png" alt="" class="w-8 h-8 rounded-full object-cover border border-primary shrink-0 bg-black" onerror="if (!this.dataset.fallback) { this.dataset.fallback='1'; this.src='/inb_surveillance-removebg-preview.png'; }" />
         <h1 id="header-operator" class="font-headline-lg text-headline-lg font-semibold text-on-surface truncate">Operator</h1>
         <div class="flex items-center gap-2 text-sm text-on-surface-variant shrink-0 max-sm:hidden">
           <span class="text-outline">/</span>
@@ -821,7 +874,7 @@
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h3 class="text-sm font-semibold text-on-surface">Connect with /start</h3>
-                <p class="text-xs text-on-surface-variant mt-1">The shared garage bot is configured on the engine. Open it, tap Start, and this account’s chat id is saved automatically.</p>
+                <p class="text-xs text-on-surface-variant mt-1">Tap Connect Telegram. The Inbound Surveillance bot opens automatically — tap Start, and this account’s chat id is saved.</p>
               </div>
               <span id="tg-link-badge" class="text-xs px-2 py-1 rounded-full border border-outline-variant text-on-surface-variant">Not linked</span>
             </div>
@@ -834,16 +887,6 @@
               <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
                 Capture &amp; Send Test
               </button>
-            </div>
-            <div class="pt-2 border-t border-outline-variant/40 space-y-2">
-              <div class="flex flex-col gap-1.5">
-                <div class="flex justify-between items-center">
-                  <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-bot-token-input">Telegram Bot Token / Bot ID</label>
-                  <span id="tg-bot-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-surface-container-highest text-primary font-mono-data">@Inbound_Surveillance_bot</span>
-                </div>
-                <input id="tg-bot-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" placeholder="8987540090:AAEntu6IaceRsrnNl0Eow7ZrOYHBR90FkZU" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
-                <p class="text-[11px] text-on-surface-variant">Default shared bot is pre-configured. You can also paste your own bot token from @BotFather.</p>
-              </div>
             </div>
             <details class="text-xs text-on-surface-variant">
               <summary class="cursor-pointer select-none">Advanced: paste chat ID manually</summary>
@@ -863,7 +906,7 @@
             
             <div class="flex items-center gap-5 pt-2">
               <div class="relative group cursor-pointer" onclick="openAvatarCropChooser()" title="Click to upload profile picture">
-                <img id="profile-avatar-preview" src="/inb_surveillance.png" alt="Profile avatar" class="w-24 h-24 rounded-full object-cover border-2 border-primary shadow-[0_0_16px_rgba(0,255,102,0.4)] transition-transform group-hover:scale-105" />
+                <img id="profile-avatar-preview" src="/inb_surveillance.png" alt="Profile avatar" class="w-24 h-24 rounded-full object-cover border-2 border-primary shadow-[0_0_16px_rgba(0,255,102,0.4)] transition-transform group-hover:scale-105 bg-black" onerror="if (!this.dataset.fallback) { this.dataset.fallback='1'; this.src='/inb_surveillance-removebg-preview.png'; }" />
                 <div class="absolute inset-0 rounded-full bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-primary">
                   <span class="material-symbols-outlined text-2xl">photo_camera</span>
                   <span class="text-[10px] font-semibold">Change</span>
@@ -1172,14 +1215,21 @@
       if (!session || enteringHub) return;
       enteringHub = true;
       try {
-        // Sync session to local engine backend for persistent login across desktop app restarts
-        try {
-          await fetch('/api/auth-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session }),
-          });
-        } catch (_) {}
+        const shouldRemember = localStorage.getItem('hub_remember_me') !== '0';
+        // Sync session to local engine backend for persistent login across desktop app restarts if remember is enabled
+        if (shouldRemember) {
+          try {
+            await fetch('/api/auth-session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ session }),
+            });
+          } catch (_) {}
+        } else {
+          try {
+            await fetch('/api/auth-session', { method: 'DELETE' });
+          } catch (_) {}
+        }
 
         document.body.classList.remove('auth-locked');
         if (session.user) {
@@ -1324,6 +1374,14 @@
           if (session) void enterHub(session);
         });
 
+        const rememberSetting = localStorage.getItem('hub_remember_me');
+        const shouldRemember = rememberSetting !== '0';
+
+        if (!shouldRemember) {
+          // Operator explicitly unchecked "Keep me signed in"
+          return;
+        }
+
         // 1. Check local Supabase client session
         const { data } = await supabaseClient.auth.getSession();
         if (data && data.session) {
@@ -1372,6 +1430,8 @@
       });
       if (name === 'profile') {
         populateProfileForm();
+      } else if (name === 'integrations') {
+        void pollTelegramLinkOnce();
       }
       if (name !== 'source') {
         document.getElementById('config-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2118,10 +2178,8 @@
     }
 
     function hubSettingsPayload() {
-      const tgBotToken = document.getElementById('tg-bot-token-input')?.value?.trim();
       return {
         telegram_chat_id: document.getElementById('tg-chat-input').value,
-        telegram_bot_token: tgBotToken || undefined,
         venue: document.getElementById('venue-input').value,
         garage_name: document.getElementById('venue-input').value,
         open_time: document.getElementById('open-time-input').value,
@@ -4001,10 +4059,6 @@
         if (currentConfig.flip !== undefined) flipMode = currentConfig.flip || 'none';
         paintOrient();
         if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
-        if (currentConfig.telegram_bot_token) {
-          const tgTokenEl = document.getElementById('tg-bot-token-input');
-          if (tgTokenEl) tgTokenEl.value = currentConfig.telegram_bot_token;
-        }
         paintTelegramLinkStatus({
           telegram_chat_id: currentConfig.telegram_chat_id || '',
           telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
@@ -5455,20 +5509,7 @@
       if (detail) {
         detail.textContent = linked
           ? ('Chat ID ' + chatId + (username ? ' · @' + username : ''))
-          : (info && info.bot_username ? ('Bot @' + info.bot_username + ' · waiting for /start') : 'Chat ID —');
-      }
-      const botBadge = document.getElementById('tg-bot-badge');
-      if (botBadge) {
-        if (info && info.bot_username) {
-          botBadge.textContent = '@' + info.bot_username;
-          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
-        } else if (info && info.telegram_bot_token_set) {
-          botBadge.textContent = 'Configured';
-          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
-        } else {
-          botBadge.textContent = 'Default Bot';
-          botBadge.className = 'text-xs px-2 py-0.5 rounded-full border border-primary/40 text-primary bg-primary/10';
-        }
+          : (info && info.bot_username ? ('Waiting for /start in Telegram') : 'Chat ID —');
       }
     }
 
@@ -5560,51 +5601,31 @@
       const webHref = data.deep_link || links.web;
       deep.dataset.appLink = appHref || '';
       deep.dataset.webLink = webHref || '';
-      deep.href = appHref || webHref || '#';
+      deep.href = webHref || '#';
+      deep.target = '_blank';
+      deep.rel = 'noopener noreferrer';
       deep.classList.toggle('hidden', !(appHref || webHref));
       deep.textContent = data.bot_username
         ? ('Open @' + String(data.bot_username).replace(/^@/, ''))
         : 'Open bot in Telegram';
-      deep.onclick = function (ev) {
+      deep.onclick = async function (ev) {
         ev.preventDefault();
-        openTelegramClient(appHref, webHref);
-        void fetch('/api/telegram/open', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ app_link: appHref || '', deep_link: webHref || '' }),
-        }).catch(() => {});
+        // Ask the engine host to launch Telegram desktop via OS handler
+        let openedOnHost = false;
+        try {
+          const res = await fetch('/api/telegram/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ app_link: appHref || '', deep_link: webHref || '' }),
+          });
+          const resData = await res.json();
+          openedOnHost = !!(resData && resData.opened_on_host);
+        } catch (_) {}
+        // If not opened on host (remote client), safely open the HTTPS web link in a new tab
+        if (!openedOnHost && webHref) {
+          window.open(webHref, '_blank', 'noopener,noreferrer');
+        }
       };
-    }
-
-    function openTelegramClient(appLink, webLink) {
-      const app = String(appLink || '').trim();
-      const web = String(webLink || '').trim();
-      // Never navigate the hub itself. Use a hidden anchor / iframe so Telegram Desktop
-      // can claim tg:// on Windows, macOS, and Linux without leaving this page.
-      if (app) {
-        const anchor = document.createElement('a');
-        anchor.href = app;
-        anchor.rel = 'noopener noreferrer';
-        anchor.style.display = 'none';
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        const frame = document.createElement('iframe');
-        frame.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none';
-        frame.src = app;
-        document.body.appendChild(frame);
-        window.setTimeout(() => { try { frame.remove(); } catch (_) {} }, 2000);
-        return;
-      }
-      if (web) {
-        const anchor = document.createElement('a');
-        anchor.href = web;
-        anchor.rel = 'noopener noreferrer';
-        anchor.target = '_blank';
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      }
     }
 
     async function connectTelegramAccount() {
@@ -5615,7 +5636,6 @@
         showBanner(feedback, false, 'Sign in first so we can save the Telegram link to your account.');
         return;
       }
-      // Keep a user-gesture window/handle ready; after await, popups are often blocked.
       btn.disabled = true;
       try {
         const res = await fetch('/api/telegram/begin-link', {
@@ -5634,17 +5654,12 @@
         }
         paintTelegramLinkStatus(data.status || data);
         bindTelegramOpenLink(deep, data);
-        openTelegramClient(data.app_link || '', data.deep_link || '');
-        try {
-          await fetch('/api/telegram/open', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              app_link: data.app_link || '',
-              deep_link: data.deep_link || '',
-            }),
-          });
-        } catch (_) {}
+
+        // If the backend host was not able to open Telegram directly, fallback to opening the HTTPS link in a new tab
+        if (!data.opened_on_host && data.deep_link) {
+          window.open(data.deep_link, '_blank', 'noopener,noreferrer');
+        }
+
         const opened = data.opened_on_host ? ' Telegram should open on this computer.' : ' If Telegram did not open, click Open @' + (data.bot_username || 'bot') + '.';
         showBanner(feedback, true, (data.instructions || 'Open Telegram and tap Start.') + opened);
         stopTelegramLinkPoll();

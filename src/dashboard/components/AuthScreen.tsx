@@ -17,10 +17,11 @@ export function AuthScreen() {
   const [mode, setMode] = useState<AuthMode>(modeFromUrl);
   const [displayName, setDisplayName] = useState("");
   const [venueName, setVenueName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => localStorage.getItem("hub_remembered_email") || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");
+  const [remember, setRemember] = useState(() => localStorage.getItem("hub_remember_me") !== "0");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -122,6 +123,15 @@ export function AuthScreen() {
         finishPasswordRecovery();
         return;
       }
+      if (view === "signin") {
+        if (remember) {
+          localStorage.setItem("hub_remembered_email", email.trim());
+          localStorage.setItem("hub_remember_me", "1");
+        } else {
+          localStorage.removeItem("hub_remembered_email");
+          localStorage.setItem("hub_remember_me", "0");
+        }
+      }
       const { error: signError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -151,7 +161,19 @@ export function AuthScreen() {
     <div className="auth-screen">
       <form className="auth-card" onSubmit={(event) => void onSubmit(event)}>
         <div className="auth-card__brand">
-          <img src="/inb_surveillance.png" alt="" width={36} height={36} />
+          <img
+            src="/inb_surveillance.png"
+            alt="Inbound Surveillance"
+            width={36}
+            height={36}
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.dataset.fallback) {
+                target.dataset.fallback = "1";
+                target.src = "/inb_surveillance-removebg-preview.png";
+              }
+            }}
+          />
           <div>
             <strong>Inbound Surveillance</strong>
             <span>Private operator console</span>
@@ -232,6 +254,30 @@ export function AuthScreen() {
               required
             />
           </label>
+        ) : null}
+
+        {view === "signin" ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "2px 0 6px" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: "8px", cursor: "pointer", userSelect: "none" }}>
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  minWidth: "16px",
+                  minHeight: "16px",
+                  margin: 0,
+                  accentColor: "var(--green)",
+                  cursor: "pointer",
+                }}
+              />
+              <span style={{ fontSize: "0.8125rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
+                Keep me signed in
+              </span>
+            </label>
+          </div>
         ) : null}
 
         {view === "code" || view === "set-password" ? (

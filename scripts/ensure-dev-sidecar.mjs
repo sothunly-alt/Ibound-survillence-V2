@@ -66,9 +66,10 @@ function syncLinuxDesktopIcons() {
 
 function ensureIcons() {
   const possibleSources = [
+    path.join(repo, "inb_surveillance-removebg-preview.png"),
+    path.join(repo, "inb_surveillance.png"),
     path.join(repo, "inb_surveillance.jpg"),
     path.join(repo, "INB Surveillance.jpg"),
-    path.join(repo, "inb_surveillance.png"),
     path.join(repo, "INB Surveillance.png"),
     path.join(repo, "app-icon.png"),
   ];
@@ -155,6 +156,9 @@ function shouldRebuildSidecar(destFile) {
     const destMtime = statSync(destFile).mtimeMs;
     const watchPaths = [
       path.join(repo, "edge", "launcher.py"),
+      path.join(repo, "edge", "ai_auditor.py"),
+      path.join(repo, "edge", "occupancy.py"),
+      path.join(repo, "edge", "runtime.py"),
       path.join(repo, "edge", "hub.html"),
       path.join(repo, "edge", "inbound-engine.spec"),
       path.join(repo, "edge", "build_sidecar.py"),

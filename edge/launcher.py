@@ -1551,10 +1551,6 @@ class LiveStreamEngine:
 
     def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         updates: dict[str, Any] = {}
-        if "telegram_bot_token" in payload:
-            bot_token = str(payload.get("telegram_bot_token") or "").strip()
-            if bot_token:
-                updates["telegram_bot_token"] = bot_token
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
         if "venue" in payload:
@@ -1608,7 +1604,7 @@ class LiveStreamEngine:
         snapshot["operating_hours"] = self.cfg.get("operating_hours")
         snapshot["telegram_bot_configured"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
         snapshot["telegram_bot_username"] = self.telegram_links.status().get("bot_username") or ""
-        snapshot["telegram_bot_token"] = str(self.cfg.get("telegram_bot_token") or "").strip()
+        snapshot["telegram_bot_token"] = ""
         return snapshot
 
     def save_camera(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -2535,6 +2531,16 @@ class LiveStreamEngine:
             veh_weights_path = DATA_DIR / "yolo11n.pt"
         try:
             self.model = YOLO(str(weights_path))
+            if getattr(self.model, "task", None) != "pose":
+                fallback = get_resource_path("yolo11n-pose.pt")
+                print(
+                    f"[LiveStreamEngine] Person weights {weights_path} are "
+                    f"task={getattr(self.model, 'task', None)!r}, not pose; "
+                    f"falling back to {fallback}",
+                    flush=True,
+                )
+                weights_path = fallback
+                self.model = YOLO(str(weights_path))
             self.vehicle_model = YOLO(str(veh_weights_path) if veh_weights_path.exists() else "yolo11n.pt")
             print(
                 f"[LiveStreamEngine] Models ready ({self.runtime_profile.name}, "

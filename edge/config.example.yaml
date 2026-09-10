@@ -51,7 +51,7 @@ wifi_devices: []
 # Dual-target runtime: cpu | openvino | cuda | tensorrt
 # imgsz 960 keeps far 1080p workers large enough; set 1280 on cuda/tensorrt.
 runtime: cpu
-weights: yolo11n_improved.pt  # Fine-tuned garage surveillance model (or yolo11n-pose.pt)
+weights: yolo11n-pose.pt  # Person tracker needs pose keypoints; yolo11n_improved.pt is detect-only
 server_weights: yolo11s-pose.pt
 person_conf: 0.25
 imgsz: 960

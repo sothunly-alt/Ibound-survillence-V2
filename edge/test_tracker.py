@@ -15,7 +15,13 @@ if str(ROOT) not in sys.path:
 
 from person import Detection, standing_person_keypoints
 from reid import BodyReIDExtractor, appearance_embedding
-from runtime import DEFAULT_KPT_CONF, resolve_kpt_conf, resolve_runtime
+from runtime import (
+    DEFAULT_KPT_CONF,
+    EDGE_WEIGHTS,
+    person_weights_name,
+    resolve_kpt_conf,
+    resolve_runtime,
+)
 from tracker import PersonTracker, Track
 
 
@@ -45,6 +51,14 @@ class RuntimeProfileTests(unittest.TestCase):
         self.assertEqual(profile.yolo_device, "cpu")
         self.assertTrue(profile.reid_enabled)
         self.assertGreaterEqual(profile.track_min_hits, 2)
+
+    def test_person_weights_never_use_detect_checkpoint(self):
+        self.assertIn("pose", EDGE_WEIGHTS)
+        self.assertEqual(person_weights_name("yolo11n_improved.pt"), "yolo11n-pose.pt")
+        self.assertEqual(person_weights_name("yolo11n.pt"), "yolo11n-pose.pt")
+        self.assertEqual(person_weights_name("yolo11s-pose.pt"), "yolo11s-pose.pt")
+        profile = resolve_runtime({"runtime": "cpu", "weights": "yolo11n_improved.pt"})
+        self.assertEqual(profile.weights_name, "yolo11n-pose.pt")
 
     def test_default_kpt_conf_matches_anatomy_helpers(self):
         self.assertGreaterEqual(DEFAULT_KPT_CONF, 0.35)

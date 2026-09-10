@@ -1,11 +1,19 @@
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+
+#[cfg(unix)]
+use std::time::Duration;
 
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 struct EngineProcess(Mutex<Option<CommandChild>>);
+
+/// Sidecar PID kept outside Tauri managed state so we can still kill it
+/// after `RunEvent::Exit` has already dropped app state.
+static ENGINE_PID: AtomicU32 = AtomicU32::new(0);
 
 const ENGINE_PORT: &str = "8765";
 const READY_MARKER: &str = "[INBOUND_SERVER_READY]";
@@ -113,20 +121,99 @@ fn notify_engine_failed(app: &tauri::AppHandle, failure: EngineFailure) {
     }
 }
 
+fn run_silent(program: &str, args: &[&str]) {
+    let _ = std::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[cfg(unix)]
+fn collect_matching_pids(pattern: &str) -> Vec<u32> {
+    let output = std::process::Command::new("pgrep")
+        .args(["-f", pattern])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output();
+    let Ok(output) = output else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+        .collect()
+}
+
+fn kill_pid_tree(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+    log::info!("stopping inbound-engine process tree pid={pid}");
+    #[cfg(windows)]
+    {
+        run_silent(
+            "taskkill",
+            &["/PID", &pid.to_string(), "/T", "/F"],
+        );
+    }
+    #[cfg(unix)]
+    {
+        let pid_s = pid.to_string();
+        // SIGTERM first so launcher.py can stop Telegram polling and cameras.
+        run_silent("kill", &["-TERM", &pid_s]);
+        run_silent("pkill", &["-TERM", "-P", &pid_s]);
+        std::thread::sleep(Duration::from_millis(400));
+        run_silent("kill", &["-KILL", &pid_s]);
+        run_silent("pkill", &["-KILL", "-P", &pid_s]);
+    }
+}
+
+fn kill_stale_engines() {
+    #[cfg(windows)]
+    {
+        run_silent("taskkill", &["/IM", "inbound-engine.exe", "/F", "/T"]);
+    }
+    #[cfg(unix)]
+    {
+        let mut pids = collect_matching_pids("inbound-engine --port");
+        pids.extend(collect_matching_pids("inbound-go2rtc"));
+        pids.sort_unstable();
+        pids.dedup();
+        for pid in pids {
+            if pid == std::process::id() {
+                continue;
+            }
+            kill_pid_tree(pid);
+        }
+    }
+}
+
 fn kill_engine(app: &tauri::AppHandle) {
+    let mut pid = ENGINE_PID.swap(0, Ordering::SeqCst);
     if let Some(state) = app.try_state::<EngineProcess>() {
         if let Ok(mut guard) = state.0.lock() {
             if let Some(child) = guard.take() {
-                log::info!("stopping inbound-engine sidecar");
+                pid = child.pid();
+                // SIGTERM the tree before plugin kill (which is SIGKILL and
+                // can orphan go2rtc + leave Telegram polling alive).
+                kill_pid_tree(pid);
                 let _ = child.kill();
+                kill_stale_engines();
+                return;
             }
         }
     }
+    if pid != 0 {
+        kill_pid_tree(pid);
+    }
+    kill_stale_engines();
 }
 
 fn spawn_engine(app: tauri::AppHandle) {
     let log_file = engine_log_path(&app);
     let log_path_str = log_file.to_string_lossy().to_string();
+    kill_stale_engines();
 
     let command = match app.shell().sidecar("inbound-engine") {
         Ok(cmd) => cmd.args(["--port", ENGINE_PORT, "--no-browser"]),
@@ -152,6 +239,8 @@ fn spawn_engine(app: tauri::AppHandle) {
 
     match command.spawn() {
         Ok((mut rx, child)) => {
+            let spawned_pid = child.pid();
+            ENGINE_PID.store(spawned_pid, Ordering::SeqCst);
             if let Ok(mut guard) = app.state::<EngineProcess>().0.lock() {
                 *guard = Some(child);
             }
@@ -208,6 +297,12 @@ fn spawn_engine(app: tauri::AppHandle) {
                             }
                         }
                         CommandEvent::Terminated(payload) => {
+                            let _ = ENGINE_PID.compare_exchange(
+                                spawned_pid,
+                                0,
+                                Ordering::SeqCst,
+                                Ordering::SeqCst,
+                            );
                             log::info!("inbound-engine exited: {payload:?}");
                             if !notified {
                                 let exit_code = payload.code;
@@ -291,10 +386,44 @@ fn open_engine_log(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn navigation_guard_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("navigation-guard")
+        .on_navigation(|_webview, url| {
+            let scheme = url.scheme();
+            if scheme == "tauri" || scheme == "data" || scheme == "about" {
+                return true;
+            }
+            if (scheme == "http" || scheme == "https")
+                && (url.host_str() == Some("127.0.0.1") || url.host_str() == Some("localhost"))
+            {
+                return true;
+            }
+            // Open external URLs and custom URI schemes with the system handler, never navigating the webview
+            let target = url.as_str().to_string();
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("rundll32")
+                    .args(["url.dll,FileProtocolHandler", &target])
+                    .spawn();
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open").arg(&target).spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = std::process::Command::new("xdg-open").arg(&target).spawn();
+            }
+            false
+        })
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     apply_linux_webkit_workarounds();
     tauri::Builder::default()
+        .plugin(navigation_guard_plugin())
         .plugin(tauri_plugin_shell::init())
         .manage(EngineProcess(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![retry_engine, open_engine_log])

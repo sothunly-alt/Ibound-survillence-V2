@@ -44,9 +44,18 @@ class TelegramLinkService:
         self._offset = 0
         self._pending: dict[str, PendingLink] = {}
         self._last_link: LinkedChat | None = None
+        self._known_chats: dict[str, LinkedChat] = {}
+        self._active_chat_id = ""
+        self._active_display_name = ""
         self._last_error = ""
         self._poll_thread: threading.Thread | None = None
         self._stop = threading.Event()
+
+    def set_active_chat(self, chat_id: str, display_name: str = "") -> None:
+        with self._lock:
+            self._active_chat_id = str(chat_id or "").strip()
+            if display_name:
+                self._active_display_name = str(display_name or "").strip()
 
     def configure(self, token: str) -> None:
         token = (token or "").strip()
@@ -83,6 +92,12 @@ class TelegramLinkService:
 
     def stop(self) -> None:
         self._stop.set()
+        thread = None
+        with self._lock:
+            thread = self._poll_thread
+            self._poll_thread = None
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
 
     def refresh_bot_identity(self) -> dict[str, Any]:
         token = self.token
@@ -287,6 +302,30 @@ class TelegramLinkService:
                         break
 
         if pending is None:
+            with self._lock:
+                known = self._known_chats.get(chat_id)
+                last = (
+                    self._last_link
+                    if (self._last_link and self._last_link.chat_id == chat_id)
+                    else None
+                )
+                is_active = bool(
+                    self._active_chat_id and self._active_chat_id == chat_id
+                )
+                active_name = self._active_display_name
+            if known or last or is_active:
+                name = (
+                    (known and known.display_name)
+                    or (last and last.display_name)
+                    or active_name
+                    or "your account"
+                )
+                self._reply(
+                    chat_id,
+                    f"This chat is already linked to {name}. Garage alerts and daily scorecards will arrive here.",
+                )
+                return True
+
             self._reply(
                 chat_id,
                 "Open Integrations in Inbound Surveillance and tap Connect Telegram, "
@@ -306,6 +345,9 @@ class TelegramLinkService:
         )
         with self._lock:
             self._last_link = link
+            self._known_chats[chat_id] = link
+            self._active_chat_id = chat_id
+            self._active_display_name = pending.display_name
         name = pending.display_name
         self._reply(
             chat_id,

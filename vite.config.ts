@@ -18,6 +18,19 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    // Vite watches the repo root. edge/.venv (torch, protobuf headers, …)
+    // has tens of thousands of files and blows the inotify watcher limit.
+    watch: {
+      ignored: [
+        "**/.venv/**",
+        "**/site-packages/**",
+        "**/src-tauri/target/**",
+        "**/dist-sidecar/**",
+        "**/build/**",
+        "**/*.pt",
+        "**/*.onnx",
+      ],
+    },
   },
   build: {
     outDir: "dist",

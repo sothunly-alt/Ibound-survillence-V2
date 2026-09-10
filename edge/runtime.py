@@ -29,11 +29,11 @@ RUNTIME_ALIASES = {
     "auto": "auto",
 }
 
-EDGE_WEIGHTS = (
-    "yolo11n_improved.pt"
-    if Path(__file__).resolve().parent.joinpath("yolo11n_improved.pt").is_file()
-    else "yolo11n-pose.pt"
-)
+# Person tracking requires YOLO-pose keypoints. yolo11n_improved.pt is a
+# detect checkpoint (vehicles / COCO boxes, no skeleton) and must never be
+# used as the person model — person_detections() rejects every box without
+# keypoints, so the overlay looks like "ML stopped tracking anyone".
+EDGE_WEIGHTS = "yolo11n-pose.pt"
 SERVER_WEIGHTS = "yolo11s-pose.pt"
 
 # Person-detect defaults: keep far / crouched workers instead of shrinking
@@ -159,6 +159,14 @@ def resolve_imgsz(cfg: dict | None = None, profile: RuntimeProfile | None = None
     return max(32, int(default) // 32 * 32)
 
 
+def person_weights_name(raw: object | None) -> str:
+    """Return a pose checkpoint name. Detect/vehicle files have no keypoints."""
+    name = Path(str(raw or EDGE_WEIGHTS)).name.strip() or EDGE_WEIGHTS
+    if "pose" in Path(name).stem.lower():
+        return name
+    return EDGE_WEIGHTS
+
+
 def resolve_runtime(cfg: dict | None = None) -> RuntimeProfile:
     """Pick an execution profile from config, falling back if GPU is missing."""
     cfg = cfg or {}
@@ -175,15 +183,15 @@ def resolve_runtime(cfg: dict | None = None) -> RuntimeProfile:
     if name in ("cuda", "tensorrt"):
         yolo_device: str | int = 0
         dnn_backend, dnn_target = backend_cuda, target_cuda
-        weights_name = str(cfg.get("server_weights") or cfg.get("weights") or SERVER_WEIGHTS)
+        weights_name = person_weights_name(cfg.get("server_weights") or cfg.get("weights") or SERVER_WEIGHTS)
     elif name == "openvino":
         yolo_device = "intel"
         dnn_backend, dnn_target = backend_opencv, target_cpu
-        weights_name = str(cfg.get("weights") or EDGE_WEIGHTS)
+        weights_name = person_weights_name(cfg.get("weights") or EDGE_WEIGHTS)
     else:
         yolo_device = "cpu"
         dnn_backend, dnn_target = backend_opencv, target_cpu
-        weights_name = str(cfg.get("weights") or EDGE_WEIGHTS)
+        weights_name = person_weights_name(cfg.get("weights") or EDGE_WEIGHTS)
 
     return RuntimeProfile(
         name=name,

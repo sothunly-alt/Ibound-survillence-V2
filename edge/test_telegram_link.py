@@ -84,6 +84,64 @@ class TelegramLinkTests(unittest.TestCase):
         self.assertEqual(handled, 1)
         self.assertEqual(self.svc._offset, 11)
 
+    def test_repeated_start_retains_linked_message(self) -> None:
+        begun = self.svc.begin_link("user-99", "HourMeng")
+        code = begun["code"]
+        # First /start links the chat
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled1 = self.svc._handle_update(
+                {
+                    "update_id": 1,
+                    "message": {
+                        "text": f"/start {code}",
+                        "chat": {"id": 123456},
+                        "from": {"id": 10, "username": "hourmeng"},
+                    },
+                }
+            )
+            self.assertTrue(handled1)
+            mock_reply.assert_called_with(
+                "123456",
+                "Linked to HourMeng. Garage alerts and daily scorecards will arrive here.",
+            )
+
+        # Second /start from the same chat should recognize that it is already linked
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled2 = self.svc._handle_update(
+                {
+                    "update_id": 2,
+                    "message": {
+                        "text": "/start",
+                        "chat": {"id": 123456},
+                        "from": {"id": 10, "username": "hourmeng"},
+                    },
+                }
+            )
+            self.assertTrue(handled2)
+            mock_reply.assert_called_with(
+                "123456",
+                "This chat is already linked to HourMeng. Garage alerts and daily scorecards will arrive here.",
+            )
+
+    def test_active_chat_recognized_on_start(self) -> None:
+        self.svc.set_active_chat("777888", "AutoFix Garage")
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled = self.svc._handle_update(
+                {
+                    "update_id": 3,
+                    "message": {
+                        "text": "/start",
+                        "chat": {"id": 777888},
+                        "from": {"id": 20},
+                    },
+                }
+            )
+            self.assertTrue(handled)
+            mock_reply.assert_called_with(
+                "777888",
+                "This chat is already linked to AutoFix Garage. Garage alerts and daily scorecards will arrive here.",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
