@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — Inbound Surveillance</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-DOtdfbUR.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48-DUnLcLUd.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon-W85lC4bu.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" crossorigin href="/assets/styles-DUn85Utw.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="index.html" aria-label="Inbound Surveillance home">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/assets/brand-mark-Blee1UuL.png" alt="" width="34" height="34" />
+          </span>
+          <span class="brand-text">
+            <span class="brand-name">INBOUND</span>
+            <span class="brand-sub">SURVEILLANCE</span>
+          </span>
+        </a>
+        <a class="btn btn-neon btn-sm" href="index.html">Back to site</a>
+      </div>
+    </header>
+    <main class="container legal-page">
+      <nav class="breadcrumbs mono" aria-label="Breadcrumb">
+        <a href="index.html">Home</a>
+        <span aria-hidden="true">/</span>
+        <span>Privacy</span>
+      </nav>
+      <p class="section-index">Legal</p>
+      <h1>Privacy Policy &amp; Data Architecture Disclosure</h1>
+      <p class="legal-updated">Last Updated: September 2026</p>
+      <p>
+        <em
+          >Disclaimer: Inbound Surveillance is currently in active MVP deployment. This privacy framework
+          applies to our commercial pilot partners.</em
+        >
+      </p>
+      <p class="mono">INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH, CAMBODIA</p>
+      <p>
+        <strong>ENTITY STATUS:</strong> Pre-incorporation Commercial Pilot (MVP). Governing
+        jurisdiction: Phnom Penh, Kingdom of Cambodia.
+      </p>
+
+      <div class="legal-roles" role="note" aria-label="Data roles">
+        <p class="legal-roles-title">Roles</p>
+        <dl>
+          <div>
+            <dt>Data Controller</dt>
+            <dd>Garage Owner / Facility Operator — determines purposes and means of workplace processing.</dd>
+          </div>
+          <div>
+            <dt>Data Processor</dt>
+            <dd>
+              Inbound Surveillance — supplies and configures on-premises edge appliances that process data
+              solely on the Controller’s instructions and hardware.
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <section>
+        <h2>1. System Architecture &amp; Zero-Cloud Guarantee</h2>
+        <p>Inbound Surveillance is engineered around local edge-compute infrastructure.</p>
+        <ul>
+          <li>
+            <strong>Local Processing:</strong> All computer vision pipelines, body-pose estimation, and facial
+            identification algorithms execute exclusively on on-premises local edge hardware deployed within
+            the client’s facility.
+          </li>
+          <li>
+            <strong>No Video Streaming:</strong> Continuous CCTV video streams are processed ephemerally in
+            volatile memory (RAM) and are never transmitted to external cloud servers, third-party databases,
+            or hosted remote storage.
+          </li>
+          <li>
+            <strong>Bandwidth &amp; Transit:</strong> Network egress is restricted exclusively to authenticated
+            payload triggers (e.g., encrypted Telegram bot webhooks delivering metadata and shift verification
+            snapshots).
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>2. Categories of Data Processed</h2>
+        <ul>
+          <li>
+            <strong>Biometric &amp; Pose Telemetry:</strong> Ephemeral spatial coordinates (full-body posture
+            tracking) used to maintain active labor session continuity, alongside cryptographic vector
+            embeddings generated from facial features for operator authentication. Raw facial templates are
+            stored locally in hashed, non-reversible binary formats.
+          </li>
+          <li>
+            <strong>Labor Telemetry:</strong> Timestamped event intervals (Session Start, Session Pause,
+            Session Terminate), active bay IDs, and dual-clock calculations (Billable Project Time vs.
+            Unbilled vs. Active Wrench-Time).
+          </li>
+          <li>
+            <strong>Active vs. Idle Telemetry:</strong> Monitoring spatial coordinates and posture to
+            calculate active wrench-time versus non-billable idle time within the service bay.
+          </li>
+          <li>
+            <strong>Margins Loss Prevention Analytics:</strong> Aggregating active labor telemetry to
+            identify operational bottlenecks and recover unbilled diagnostic or custom hours.
+          </li>
+          <li>
+            <strong>Safety Hazard Telemetry:</strong> Detection of personnel within predefined high-risk
+            physical boundaries (e.g., beneath live vehicle lifts) to trigger instant liability and safety
+            alerts.
+          </li>
+          <li>
+            <strong>Verification Proof:</strong> Momentary, downscaled image captures generated solely upon
+            session state transitions to serve as timestamped proof-of-work verification.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>3. Purpose of Processing</h2>
+        <p>Data processed by the Inbound Surveillance hardware is utilized strictly for:</p>
+        <ul>
+          <li>
+            <strong>Active vs. Idle Tracking:</strong> Automating the logging of productive mechanical labor
+            to eliminate manual time-sheets.
+          </li>
+          <li>
+            <strong>Margins Loss Prevention:</strong> Auditing bay occupancy and labor leaks to protect and
+            recover shop revenue.
+          </li>
+          <li>
+            <strong>Safety Tracking:</strong> Monitoring hazardous operational zones to prevent workplace
+            accidents and liability blind spots.
+          </li>
+        </ul>
+        <p>
+          Data is never harvested, resold, aggregated for third-party advertising, or used to train external
+          global foundation models.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Third-Party Transmissions (Telegram Integration)</h2>
+        <p>
+          Shift summaries, timestamped visual verifications (when enabled by the operator on local hardware),
+          and bay status alerts are dispatched via encrypted HTTPS webhooks directly to client-configured
+          endpoints (such as the Telegram Bot API). Once dispatched, the storage, retention, and access
+          governance of transmitted scorecards adhere to the client’s internal messaging security policies and
+          Telegram’s platform terms.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Data Retention &amp; Erasure</h2>
+        <ul>
+          <li>
+            <strong>Telemetry Logs:</strong> Raw operational event timestamps are retained on local hardware
+            storage for a rolling retention cycle (default: 30 to 90 days) configured by the facility owner.
+          </li>
+          <li>
+            <strong>Local Media:</strong> Ephemeral frame buffers are overwritten continuously. Hashed
+            enrollment profiles remain stored on the local appliance until manually revoked or deleted by the
+            facility administrator.
+          </li>
+          <li>
+            <strong>System Purge:</strong> Upon termination of service, all locally stored vector databases,
+            enrollment profiles, and shift history can be completely purged via an on-site factory hardware
+            reset.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>6. Facility Operator Obligations (Workplace Notice)</h2>
+        <p>
+          The Pilot Partner (Garage Owner / Operator) serves as the primary
+          <strong>Data Controller</strong>. Inbound Surveillance acts as
+          <strong>Data Processor</strong>. The Controller acknowledges the following legal commitments:
+        </p>
+        <ul>
+          <li>
+            <strong>Employee Notice:</strong> The operator is solely responsible for providing conspicuous
+            workplace notification (e.g., posted signage in bays) indicating that active optical computer
+            vision and automated workflow and safety-tracking telemetry are operational.
+          </li>
+          <li>
+            <strong>Jurisdictional Compliance:</strong> The operator must ensure deployment complies with all
+            applicable local labor statutes, workplace surveillance regulations, and employee consent
+            standards.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>B2B Hardware &amp; Onboarding Consent Clause</h2>
+        <p>
+          The following acknowledgment is required on pilot deployment agreements and customer agreements:
+        </p>
+        <blockquote class="legal-quote">
+          <p class="legal-quote-label">Operator Acknowledgment</p>
+          <p>
+            Client confirms that Inbound Surveillance hardware will be deployed strictly for Active vs. Idle
+            Tracking, Margins Loss Prevention, and Safety Tracking within designated service bays. Client
+            assumes sole responsibility for notifying all personnel and contractors that automated optical
+            workflow and safety-tracking telemetry is operational, indemnifying Inbound Surveillance against
+            unauthorized surveillance claims resulting from failure to provide adequate workplace notice.
+          </p>
+        </blockquote>
+      </section>
+
+      <p>
+        EMAIL:
+        <a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a>
+      </p>
+      <p>
+        DIRECT TELEGRAM:
+        <a href="https://t.me/+855965188669" target="_blank" rel="noopener noreferrer"
+          >+855 96 518 8669</a
+        >
+      </p>
+      <p><a href="terms.html">Terms of Service</a> · <a href="about.html">About</a></p>
+      <p>© 2026 Inbound Surveillance Edge Systems · Phnom Penh, Cambodia</p>
+    </main>
+  </body>
+</html>

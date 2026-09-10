@@ -2465,8 +2465,7 @@ h3 {
   }
 
   .header-actions .btn-sm {
-    padding: 8px 12px;
-    font-size: 12px;
+    display: none;
   }
 
   .nav-desktop {
@@ -2891,10 +2890,8 @@ h3 {
 
 /* ======== KHMER MODE (html[lang="km"]) ======== */
 /* Glyph-safe Industrial Overwatch — EN tokens untouched */
-html[lang="km"] {
-  --font-display: "Kantumruy Pro", sans-serif;
-  --font-sans: "Kantumruy Pro", sans-serif;
-  --font-mono: "Kantumruy Pro", sans-serif;
+html[lang="km"] [data-kh] {
+  font-family: "Kdam Thmor Pro", sans-serif !important;
 }
 
 html[lang="km"] h1,
@@ -2908,25 +2905,8 @@ html[lang="km"] .section-index {
 
 html[lang="km"] h1,
 html[lang="km"] h2,
-html[lang="km"] h3,
-html[lang="km"] p,
-html[lang="km"] .lede,
-html[lang="km"] .section-copy {
-  line-height: 1.6;
-}
-
-html[lang="km"] h1 {
-  font-size: calc(var(--fs-display) * 1.08);
-}
-
-html[lang="km"] h2 {
-  font-size: calc(var(--fs-h2) * 1.08);
-}
-
-html[lang="km"] .lede,
-html[lang="km"] .section-copy,
-html[lang="km"] p {
-  font-size: calc(var(--fs-body) * 1.1);
+html[lang="km"] h3 {
+  line-height: 1.5;
 }
 
 html[lang="km"] .btn,
@@ -2935,11 +2915,6 @@ html[lang="km"] .lang-toggle-btn {
   line-height: 1.45;
 }
 
-html[lang="km"] .brand,
-html[lang="km"] i,
-html[lang="km"] .icon {
-  font-family: inherit !important;
-}
 
 /* ======== MOBILE (max-width: 768px) — dumb stack only ======== */
 @media (max-width: 768px) {
