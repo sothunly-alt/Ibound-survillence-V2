@@ -58,6 +58,7 @@
   - `md`: 4px (maximum allowed)
   - **Forbidden:** 8px+, 12px+, 18px cards, `9999px` pills on product UI
   - Marketing may use at most 4px on buttons — no friendly full-pill CTAs
+  - **Exception — device chrome & native third-party UI (Telegram):** phone bezels may use ~30px radius; Telegram chat bubbles may use ~12px / Telegram-native corner radii. Applies only to marketing device mockups that imitate real OS/app chrome. All other product/marketing UI remains radius ≤4px.
 
 ## Motion
 - **Approach:** Intentional, short — live pulse on Terminal Green dots; no scroll theater
@@ -148,3 +149,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | FAQ rewritten for non-technical owners | Kill model/RTSP/edge jargon in FAQ; garage-owner language only |
 | 2026-09-09 | Team + About owner-language scrub | Kill model/RTSP/inference jargon on public marketing pages; bios map to B2B pillars |
 | 2026-09-10 | Demo modal conversion friction | Short authority Operator Ack (full legal stays on privacy/install); dropdown = Current shop cameras, not Plan interest |
+| 2026-09-10 | Device chrome / Telegram radius exception | Phone bezel ~30px + chat bubbles ~12px only on marketing mockups; product UI stays ≤4px |

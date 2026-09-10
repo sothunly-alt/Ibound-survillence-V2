@@ -629,8 +629,7 @@ h3 {
 
 .hud-stage::-webkit-scrollbar,
 .hud-frame::-webkit-scrollbar,
-.phone-screen::-webkit-scrollbar,
-.tg-thread::-webkit-scrollbar {
+.tg-chat::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
@@ -661,14 +660,15 @@ h3 {
 
 .bbox {
   position: absolute;
-  left: 33%;
-  top: 50%;
-  width: 15%;
-  height: 46%;
+  left: 44%;
+  top: 34%;
+  width: 22%;
+  height: 52%;
   border: 2px solid color-mix(in srgb, var(--surveillance-green) 22%, transparent);
   opacity: 0;
   transform: scale(0.96);
   transition: 0.45s ease;
+  z-index: 3;
 }
 
 .bbox::before,
@@ -739,7 +739,7 @@ h3 {
 .node-lm { top: calc(50% - 3px); left: -3px; }
 .node-rm { top: calc(50% - 3px); right: -3px; }
 
-/* Pose skeleton */
+/* Pose skeleton — lean into hood */
 .bbox-skeleton {
   position: absolute;
   inset: 0;
@@ -747,6 +747,8 @@ h3 {
   height: 100%;
   color: var(--neon);
   pointer-events: none;
+  transform-origin: 70% 20%;
+  transform: translate(-6%, 8%) rotate(18deg) scale(0.92);
 }
 
 /* Live processing pulse */
@@ -757,17 +759,18 @@ h3 {
 
 .phone {
   position: absolute;
-  right: 4%;
-  bottom: 8%;
-  width: min(240px, 34%);
-  background: var(--bg-2);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius);
-  padding: 12px 10px 16px;
+  right: 3%;
+  bottom: 5%;
+  width: min(280px, 38%);
+  z-index: 4;
   opacity: 0;
   transform: translateY(18px) scale(0.96);
   transition: 0.45s ease;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  box-shadow: none;
 }
 
 .phone.is-on {
@@ -775,58 +778,108 @@ h3 {
   transform: translateY(0) scale(1);
 }
 
-.phone-notch {
-  width: 72px;
-  height: 8px;
-  border-radius: var(--radius);
-  background: #141414;
-  margin: 0 auto 10px;
+.phone-mockup {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  aspect-ratio: 9 / 17;
+  max-height: min(480px, 70%);
+  border-radius: 30px;
+  border: 6px solid #222;
+  background: #0e1621;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
-.phone-app-name {
-  margin: 0 0 8px;
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.tg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 10px 10px 8px;
+  background: #17212b;
+  color: #fff;
 }
 
-.tg-card {
-  background: #0d0d0d;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 12px;
+.tg-back {
+  display: flex;
+  color: #fff;
+  flex-shrink: 0;
 }
 
-.tg-from {
+.tg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.tg-identity {
+  flex: 1;
+  min-width: 0;
+}
+
+.tg-name {
   margin: 0;
-  color: var(--surveillance-green);
-  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tg-meta,
-.tg-note {
-  margin: 4px 0 0;
-  color: var(--muted);
+.tg-role {
+  margin: 1px 0 0;
   font-size: 11px;
+  color: #8a96a3;
+  line-height: 1.2;
 }
 
-.tg-title {
-  margin: 10px 0 0;
-  font-family: var(--font-mono);
+.tg-menu {
+  color: #8a96a3;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.tg-chat {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 10px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.03), transparent 40%),
+    #0e1621;
+}
+
+.telegram-bubble {
+  position: relative;
+  max-width: 100%;
+  padding: 10px 12px 18px;
+  background: #182533;
+  border-radius: 12px 12px 12px 2px;
+  color: #e8eef4;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.tg-bubble-title {
+  margin: 0 0 8px;
   font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text);
+  font-weight: 700;
+  color: #fff;
 }
 
 .tg-stat {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: #c5cdc8;
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #c5d0db;
+  line-height: 1.35;
 }
 
 .tg-stat em {
@@ -834,6 +887,59 @@ h3 {
   color: var(--neon);
   font-family: var(--font-mono);
   font-weight: 700;
+}
+
+.tg-note {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: #8a96a3;
+}
+
+.tg-time {
+  position: absolute;
+  right: 8px;
+  bottom: 5px;
+  font-size: 10px;
+  color: #7f8b97;
+}
+
+.tg-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 10px 10px;
+  background: #17212b;
+}
+
+.tg-emoji,
+.tg-attach {
+  color: #8a96a3;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tg-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 18px;
+  background: #242f3d;
+  color: #8a96a3;
+  font-size: 12px;
+}
+
+.tg-mic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #5288c1;
+  color: #fff;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .flow-steps {
@@ -2482,59 +2588,32 @@ h3 {
   }
 
   .phone {
-    width: min(148px, 40%);
-    bottom: 6%;
+    width: min(210px, 52%);
+    bottom: 5%;
     right: 3%;
   }
 
-  .phone:not(.is-on) .phone-screen {
-    height: 220px;
-  }
-
   .phone.is-on {
-    inset: 26px 22px;
+    inset: 20px 16px;
     width: auto;
     height: auto;
     filter: none;
     transform: none;
+    z-index: 5;
   }
 
-  .phone.is-on .phone-shell {
-    display: flex;
-    flex-direction: column;
+  .phone.is-on .phone-mockup {
+    width: 100%;
+    max-height: none;
     height: 100%;
-  }
-
-  .phone.is-on .phone-screen {
-    flex: 1;
-    height: auto;
-    min-height: 0;
-  }
-
-  .phone.is-on .tg-thread {
-    overflow: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .phone.is-on .tg-msg p {
-    font-size: 12px;
-  }
-
-  .phone.is-on .tg-brief dt,
-  .phone.is-on .tg-brief dd {
-    font-size: 11px;
-  }
-
-  .phone.is-on .tg-photo img {
-    height: 72px;
+    aspect-ratio: auto;
   }
 
   .bbox {
-    left: 28%;
-    top: 48%;
-    width: 22%;
-    height: 46%;
+    left: 40%;
+    top: 36%;
+    width: 28%;
+    height: 48%;
   }
 
   .hero {
@@ -2544,24 +2623,22 @@ h3 {
 
 @media (max-width: 520px) {
   .phone {
-    width: min(168px, 52%);
+    width: min(200px, 58%);
     right: 3%;
-    bottom: 6%;
-    padding: 8px 8px 12px;
+    bottom: 5%;
   }
 
-  .tg-card {
-    padding: 8px;
+  .tg-name {
+    font-size: 12px;
   }
 
-  .tg-from,
-  .tg-title,
-  .tg-stat {
+  .tg-stat,
+  .tg-bubble-title {
     font-size: 10px;
   }
 
-  .tg-meta,
-  .tg-note {
+  .tg-note,
+  .tg-time {
     font-size: 9px;
   }
 }
@@ -2581,18 +2658,6 @@ h3 {
   .phone,
   .boot-overlay {
     transition: none;
-  }
-
-  .phone.is-on .tg-typing {
-    display: none;
-    animation: none;
-  }
-
-  .phone.is-on .tg-msg,
-  .phone.is-on .tg-msg-brief {
-    opacity: 1;
-    transform: none;
-    animation: none;
   }
 
   .demo-section .section-head,
