@@ -59,6 +59,8 @@
   - **Forbidden:** 8px+, 12px+, 18px cards, `9999px` pills on product UI
   - Marketing may use at most 4px on buttons — no friendly full-pill CTAs
   - **Exception — device chrome & native third-party UI (Telegram):** phone bezels may use ~30px radius; Telegram chat bubbles may use ~12px / Telegram-native corner radii. Applies only to marketing device mockups that imitate real OS/app chrome. All other product/marketing UI remains radius ≤4px.
+- **Header chrome:** Sticky site header must stay solid/opaque (`--absolute-black` / `#000000`) during scroll — no translucent `color-mix` or alpha that lets page content bleed through the nav.
+- **Navigation muscle memory:** Logo mark + wordmark are one control. On the landing page they point to `#top` (smooth scroll back to hero). On subpages they link home (`index.html`). Never split mark and text into separate hit targets.
 
 ## Motion
 - **Approach:** Intentional, short — live pulse on Terminal Green dots; no scroll theater
@@ -150,3 +152,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | Team + About owner-language scrub | Kill model/RTSP/inference jargon on public marketing pages; bios map to B2B pillars |
 | 2026-09-10 | Demo modal conversion friction | Short authority Operator Ack (full legal stays on privacy/install); dropdown = Current shop cameras, not Plan interest |
 | 2026-09-10 | Device chrome / Telegram radius exception | Phone bezel ~30px + chat bubbles ~12px only on marketing mockups; product UI stays ≤4px |
+| 2026-09-10 | Sticky header solid chrome + logo → `#top` | Kill translucent header bleed; logo/mark unified back-to-top on landing |

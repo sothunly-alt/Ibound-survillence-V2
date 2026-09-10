@@ -176,7 +176,7 @@ h3 {
   z-index: 40;
   height: var(--header-h);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: color-mix(in srgb, var(--absolute-black) 92%, transparent);
+  background: var(--absolute-black);
 }
 
 .scroll-progress {
