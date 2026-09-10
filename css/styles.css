@@ -278,6 +278,44 @@ h3 {
   gap: 12px;
 }
 
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lang-toggle-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  padding: 4px 6px;
+  text-transform: uppercase;
+}
+
+.lang-toggle-btn:hover {
+  color: var(--neon);
+}
+
+.lang-toggle-btn[aria-pressed="true"] {
+  color: var(--neon);
+  border-color: color-mix(in srgb, var(--neon) 35%, transparent);
+}
+
+.lang-toggle-sep {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  user-select: none;
+}
+
 .btn {
   border: 0;
   cursor: pointer;

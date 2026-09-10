@@ -646,3 +646,53 @@ function initPpNodeMap() {
 }
 
 initPpNodeMap();
+
+/* —— EN | KH bilingual swap (data-kh / data-en) —— */
+const LANG_KEY = "inbound_lang";
+
+function applyLang(lang) {
+  const next = lang === "kh" ? "kh" : "en";
+  document.documentElement.lang = next === "kh" ? "km" : "en";
+
+  document.querySelectorAll("[data-kh]").forEach((el) => {
+    if (!el.hasAttribute("data-en")) {
+      el.setAttribute("data-en", el.textContent);
+    }
+    const value = next === "kh" ? el.getAttribute("data-kh") : el.getAttribute("data-en");
+    if (value != null) el.textContent = value;
+  });
+
+  document.querySelectorAll("[data-lang-set]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(btn.getAttribute("data-lang-set") === next));
+  });
+
+  try {
+    localStorage.setItem(LANG_KEY, next);
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
+function initLangToggle() {
+  document.querySelectorAll("[data-lang-set]").forEach((btn) => {
+    btn.addEventListener("click", () => applyLang(btn.getAttribute("data-lang-set")));
+  });
+
+  let stored = "en";
+  try {
+    stored = localStorage.getItem(LANG_KEY) || "en";
+  } catch {
+    stored = "en";
+  }
+
+  if (stored === "kh") {
+    applyLang("kh");
+  } else {
+    document.documentElement.lang = "en";
+    document.querySelectorAll("[data-lang-set]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(btn.getAttribute("data-lang-set") === "en"));
+    });
+  }
+}
+
+initLangToggle();

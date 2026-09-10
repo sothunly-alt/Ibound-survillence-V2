@@ -165,7 +165,12 @@
         </nav>
 
         <div class="header-actions">
-          <button class="btn btn-neon btn-sm" data-open-demo type="button">[ BOOK DEMO ]</button>
+          <div class="lang-toggle" role="group" aria-label="Language">
+            <button type="button" class="lang-toggle-btn" data-lang-set="en" aria-pressed="true">EN</button>
+            <span class="lang-toggle-sep" aria-hidden="true">|</span>
+            <button type="button" class="lang-toggle-btn" data-lang-set="kh" aria-pressed="false">KH</button>
+          </div>
+          <button class="btn btn-neon btn-sm" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
           <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
             <span></span>
             <span></span>
@@ -178,7 +183,7 @@
         <a href="#demo">Engine</a>
         <a href="#field-notes">Field Notes</a>
         <a href="#team">Team</a>
-        <button class="btn btn-neon" data-open-demo type="button">[ BOOK DEMO ]</button>
+        <button class="btn btn-neon" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
       </nav>
     </header>
 
@@ -199,7 +204,7 @@
             hours—without anyone touching a screen.
           </p>
           <div class="hero-cta">
-            <button class="btn btn-neon btn-lg" data-open-demo type="button">[ BOOK DEMO ]</button>
+            <button class="btn btn-neon btn-lg" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
             <a class="btn btn-ghost btn-lg" href="#architecture">See how it works</a>
             <p class="social-inline">Built from floor interviews with Phnom Penh performance garages.</p>
           </div>
@@ -224,9 +229,9 @@
       <section class="section demo-section" id="demo">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 01 ] System</p>
-            <h2>Watch the bay clock itself.</h2>
-            <p class="section-copy">
+            <p class="section-index" data-kh="[ 01 ] ប្រព័ន្ធ">[ 01 ] System</p>
+            <h2 data-kh="ទុកឲ្យហាងកត់ម៉ោងខ្លួនឯង។">Watch the bay clock itself.</h2>
+            <p class="section-copy" data-kh="គ្មានថេប្លេត។ គ្មានកាតកត់ម៉ោង។ កាយវិការចាក់សោវេនធ្វើការ នាឡិកាពីរដើររាប់ម៉ោង រួចរបាយការណ៍ចូល Telegram។">
               No tablets. No punch cards. Pose locks the session, dual clocks tally the shift,
               and the scorecard drops on Telegram.
             </p>
@@ -617,7 +622,7 @@
                 <small>/ month per bay</small>
               </p>
               <button class="btn btn-neon" data-open-demo data-plan="None / Need Turnkey Hardware ($295 setup)" type="button">
-                [ BOOK DEMO ]
+                <span data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</span>
                 <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
                 </svg>
@@ -702,9 +707,9 @@
       <section class="section team-section" id="team">
         <div class="container">
           <header class="section-head">
-            <p class="section-index">[ 08 ] Team · KIT Hub Crew</p>
-            <h2>One squad. Same node.</h2>
-            <p class="section-copy">
+            <p class="section-index" data-kh="[ 08 ] ក្រុមការងារ · ក្រុម KIT Hub">[ 08 ] Team · KIT Hub Crew</p>
+            <h2 data-kh="ក្រុមតែមួយ។ គោលដៅតែមួយ។">One squad. Same node.</h2>
+            <p class="section-copy" data-kh="អ្នកបង្កើត៤នាក់ពី Kirirom Institute of Technology Hub — ស្ថាបត្យកម្មប្រព័ន្ធ ផលិតផល ទិសដៅ និងការចុះធ្វើការនៅហាងផ្ទាល់ នៅក្រោមដំបូលតែមួយ។">
               Four builders from Kirirom Institute of Technology Hub — architecture, product, vision, and
               field ops under one roof.
             </p>
@@ -756,9 +761,9 @@
       <section class="section location-section" id="location">
         <div class="container location-grid">
           <div>
-            <p class="section-index">[ 09 ] Location</p>
+            <p class="section-index" data-kh="[ 09 ] ទីតាំង">[ 09 ] Location</p>
             <h2>Phnom Penh, Cambodia</h2>
-            <p class="section-copy">
+            <p class="section-copy" data-kh="កំពុងដំណើរការ៖ Phnom Penh។ យើងចុះដំឡើង Edge-AI និងដើរពិនិត្យហាងផ្ទាល់ តែក្នុងរាជធានីប៉ុណ្ណោះ។ យើងធ្វើការនៅលើផ្ទៃហាងផ្ទាល់ គ្មានការិយាល័យបើកជាសាធារណៈ។">
               Active Deployments: Phnom Penh. We conduct on-site edge installs and bay walkthroughs
               exclusively across the capital. Operating with direct floor presence; no public headquarters.
             </p>
@@ -792,14 +797,14 @@
         <div class="container final-content">
           <p class="section-index">[ 10 ] Deploy</p>
           <h2>Start billing for the hours you actually work.</h2>
-          <button class="btn btn-neon btn-lg" data-open-demo type="button">[ BOOK DEMO ]</button>
+          <button class="btn btn-neon btn-lg" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
           <p class="response-promise">We reply on Telegram within one business day · Phnom Penh time</p>
         </div>
       </section>
     </main>
 
     <div class="mobile-sticky-cta" id="mobile-sticky-cta">
-      <button class="btn btn-neon" data-open-demo type="button">[ BOOK DEMO ]</button>
+      <button class="btn btn-neon" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
     </div>
 
     <!-- GA4: set window.INBOUND_GA4_ID = "G-XXXXXXXX" and restore consent UI when analytics is live. -->
@@ -816,7 +821,7 @@
               <span class="brand-sub">SURVEILLANCE</span>
             </span>
           </a>
-          <p class="footer-tag">Invisible infrastructure to recover billable wrench-time and protect shop floor margins.</p>
+          <p class="footer-tag" data-kh="ប្រព័ន្ធស្ងាត់ៗពីក្រោយឆាក ជួយទាញម៉ោងជួសជុលដែលគិតលុយបានមកវិញ និងរក្សាចំណេញហាងអ្នក។">Invisible infrastructure to recover billable wrench-time and protect shop floor margins.</p>
         </div>
         <div>
           <p class="footer-label">Contact</p>
@@ -844,9 +849,9 @@
       <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="demo-title">
         <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
         <p class="section-index">Bay Demo</p>
-        <h2 id="demo-title">Book a free pilot bay walkthrough.</h2>
+        <h2 id="demo-title" data-kh="កក់ដើរពិនិត្យហាងសាកល្បង ឥតគិតថ្លៃ។">Book a free pilot bay walkthrough.</h2>
         <p class="modal-copy">
-          We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.
+          <span data-kh="យើងនឹងរៀបចំកន្លែងជួសជុលមួយ បង្ហាញម៉ោងជួសជុលកំពុងដើរផ្ទាល់ ហើយផ្ញើរបាយការណ៍ចូល Telegram ក្នុងទូរស័ព្ទអ្នក។">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</span>
           <span class="response-promise inline">Reply within one business day · Phnom Penh time.</span>
         </p>
         <form
@@ -871,7 +876,7 @@
             <input type="number" name="bays" min="1" max="40" value="2" required />
           </label>
           <label class="full">
-            Current shop cameras
+            <span data-kh="កាមេរ៉ាដែលហាងមានស្រាប់">Current shop cameras</span>
             <select name="plan" id="plan-select">
               <option value="Not sure / Assess on site">Not sure / Assess on site</option>
               <option value="None / Need Turnkey Hardware ($295 setup)">
@@ -883,13 +888,11 @@
           <label class="full consent-check">
             <input type="checkbox" name="operator_ack" required />
             <span>
-              <strong>Operator Acknowledgment:</strong>
-              I confirm I have the authority to request a bay walkthrough, and understand this pilot is
-              for evaluating edge-AI wrench-time telemetry.
+              <span data-kh="ការយល់ព្រមពីម្ចាស់ហាង៖ ខ្ញុំបញ្ជាក់ថាខ្ញុំមានសិទ្ធិសម្រេចឲ្យចុះពិនិត្យហាង ហើយយល់ថាការសាកល្បងនេះគឺដើម្បីវាយតម្លៃប្រព័ន្ធតាមដានម៉ោងជួសជុលដោយ Edge-AI។">Operator Acknowledgment: I confirm I have the authority to request a bay walkthrough, and understand this pilot is for evaluating edge-AI wrench-time telemetry.</span>
               <a href="privacy.html">Privacy Policy</a>
             </span>
           </label>
-          <button class="btn btn-neon full-btn" type="submit">[ BOOK DEMO ]</button>
+          <button class="btn btn-neon full-btn" type="submit" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
           <p class="modal-copy">
             Or message us directly on Telegram:
             <a href="https://t.me/+855965188669" target="_blank" rel="noopener noreferrer">+855 96 518 8669</a>
