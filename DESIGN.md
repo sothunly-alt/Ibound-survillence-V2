@@ -153,3 +153,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-10 | Demo modal conversion friction | Short authority Operator Ack (full legal stays on privacy/install); dropdown = Current shop cameras, not Plan interest |
 | 2026-09-10 | Device chrome / Telegram radius exception | Phone bezel ~30px + chat bubbles ~12px only on marketing mockups; product UI stays ≤4px |
 | 2026-09-10 | Sticky header solid chrome + logo → `#top` | Kill translucent header bleed; logo/mark unified back-to-top on landing |
+| 2026-09-10 | FirstWave consistency audit | Features triad locked on landing; HUD/Telegram Mechanic labels; payroll demoted in meta (background dual-clock only) |
