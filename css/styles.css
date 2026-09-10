@@ -660,10 +660,10 @@ h3 {
 
 .bbox {
   position: absolute;
-  left: 44%;
-  top: 34%;
-  width: 22%;
-  height: 52%;
+  left: 48%;
+  top: 30%;
+  width: 20%;
+  height: 54%;
   border: 2px solid color-mix(in srgb, var(--surveillance-green) 22%, transparent);
   opacity: 0;
   transform: scale(0.96);
@@ -738,18 +738,6 @@ h3 {
 .node-bm { bottom: -3px; left: calc(50% - 3px); }
 .node-lm { top: calc(50% - 3px); left: -3px; }
 .node-rm { top: calc(50% - 3px); right: -3px; }
-
-/* Pose skeleton — lean into hood */
-.bbox-skeleton {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  color: var(--neon);
-  pointer-events: none;
-  transform-origin: 70% 20%;
-  transform: translate(-6%, 8%) rotate(18deg) scale(0.92);
-}
 
 /* Live processing pulse */
 @keyframes telemetry-pulse {
@@ -2649,10 +2637,10 @@ h3 {
   }
 
   .bbox {
-    left: 40%;
-    top: 36%;
-    width: 28%;
-    height: 48%;
+    left: 42%;
+    top: 28%;
+    width: 26%;
+    height: 52%;
   }
 
   .hero {
