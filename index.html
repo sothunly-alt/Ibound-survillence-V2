@@ -1,39 +1,25 @@
 <!DOCTYPE html>
+
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages</title>
-    <meta
-      name="description"
-      content="Hands-free edge-AI cameras that clock active wrench-time from full-body pose estimation and send dual-clock scorecards to Telegram. Built for motorsport and performance garages."
-    />
-    <link rel="canonical" id="canonical-url" href="https://inbound-surveillance-landing-page.vercel.app/" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Inbound Surveillance" />
-    <meta
-      property="og:title"
-      content="Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages"
-    />
-    <meta
-      property="og:description"
-      content="Face ID is the handshake. Pose keeps the session alive. Dual-clock scorecards land on Telegram — 100% on-premise edge AI for performance garages."
-    />
-    <meta property="og:url" content="https://inbound-surveillance-landing-page.vercel.app/" />
-    <meta property="og:image" content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta
-      name="twitter:title"
-      content="Inbound Surveillance — Automated Wrench-Time Tracking"
-    />
-    <meta
-      name="twitter:description"
-      content="Edge-AI pose tracking clocks billable wrench-time and margin protection — dual-clock scorecards via @Inbound_Surveillance_bot."
-    />
-    <meta name="twitter:image" content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" />
-    <script type="application/ld+json">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages</title>
+<meta content="Hands-free edge-AI cameras that clock active wrench-time from full-body pose estimation and send dual-clock scorecards to Telegram. Built for motorsport and performance garages." name="description"/>
+<link href="https://inbound-surveillance-landing-page.vercel.app/" id="canonical-url" rel="canonical"/>
+<meta content="website" property="og:type"/>
+<meta content="Inbound Surveillance" property="og:site_name"/>
+<meta content="Inbound Surveillance — Automated Wrench-Time Tracking for Performance Garages" property="og:title"/>
+<meta content="Face ID is the handshake. Pose keeps the session alive. Dual-clock scorecards land on Telegram — 100% on-premise edge AI for performance garages." property="og:description"/>
+<meta content="https://inbound-surveillance-landing-page.vercel.app/" property="og:url"/>
+<meta content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" property="og:image"/>
+<meta content="1200" property="og:image:width"/>
+<meta content="630" property="og:image:height"/>
+<meta content="summary_large_image" name="twitter:card"/>
+<meta content="Inbound Surveillance — Automated Wrench-Time Tracking" name="twitter:title"/>
+<meta content="Edge-AI pose tracking clocks billable wrench-time and margin protection — dual-clock scorecards via @Inbound_Surveillance_bot." name="twitter:description"/>
+<meta content="https://inbound-surveillance-landing-page.vercel.app/assets/og-preview.png" name="twitter:image"/>
+<script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@graph": [
@@ -77,27 +63,19 @@
         ]
       }
     </script>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon.png" />
-    <link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-    <link rel="preload" as="image" href="assets/hero-garage.png" fetchpriority="high" />
-    <link rel="preload" as="image" href="assets/demo-mechanic.png" />
-    <meta name="theme-color" content="#000000" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;600&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="css/styles.css" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
-    <style>
+<link href="favicon.svg" rel="icon" type="image/svg+xml"/>
+<link href="assets/favicon.png" rel="icon" sizes="32x32" type="image/png"/>
+<link href="assets/favicon-48.png" rel="icon" sizes="48x48" type="image/png"/>
+<link href="assets/apple-touch-icon.png" rel="apple-touch-icon"/>
+<link as="image" fetchpriority="high" href="assets/hero-garage.png" rel="preload"/>
+<link as="image" href="assets/demo-mechanic.png" rel="preload"/>
+<meta content="#000000" name="theme-color"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="True" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&amp;family=IBM+Plex+Mono:wght@400;700&amp;family=IBM+Plex+Sans:wght@400;600&amp;display=swap" rel="stylesheet"/>
+<link href="css/styles.css" rel="stylesheet"/>
+<link crossorigin="True" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" rel="stylesheet"/>
+<style>
       html,
       body {
         background: #000;
@@ -110,806 +88,726 @@
         background: #000;
       }
     </style>
-  </head>
-  <body>
-    <div id="boot-loader" class="boot-overlay" role="status" aria-live="polite" aria-busy="true" hidden>
-      <div class="boot-modal">
-        <div class="boot-header">
-          <div class="boot-title-group">
-            <span class="boot-dot"></span>
-            <span class="boot-title">INBOUND_DAEMON // V2.0-EDGE</span>
-          </div>
-          <span class="boot-node-id">NODE://PP-BAY-01</span>
-        </div>
-
-        <div class="boot-terminal" id="boot-terminal">
-          <div class="log-entry">> INBOUND CORE: INITIALIZING ON-PREMISE STACK</div>
-          <div class="log-entry">> CHECKING LOCAL RUNTIME: ONNX_TENSOR_RT [OK]</div>
-          <div class="log-entry">> LOADING MODEL: YOLOv8_POSE_ESTIMATION (17 PTS)</div>
-          <div class="log-entry log-highlight">> ZERO-CLOUD PIPELINE: SECURE ENCLAVE LOCKED</div>
-        </div>
-
-        <div class="boot-progress-wrapper">
-          <div class="boot-progress-bar">
-            <div class="boot-progress-fill" id="boot-bar"></div>
-          </div>
-          <div class="boot-telemetry">
-            <span id="boot-status">INITIALIZING POSE PIPELINE...</span>
-            <span id="boot-percentage">0%</span>
-          </div>
-        </div>
-        <p class="boot-skip-hint" id="boot-skip-hint" hidden>TAP OR PRESS ESC TO SKIP</p>
-      </div>
-    </div>
-
-    <div class="grain" aria-hidden="true"></div>
-
-    <header class="site-header" id="header">
-      <div class="scroll-progress" aria-hidden="true"></div>
-      <div class="container header-inner">
-        <a class="brand" href="#top" aria-label="Inbound Surveillance home">
-          <span class="brand-mark" aria-hidden="true">
-            <img src="assets/brand-mark.png" alt="Inbound Surveillance mark" width="34" height="34" />
-          </span>
-          <span class="brand-text">
-            <span class="brand-name">INBOUND</span>
-            <span class="brand-sub">SURVEILLANCE</span>
-          </span>
-        </a>
-
-        <nav class="nav-desktop" aria-label="Primary">
-          <a href="#roi">Problem</a>
-          <a href="#demo">Engine</a>
-          <a href="#field-notes">Field Notes</a>
-          <a href="#team">Team</a>
-        </nav>
-
-        <div class="header-actions">
-          <div class="lang-toggle" role="group" aria-label="Language">
-            <button type="button" class="lang-toggle-btn" data-lang-set="en" aria-pressed="true">EN</button>
-            <span class="lang-toggle-sep" aria-hidden="true">|</span>
-            <button type="button" class="lang-toggle-btn" data-lang-set="kh" aria-pressed="false">KH</button>
-          </div>
-          <button class="btn btn-neon btn-sm" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-          <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false" data-menu-toggle>
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-        </div>
-      </div>
-      <nav class="nav-mobile" id="mobile-nav" hidden>
-        <a href="#roi">Problem</a>
-        <a href="#demo">Engine</a>
-        <a href="#field-notes">Field Notes</a>
-        <a href="#team">Team</a>
-        <button class="btn btn-neon" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-      </nav>
-    </header>
-
-    <main id="top">
-      <section class="hero">
-        <div class="hero-media" aria-hidden="true">
-          <img src="assets/hero-garage.png" alt="" fetchpriority="high" />
-          <div class="hero-veil"></div>
-        </div>
-        <div class="container hero-content">
-          <p class="eyebrow">
-            <span class="pulse"></span>
+</head>
+<body>
+<div aria-busy="true" aria-live="polite" class="boot-overlay" hidden="True" id="boot-loader" role="status">
+<div class="boot-modal">
+<div class="boot-header">
+<div class="boot-title-group">
+<span class="boot-dot"></span>
+<span class="boot-title">INBOUND_DAEMON // V2.0-EDGE</span>
+</div>
+<span class="boot-node-id">NODE://PP-BAY-01</span>
+</div>
+<div class="boot-terminal" id="boot-terminal">
+<div class="log-entry">&gt; INBOUND CORE: INITIALIZING ON-PREMISE STACK</div>
+<div class="log-entry">&gt; CHECKING LOCAL RUNTIME: ONNX_TENSOR_RT [OK]</div>
+<div class="log-entry">&gt; LOADING MODEL: YOLOv8_POSE_ESTIMATION (17 PTS)</div>
+<div class="log-entry log-highlight">&gt; ZERO-CLOUD PIPELINE: SECURE ENCLAVE LOCKED</div>
+</div>
+<div class="boot-progress-wrapper">
+<div class="boot-progress-bar">
+<div class="boot-progress-fill" id="boot-bar"></div>
+</div>
+<div class="boot-telemetry">
+<span id="boot-status">INITIALIZING POSE PIPELINE...</span>
+<span id="boot-percentage">0%</span>
+</div>
+</div>
+<p class="boot-skip-hint" data-kh="ចុច ឬចុច ESC ដើម្បីរំលង" hidden="True" id="boot-skip-hint">TAP OR PRESS ESC TO SKIP</p>
+</div>
+</div>
+<div aria-hidden="true" class="grain"></div>
+<header class="site-header" id="header">
+<div aria-hidden="true" class="scroll-progress"></div>
+<div class="container header-inner">
+<a aria-label="Inbound Surveillance home" class="brand" href="#top">
+<span aria-hidden="true" class="brand-mark">
+<img alt="Inbound Surveillance mark" height="34" src="assets/brand-mark.png" width="34"/>
+</span>
+<span class="brand-text">
+<span class="brand-name">INBOUND</span>
+<span class="brand-sub">SURVEILLANCE</span>
+</span>
+</a>
+<nav aria-label="Primary" class="nav-desktop">
+<a data-kh="បញ្ហា" href="#roi">Problem</a>
+<a data-kh="ប្រព័ន្ធ" href="#demo">Engine</a>
+<a data-kh="កំណត់ត្រាវាល" href="#field-notes">Field Notes</a>
+<a data-kh="ក្រុមការងារ" href="#team">Team</a>
+</nav>
+<div class="header-actions">
+<div aria-label="Language" class="lang-toggle" role="group">
+<button aria-pressed="true" class="lang-toggle-btn" data-lang-set="en" type="button">EN</button>
+<span aria-hidden="true" class="lang-toggle-sep">|</span>
+<button aria-pressed="false" class="lang-toggle-btn" data-lang-set="kh" type="button">KH</button>
+</div>
+<button class="btn btn-neon btn-sm" data-kh="[ កក់សាកល្បង ]" data-open-demo="True" type="button">[ BOOK DEMO ]</button>
+<button aria-expanded="false" aria-label="Open menu" class="menu-toggle" data-menu-toggle="True" type="button">
+<span></span>
+<span></span>
+<span></span>
+</button>
+</div>
+</div>
+<nav class="nav-mobile" hidden="True" id="mobile-nav">
+<a data-kh="បញ្ហា" href="#roi">Problem</a>
+<a data-kh="ប្រព័ន្ធ" href="#demo">Engine</a>
+<a data-kh="កំណត់ត្រាវាល" href="#field-notes">Field Notes</a>
+<a data-kh="ក្រុមការងារ" href="#team">Team</a>
+<button class="btn btn-neon" data-kh="[ កក់សាកល្បង ]" data-open-demo="True" type="button">[ BOOK DEMO ]</button>
+</nav>
+</header>
+<main id="top">
+<section class="hero">
+<div aria-hidden="true" class="hero-media">
+<img alt="" fetchpriority="high" src="assets/hero-garage.png"/>
+<div class="hero-veil"></div>
+</div>
+<div class="container hero-content">
+<p class="eyebrow">
+<span class="pulse"></span><span data-kh="&gt; ប្រព័ន្ធស្ងាត់ៗសម្រាប់ហាង performance ខ្ពស់">
             &gt; INVISIBLE INFRASTRUCTURE FOR HIGH-END GARAGES
-          </p>
-          <h1>STOP BLEEDING MARGINS. RECOVER UNBILLED WRENCH-TIME.</h1>
-          <p class="lede">
+          </span></p>
+<h1 data-kh="ទប់ស្កាត់ការខាតបង់ប្រាក់ចំណេញ។ ទាញម៉ោងជួសជុលដែលមិនបានគិតលុយមកវិញ។">STOP BLEEDING MARGINS. RECOVER UNBILLED WRENCH-TIME.</h1>
+<p class="lede" data-kh="ប្រព័ន្ធតាមដានក្នុងហាង ដែលប្រែកម្មការជួសជុលមិនបានកត់ត្រាទៅជាម៉ោងគិតលុយបាន — គ្មាននរណាប៉ះអេក្រង់។">
             The on-premise surveillance network that turns unlogged garage labor into billable
             hours—without anyone touching a screen.
           </p>
-          <div class="hero-cta">
-            <button class="btn btn-neon btn-lg" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-            <a class="btn btn-ghost btn-lg" href="#architecture">See how it works</a>
-            <p class="social-inline">Built from floor interviews with Phnom Penh performance garages.</p>
-          </div>
-          <figure class="hero-video">
-            <div class="hero-video-frame">
-              <video
-                autoplay
-                muted
-                loop
-                playsinline
-                preload="metadata"
-                aria-label="Bay CCTV garage feed"
-              >
-                <source src="assets/garage-feed-01.mp4" type="video/mp4" />
-              </video>
-            </div>
-            <figcaption class="hero-video-caption mono">&gt; LIVE TELEMETRY // REAL-TIME LOSS PREVENTION</figcaption>
-          </figure>
-        </div>
-      </section>
-
-      <section class="section demo-section" id="demo">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index" data-kh="[ 01 ] ប្រព័ន្ធ">[ 01 ] System</p>
-            <h2 data-kh="ទុកឲ្យហាងកត់ម៉ោងខ្លួនឯង។">Watch the bay clock itself.</h2>
-            <p class="section-copy" data-kh="គ្មានថេប្លេត។ គ្មានកាតកត់ម៉ោង។ កាយវិការចាក់សោវេនធ្វើការ នាឡិកាពីរដើររាប់ម៉ោង រួចរបាយការណ៍ចូល Telegram។">
+<div class="hero-cta">
+<button class="btn btn-neon btn-lg" data-kh="[ កក់សាកល្បង ]" data-open-demo="True" type="button">[ BOOK DEMO ]</button>
+<a class="btn btn-ghost btn-lg" data-kh="មើលរបៀបដំណើរការ" href="#architecture">See how it works</a>
+<p class="social-inline" data-kh="បង្កើតពីការសម្ភាសន៍ផ្ទាល់នៅហាង performance ក្នុង Phnom Penh។">Built from floor interviews with Phnom Penh performance garages.</p>
+</div>
+<figure class="hero-video">
+<div class="hero-video-frame">
+<video aria-label="Bay CCTV garage feed" autoplay="True" loop="True" muted="True" playsinline="True" preload="metadata">
+<source src="assets/garage-feed-01.mp4" type="video/mp4"/>
+</video>
+</div>
+<figcaption class="hero-video-caption mono" data-kh="&gt; ទិន្នន័យផ្ទាល់ // បង្ការការខាតបង់ពេលវេលាជាក់ស្តែង">&gt; LIVE TELEMETRY // REAL-TIME LOSS PREVENTION</figcaption>
+</figure>
+</div>
+</section>
+<section class="section demo-section" id="demo">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 01 ] ប្រព័ន្ធ">[ 01 ] System</p>
+<h2 data-kh="ទុកឲ្យហាងកត់ម៉ោងខ្លួនឯង។">Watch the bay clock itself.</h2>
+<p class="section-copy" data-kh="គ្មានថេប្លេត។ គ្មានកាតកត់ម៉ោង។ កាយវិការចាក់សោវេនធ្វើការ នាឡិកាពីរដើររាប់ម៉ោង រួចរបាយការណ៍ចូល Telegram។">
               No tablets. No punch cards. Pose locks the session, dual clocks tally the shift,
               and the scorecard drops on Telegram.
             </p>
-          </header>
-
-          <div class="hud-frame">
-            <div class="hud-chrome">
-              <span class="hud-cam">CAM-01 · BAY 02</span>
-              <span class="hud-live"><i></i> REC LIVE</span>
-              <span class="hud-clock" data-hud-clock>14:32:08</span>
-            </div>
-
-            <div class="hud-stage">
-              <img class="hud-feed" src="assets/demo-mechanic.png" alt="Overhead bay camera feed of a mechanic working under a performance car hood" />
-              <div class="scanlines" aria-hidden="true"></div>
-
-              <div class="bbox" data-bbox>
-                <span class="bbox-tag">[Mechanic] (Wrenching) <strong>0.89</strong> <strong data-bbox-timer>04:11:55</strong></span>
-                <!-- Drag-handle nodes -->
-                <span class="bbox-node node-tl"></span>
-                <span class="bbox-node node-tr"></span>
-                <span class="bbox-node node-bl"></span>
-                <span class="bbox-node node-br"></span>
-                <span class="bbox-node node-tm"></span>
-                <span class="bbox-node node-bm"></span>
-                <span class="bbox-node node-lm"></span>
-                <span class="bbox-node node-rm"></span>
-              </div>
-
-              <aside class="phone" data-phone aria-label="Telegram scorecard preview">
-                <div class="phone-mockup">
-                  <header class="tg-header">
-                    <span class="tg-back" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </span>
-                    <img class="tg-avatar" src="assets/logo-chimp.png" alt="" width="36" height="36" />
-                    <div class="tg-identity">
-                      <p class="tg-name">Inbound-Surveillance</p>
-                      <p class="tg-role">bot</p>
-                    </div>
-                    <span class="tg-menu" aria-hidden="true">⋮</span>
-                  </header>
-                  <div class="tg-chat">
-                    <div class="telegram-bubble">
-                      <p class="tg-bubble-title">🔧 Inbound Garage Snapshot</p>
-                      <p class="tg-stat">🏢 Shop: <em>Demo Garage</em></p>
-                      <p class="tg-stat">⏰ Timestamp: <em>2026-09-10 11:45:28</em></p>
-                      <p class="tg-stat">🛠️ Floor Status: <em>WRENCH TIME</em> Mechanic, Mechanic, Mechanic</p>
-                      <p class="tg-stat">👥 Detections: <em>2 Person(s)</em></p>
-                      <p class="tg-stat">🪪 Identified: <em>Mechanic, person</em></p>
-                      <span class="tg-time">11:45 AM</span>
-                    </div>
-                    <div class="telegram-bubble telegram-bubble--photo">
-                      <img class="tg-alert-photo" src="assets/demo-mechanic.png" alt="Bay camera still — phone usage alert" />
-                      <div class="tg-bubble-body">
-                        <p class="tg-stat">📱 Demo Garage Alert: <em>Phone Usage</em></p>
-                        <p class="tg-stat">📍 Bay: <em>Lift Bay 1</em></p>
-                        <p class="tg-stat">👤 Tech: <em>Mechanic (95% conf)</em></p>
-                        <p class="tg-stat">⏰ Time: <em>11:52:33</em></p>
-                        <p class="tg-audit">🔍 AI Audit: The technician is standing in the bay holding a small rectangular object in both hands, looking down at it, which matches the visual profile of a personal smartphone rather than a diagnostic tablet or work tool.</p>
-                        <span class="tg-time">11:52 AM</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="tg-composer" aria-hidden="true">
-                    <span class="tg-emoji">☺</span>
-                    <span class="tg-input">Message</span>
-                    <span class="tg-attach">📎</span>
-                    <span class="tg-mic">🎤</span>
-                  </div>
-                </div>
-              </aside>
-            </div>
-
-            <div class="hud-footer">
-              <span>EDGE AI · ON-PREM</span>
-              <span>4MP PoE WDR</span>
-              <span class="hud-fps">60 FPS</span>
-            </div>
-          </div>
-
-          <ol class="flow-steps">
-            <li class="is-active" data-flow-step="0"><span>01</span> Mechanic under the hood</li>
-            <li data-flow-step="1"><span>02</span> Pose lock · dual clocks tick</li>
-            <li data-flow-step="2"><span>03</span> Telegram scorecard on your phone</li>
-          </ol>
-        </div>
-      </section>
-
-      <section class="section architecture-section" id="architecture">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index">[ 02 ] Architecture</p>
-            <h2>Face ID is the handshake. Pose keeps the session alive.</h2>
-            <p class="section-copy">
+</header>
+<div class="hud-frame">
+<div class="hud-chrome">
+<span class="hud-cam">CAM-01 · BAY 02</span>
+<span class="hud-live"><i></i> REC LIVE</span>
+<span class="hud-clock" data-hud-clock="">14:32:08</span>
+</div>
+<div class="hud-stage">
+<img alt="Overhead bay camera feed of a mechanic working under a performance car hood" class="hud-feed" src="assets/demo-mechanic.png"/>
+<div aria-hidden="true" class="scanlines"></div>
+<div class="bbox" data-bbox="True">
+<span class="bbox-tag">[Mechanic] (Wrenching) <strong>0.89</strong> <strong data-bbox-timer="">04:11:55</strong></span>
+<!-- Drag-handle nodes -->
+<span class="bbox-node node-tl"></span>
+<span class="bbox-node node-tr"></span>
+<span class="bbox-node node-bl"></span>
+<span class="bbox-node node-br"></span>
+<span class="bbox-node node-tm"></span>
+<span class="bbox-node node-bm"></span>
+<span class="bbox-node node-lm"></span>
+<span class="bbox-node node-rm"></span>
+</div>
+<aside aria-label="Telegram scorecard preview" class="phone" data-phone="">
+<div class="phone-mockup">
+<header class="tg-header">
+<span aria-hidden="true" class="tg-back">
+<svg fill="none" height="18" viewbox="0 0 24 24" width="18"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</span>
+<img alt="" class="tg-avatar" height="36" src="assets/logo-chimp.png" width="36"/>
+<div class="tg-identity">
+<p class="tg-name">Inbound-Surveillance</p>
+<p class="tg-role" data-kh="bot">bot</p>
+</div>
+<span aria-hidden="true" class="tg-menu">⋮</span>
+</header>
+<div class="tg-chat">
+<div class="telegram-bubble">
+<p class="tg-bubble-title" data-kh="🔧 Inbound Garage Snapshot">🔧 Inbound Garage Snapshot</p>
+<p class="tg-stat">🏢 Shop: <em>Demo Garage</em></p>
+<p class="tg-stat">⏰ Timestamp: <em>2026-09-10 11:45:28</em></p>
+<p class="tg-stat">🛠️ Floor Status: <em>WRENCH TIME</em> Mechanic, Mechanic, Mechanic</p>
+<p class="tg-stat">👥 Detections: <em>2 Person(s)</em></p>
+<p class="tg-stat">🪪 Identified: <em>Mechanic, person</em></p>
+<span class="tg-time">11:45 AM</span>
+</div>
+<div class="telegram-bubble telegram-bubble--photo">
+<img alt="Bay camera still — phone usage alert" class="tg-alert-photo" src="assets/demo-mechanic.png"/>
+<div class="tg-bubble-body">
+<p class="tg-stat">📱 Demo Garage Alert: <em>Phone Usage</em></p>
+<p class="tg-stat">📍 Bay: <em>Lift Bay 1</em></p>
+<p class="tg-stat">👤 Tech: <em>Mechanic (95% conf)</em></p>
+<p class="tg-stat">⏰ Time: <em>11:52:33</em></p>
+<p class="tg-audit" data-kh="🔍 AI Audit: ជាងកំពុងឈរក្នុងកន្លែងជួសជុល កាន់វត្ថុរាងចតុកោណតូចដោយដៃទាំងពីរ មើលចុះក្រោម — ស្រដៀងទូរស័ព្ទផ្ទាល់ខ្លួន ជាងថេប្លេតធ្វើការ។">🔍 AI Audit: The technician is standing in the bay holding a small rectangular object in both hands, looking down at it, which matches the visual profile of a personal smartphone rather than a diagnostic tablet or work tool.</p>
+<span class="tg-time">11:52 AM</span>
+</div>
+</div>
+</div>
+<div aria-hidden="true" class="tg-composer">
+<span class="tg-emoji">☺</span>
+<span class="tg-input" data-kh="សារ">Message</span>
+<span class="tg-attach">📎</span>
+<span class="tg-mic">🎤</span>
+</div>
+</div>
+</aside>
+</div>
+<div class="hud-footer">
+<span>EDGE AI · ON-PREM</span>
+<span>4MP PoE WDR</span>
+<span class="hud-fps">60 FPS</span>
+</div>
+</div>
+<ol class="flow-steps">
+<li class="is-active" data-flow-step="0"><span>01</span><span data-kh="ជាងកំពុងជួសជុលក្រោមគម្របម៉ាស៊ីន">Mechanic under the hood</span></li>
+<li data-flow-step="1"><span>02</span><span data-kh="ចាប់កាយវិការ · នាឡិកាទាំងពីរដើរទន្ទឹមគ្នា">Pose lock · dual clocks tick</span></li>
+<li data-flow-step="2"><span>03</span><span data-kh="របាយការណ៍ Telegram ចូលទូរស័ព្ទដៃផ្ទាល់">Telegram scorecard on your phone</span></li>
+</ol>
+</div>
+</section>
+<section class="section architecture-section" id="architecture">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 02 ] ស្ថាបត្យកម្ម">[ 02 ] Architecture</p>
+<h2 data-kh="Face ID គឺការចាប់ផ្តើម។ កាយវិការរក្សាវេនឲ្យនៅរស់។">Face ID is the handshake. Pose keeps the session alive.</h2>
+<p class="section-copy" data-kh="សម្គាល់មុខធ្លាក់សូន្យក្រោមគម្រប ក្រោមតួ ឬក្រោយខែល។ ចំណុចកាយ និងតំបន់ bay រក្សាម៉ោងគិតលុយមិនដាច់។">
               Facial recognition drops to zero under a hood, beneath a chassis, or behind a grinding shield.
               Body keypoints and bay polygons keep billable time unbroken.
             </p>
-          </header>
-
-          <div class="arch-grid">
-            <article class="arch-card">
-              <div class="arch-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <path d="M8 6H6v4M24 6h2v4M8 26H6v-4M24 26h2v-4" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="16" cy="13" r="4" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M10 24c1.5-3.5 4-5 6-5s4.5 1.5 6 5" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </div>
-              <p class="arch-layer">Assist</p>
-              <h3>Face ID Assist</h3>
-              <p class="arch-sub">Initial identity lock</p>
-              <p>
+</header>
+<div class="arch-grid">
+<article class="arch-card">
+<div aria-hidden="true" class="arch-icon">
+<svg fill="none" viewbox="0 0 32 32">
+<path d="M8 6H6v4M24 6h2v4M8 26H6v-4M24 26h2v-4" stroke="currentColor" stroke-width="1.5"></path>
+<circle cx="16" cy="13" r="4" stroke="currentColor" stroke-width="1.5"></circle>
+<path d="M10 24c1.5-3.5 4-5 6-5s4.5 1.5 6 5" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+</div>
+<p class="arch-layer" data-kh="ជំនួយ">Assist</p>
+<h3 data-kh="Face ID Assist">Face ID Assist</h3>
+<p class="arch-sub" data-kh="ចាក់សោអត្តសញ្ញាណដំបូង">Initial identity lock</p>
+<p data-kh="សម្គាល់ជាងពេលចូល bay នៅពេលមើលឃើញមុខ។ ជាជម្រើសបន្ថែម — មិនរារាំងពេលជាងត្រូវបាំង ម៉ាស់ ឬបែរខ្នងពីកាមេរ៉ា។">
                 Identifies the operator on bay entry when a face is visible.
                 Opportunistic only — non-blocking when the technician is obstructed,
                 masked, or facing away from the camera.
               </p>
-            </article>
-            <article class="arch-card is-primary">
-              <div class="arch-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <circle cx="16" cy="6" r="2" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="10" cy="14" r="2" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="22" cy="14" r="2" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="12" cy="26" r="2" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="20" cy="26" r="2" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M16 8v4M14 14h4M11.5 15.5L13 24M20.5 15.5L19 24" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </div>
-              <p class="arch-layer">Reliability</p>
-              <h3>Pose &amp; Skeletal Tracking</h3>
-              <p class="arch-sub">Session continuity</p>
-              <p>
+</article>
+<article class="arch-card is-primary">
+<div aria-hidden="true" class="arch-icon">
+<svg fill="none" viewbox="0 0 32 32">
+<circle cx="16" cy="6" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+<circle cx="10" cy="14" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+<circle cx="22" cy="14" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+<circle cx="12" cy="26" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+<circle cx="20" cy="26" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+<path d="M16 8v4M14 14h4M11.5 15.5L13 24M20.5 15.5L19 24" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+</div>
+<p class="arch-layer" data-kh="ភាពជឿជាក់">Reliability</p>
+<h3 data-kh="តាមដានកាយវិការ និងគ្រោងឆ្អឹង">Pose &amp; Skeletal Tracking</h3>
+<p class="arch-sub" data-kh="រក្សាវេនបន្ត">Session continuity</p>
+<p data-kh="តាមដានចលនាគ្រោងឆ្អឹង និងតំបន់ bay ឲ្យវេននៅរស់ក្រោមគម្រប ក្រោមតួ ឬក្រោយឧបករណ៍សុវត្ថិភាព។ មុខអាចបាត់ — ម៉ោងគិតលុយមិនបាត់។">
                 Tracks skeletal movement and bay occupancy polygons so the session
                 stays alive under the hood, under the chassis, or behind safety gear.
                 Face can disappear; billable time does not.
               </p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section roi-section" id="roi">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index">[ 03 ] The Math</p>
-            <h2>The leak is already on your floor.</h2>
-            <p class="section-copy">
+</article>
+</div>
+</div>
+</section>
+<section class="section roi-section" id="roi">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 03 ] គណិត">[ 03 ] The Math</p>
+<h2 data-kh="ការលេចធ្លាយស្ថិតនៅលើផ្ទៃហាងអ្នករួចហើយ។">The leak is already on your floor.</h2>
+<p class="section-copy" data-kh="KPI រថយន្តពិភពលោកគោលដៅ ~80% ផលិតភាពជាង — ទុក 1+ ម៉ោងមិនគិតលុយ/ជាង/ថ្ងៃ។ អ្នកកំណត់ការប៉ាន់ស្មានខ្លួនឯង។ យើងមិនបង្កើតលេខក្លែងក្លាយ។">
               Global automotive KPIs target ~80% technician productivity — leaving 1+ hours non-billable
               per tech per day. Set your own estimate; we do not invent shop-measured minutes.
             </p>
-          </header>
-
-          <div class="roi-calc" data-roi-calc>
-            <p class="roi-calc-kicker">&gt; CALCULATE YOUR DAILY CAPITAL BLEED</p>
-            <p class="roi-calc-baseline mono">
+</header>
+<div class="roi-calc" data-roi-calc="">
+<p class="roi-calc-kicker" data-kh="&gt; គណនាការខាតបង់ដើមទុនប្រចាំថ្ងៃ">&gt; CALCULATE YOUR DAILY CAPITAL BLEED</p>
+<p class="roi-calc-baseline mono" data-kh="(ផ្អែកលើ 45 នាទី/ថ្ងៃ មិនបានគិតលុយ ពីម្ចាស់ហាងក្នុងស្រុក)">
               (Based on a conservative 45 min/day unbilled baseline reported by local operators)
             </p>
-            <div class="roi-sliders">
-              <label class="roi-slider">
-                <span class="roi-slider-top">
-                  <span>ACTIVE BAYS</span>
-                  <strong data-roi-bays-display>3</strong>
-                </span>
-                <input type="range" min="1" max="10" value="3" step="1" data-roi-bays aria-label="Number of active bays" />
-              </label>
-              <label class="roi-slider">
-                <span class="roi-slider-top">
-                  <span>UNBILLED MIN / DAY</span>
-                  <strong data-roi-minutes-display>45 min</strong>
-                </span>
-                <input
-                  type="range"
-                  min="15"
-                  max="90"
-                  value="45"
-                  step="5"
-                  data-roi-minutes
-                  aria-label="Estimated unbilled minutes per technician per day"
-                />
-              </label>
-              <label class="roi-slider">
-                <span class="roi-slider-top">
-                  <span>LABOR RATE</span>
-                  <strong data-roi-rate-display>$35/hr</strong>
-                </span>
-                <input type="range" min="20" max="80" value="35" step="5" data-roi-rate aria-label="Shop labor rate" />
-              </label>
-            </div>
-            <div class="roi-calc-result">
-              <div class="roi-calc-pair">
-                <div>
-                  <p class="roi-calc-label">PROJECTED MONTHLY REVENUE RECOVERED</p>
-                  <p class="roi-calc-value neon" data-roi-monthly-total>$1,890</p>
-                </div>
-                <div>
-                  <p class="roi-calc-label">SOFTWARE COST ($99/BAY/MO)</p>
-                  <p class="roi-calc-value muted" data-roi-software>$297</p>
-                </div>
-              </div>
-              <p class="roi-calc-meta mono">
+<div class="roi-sliders">
+<label class="roi-slider">
+<span class="roi-slider-top">
+<span data-kh="ចំនួន BAY សកម្ម">ACTIVE BAYS</span>
+<strong data-roi-bays-display="">3</strong>
+</span>
+<input aria-label="Number of active bays" data-roi-bays="" max="10" min="1" step="1" type="range" value="3"/>
+</label>
+<label class="roi-slider">
+<span class="roi-slider-top">
+<span data-kh="នាទីមិនគិតលុយ / ថ្ងៃ">UNBILLED MIN / DAY</span>
+<strong data-roi-minutes-display="">45 min</strong>
+</span>
+<input aria-label="Estimated unbilled minutes per technician per day" data-roi-minutes="" max="90" min="15" step="5" type="range" value="45"/>
+</label>
+<label class="roi-slider">
+<span class="roi-slider-top">
+<span data-kh="អត្រាឈ្នួល">LABOR RATE</span>
+<strong data-roi-rate-display="">$35/hr</strong>
+</span>
+<input aria-label="Shop labor rate" data-roi-rate="" max="80" min="20" step="5" type="range" value="35"/>
+</label>
+</div>
+<div class="roi-calc-result">
+<div class="roi-calc-pair">
+<div>
+<p class="roi-calc-label" data-kh="ចំណូលប្រចាំខែដែលអាចទាញមកវិញ">PROJECTED MONTHLY REVENUE RECOVERED</p>
+<p class="roi-calc-value neon" data-roi-monthly-total="">$1,890</p>
+</div>
+<div>
+<p class="roi-calc-label" data-kh="ថ្លៃ Software ($99/BAY/ខែ)">SOFTWARE COST ($99/BAY/MO)</p>
+<p class="roi-calc-value muted" data-roi-software="">$297</p>
+</div>
+</div>
+<p class="roi-calc-meta mono"><span data-kh="ចំណូលប្រចាំឆ្នាំទាញមកវិញ:">
                 Annual Revenue Recovered:
-                <span data-roi-annual>$22,680</span>
+                </span><span data-roi-annual="">$22,680</span><span data-kh="· ថ្លៃ Software ប្រចាំឆ្នាំ:">
                 · Annual Software Cost:
-                <span data-roi-software-annual>$3,564</span>
+                </span><span data-roi-software-annual="">$3,564</span><span data-kh="· សងដើម">
                 · Payback
-                <span data-roi-payback>DAY 04</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section field-notes-section" id="field-notes">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index">[ 04 ] Field Notes</p>
-            <p class="partners-label mono">> FIELD DISCOVERY // PHNOM PENH GROUND TRUTH</p>
-            <h2>Bespoke builds. Paper clipboards. Blind trust.</h2>
-            <p class="section-copy">
+                </span><span data-roi-payback="">DAY 04</span>
+</p>
+</div>
+</div>
+</div>
+</section>
+<section class="section field-notes-section" id="field-notes">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 04 ] កំណត់ត្រាវាល">[ 04 ] Field Notes</p>
+<p class="partners-label mono" data-kh="&gt; ការរកឃើញវាល // Phnom Penh GROUND TRUTH">&gt; FIELD DISCOVERY // PHNOM PENH GROUND TRUTH</p>
+<h2 data-kh="ការជួសជុលតាមបំណង។ ក្តារក្រដាស។ ទុកចិត្តងងឹត។">Bespoke builds. Paper clipboards. Blind trust.</h2>
+<p class="section-copy" data-kh="សវនកម្ម bay ផ្ទាល់នៅ Mean Chey (Aeon 3) Koh Pich និងហាង import។ គ្រប់ bay បញ្ហាដូចគ្នា: ការងារតាមបំណងតម្លៃខ្ពស់តាមដានដោយអនុស្សាវរីយ៍ ពាក្យមាត់ និងក្រដាស។">
               Direct bay audits across Mean Chey (Aeon 3 corridor), Koh Pich private tuning bays, and import
               garages. In every bay, the operational failure was identical: high-value custom work tracked by
               memory, word-of-mouth, and paper.
             </p>
-          </header>
-
-          <div class="field-matrix">
-            <article class="field-col">
-              <p class="field-col-header mono">THE MARGIN BLEED</p>
-              <p class="field-datapoint mono">Custom Projects vs. Fixed Estimates</p>
-              <p>
+</header>
+<div class="field-matrix">
+<article class="field-col">
+<p class="field-col-header mono" data-kh="ការខាតបង់ចំណេញ">THE MARGIN BLEED</p>
+<p class="field-datapoint mono" data-kh="គម្រោងតាមបំណង vs. តម្លៃថេរ">Custom Projects vs. Fixed Estimates</p>
+<p data-kh="នៅហាង tuning ខ្ពស់ រថយន្តនីមួយៗមានបញ្ហាមិននឹកស្មាន។ បើម៉ោង diagnostic និងជួសជុលមិនកត់ស្វ័យប្រវត្តិ ម្ចាស់ខាត: ម៉ោងតាមបំណងរលត់ពីវិក្កយបត្រ ឬប្រាក់ខែជាងជួយបង់ពេលទំនេរមិនគិតលុយ។">
                 In high-end tuning and custom fabrication, every vehicle presents unique, unforeseen
                 complications. When diagnostic and fabrication time isn't logged automatically, owners absorb
                 the hit: custom hours slip off the final invoice, or fixed monthly technician salaries
                 subsidize unbilled shop idleness.
               </p>
-            </article>
-            <article class="field-col">
-              <p class="field-col-header mono">THE TRUST CEILING</p>
-              <p class="field-datapoint mono">Paper, Word of Mouth, and Memory</p>
-              <p>
+</article>
+<article class="field-col">
+<p class="field-col-header mono" data-kh="ដែនកំណត់នៃការទុកចិត្ត">THE TRUST CEILING</p>
+<p class="field-datapoint mono" data-kh="ក្រដាស ពាក្យមាត់ និងអនុស្សាវរីយ៍">Paper, Word of Mouth, and Memory</p>
+<p data-kh="ក្នុង bay ដែលស្ទង់ គ្មាន software គ្រប់គ្រងឌីជីថល។ តាមដានដោយក្តារ ពាក្យមាត់ និងទុកចិត្ត។ ម្ចាស់ចំណាយម៉ោងមានតម្លៃដើម្បីតាមដានបុគ្គលិក ទូរស័ព្ទ និងទាយថាអ្នកណាធ្វើរថយន្តណា។">
                 Across the bays surveyed, zero digital management software was in use. Bay tracking relies
                 entirely on clipboards, verbal updates, and unverified trust. Owners spend high-value hours
                 manually grading staff, policing phone usage, and guessing who worked on which vehicle.
               </p>
-            </article>
-            <article class="field-col">
-              <p class="field-col-header mono">THE GREASE BARRIER</p>
-              <p class="field-datapoint mono">Physical Work Rejects Touch Interfaces</p>
-              <p>
+</article>
+<article class="field-col">
+<p class="field-col-header mono" data-kh="របាំងខ្លាញ់">THE GREASE BARRIER</p>
+<p class="field-datapoint mono" data-kh="ការងារដៃបដិសេធអេក្រង់ប៉ះ">Physical Work Rejects Touch Interfaces</p>
+<p data-kh="ជាងដែលប្រើប្រេង degreaser និងឧបករណ៍ដៃ មិនចង់ដោះស្រោមដៃដើម្បីប៉ះថេប្លេត។ Software ធម្មតាបរាជ័យក្នុង 48 ម៉ោងព្រោះដៃកខ្វក់បដិសេធអេក្រង់ស្អាត។ បើតាមដានម៉ោង/សុវត្ថិភាពមិនមកពីពិដានដោយស្វ័យប្រវត្តិ វាមិនកើតឡើង។">
                 Mechanics working with fluids, degreaser, and hand tools refuse to de-glove to tap a tablet
                 or scan a QR code. Traditional shop software fails within 48 hours of install because dirty
                 hands reject clean screens. If time and safety tracking aren't invisible from the ceiling,
                 they do not happen.
               </p>
-            </article>
-          </div>
-
-          <div class="discovery-grid" id="proof">
-            <blockquote class="discovery-note">
-              <p class="discovery-tag">Margin bleed</p>
-              <p>
+</article>
+</div>
+<div class="discovery-grid" id="proof">
+<blockquote class="discovery-note">
+<p class="discovery-tag" data-kh="ការខាតបង់ចំណេញ">Margin bleed</p>
+<p data-kh="“គម្រោងតាមបំណងនីមួយៗខុសគ្នា។ បើមិនចាប់ម៉ោងពិតប្រាកដលើបញ្ហាមិននឹកស្មាន យើងទាយវិក្កយបត្រ ឬខាតចំណេញខ្លួនឯង។”">
                 “Every custom build is different. If we don't capture the exact hours sunk into an unexpected
                 problem, we either guess the final invoice or eat the lost margin ourselves.”
               </p>
-              <footer>— Owners, Expat Performance Garage · Mean Chey</footer>
-            </blockquote>
-            <blockquote class="discovery-note">
-              <p class="discovery-tag">Trust ceiling</p>
-              <p>
+<footer data-kh="— ម្ចាស់ Expat Performance Garage · Mean Chey">— Owners, Expat Performance Garage · Mean Chey</footer>
+</blockquote>
+<blockquote class="discovery-note">
+<p class="discovery-tag" data-kh="ដែនកំណត់នៃការទុកចិត្ត">Trust ceiling</p>
+<p data-kh="“ឥឡូវនេះគឺក្រដាស និងពាក្យមាត់។ ខ្ញុំចំណាយពាក់កណ្តាលរសៀលតាមដានថាអ្នកណាកំពុងជួសជុល អ្នកណាអង្គុយលេងទូរស័ព្ទក្នុង bay។”">
                 “Right now it’s all paper and word-of-mouth. I spend half my afternoon babysitting who is
                 actually wrenching versus who is sitting on their phone in the bay.”
               </p>
-              <footer>— Lead Mechanic, Private Tuning Bay · Koh Pich</footer>
-            </blockquote>
-            <blockquote class="discovery-note">
-              <p class="discovery-tag">Grease barrier</p>
-              <p>
+<footer data-kh="— Lead Mechanic Private Tuning Bay · Koh Pich">— Lead Mechanic, Private Tuning Bay · Koh Pich</footer>
+</blockquote>
+<blockquote class="discovery-note">
+<p class="discovery-tag" data-kh="របាំងខ្លាញ់">Grease barrier</p>
+<p data-kh="“មិនអាចប្រគល់អេក្រង់ឲ្យជាងដែលមានប្រេង transmission លើម្រាមដៃ។ បើតាមដានមិនស្វ័យប្រវត្តិពីក្រោយ គ្មាននរណាធ្វើ។”">
                 “You cannot hand a mechanic with transmission fluid on his fingers a screen to log his job.
                 If the tracking isn't automated in the background, nobody is going to do it.”
               </p>
-              <footer>— Mechanic, Import Tuning Shop · Phnom Penh</footer>
-            </blockquote>
-          </div>
-
-          <p class="field-sources mono">
+<footer data-kh="— Mechanic Import Tuning Shop · Phnom Penh">— Mechanic, Import Tuning Shop · Phnom Penh</footer>
+</blockquote>
+</div>
+<p class="field-sources mono" data-kh="ប្រភព: សវនកម្ម 3 bay performance ក្នុង Phnom Penh (Mean Chey, Koh Pich, Import Tuning) · 4–6 សម្ភាសន៍ហាង · Pilot 01 កំពុង staging · គ្មាន LOI ចុះហត្ថលេខា។">
             Sources: 3 Phnom Penh performance bays audited (Mean Chey, Koh Pich, Import Tuning) · 4–6
             exploratory storefront interviews · Pilot 01 in staging · Zero signed LOIs.
           </p>
-        </div>
-      </section>
-
-      <section class="section features-section" id="features">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index">[ 05 ] Capability</p>
-            <h2>Built for the bay, not the boardroom.</h2>
-          </header>
-
-          <div class="feature-grid">
-            <article class="feature-card">
-              <div class="feature-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <rect x="4" y="7" width="24" height="16" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="16" cy="15" r="4" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M12 7V5h8v2" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </div>
-              <h3>Active vs. Idle Tracking</h3>
-              <p>
+</div>
+</section>
+<section class="section features-section" id="features">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 05 ] សមត្ថភាព">[ 05 ] Capability</p>
+<h2 data-kh="បង្កើតសម្រាប់ bay មិនមែនបន្ទប់ប្រជុំ។">Built for the bay, not the boardroom.</h2>
+</header>
+<div class="feature-grid">
+<article class="feature-card">
+<div aria-hidden="true" class="feature-icon">
+<svg fill="none" viewbox="0 0 32 32">
+<rect height="16" stroke="currentColor" stroke-width="1.5" width="24" x="4" y="7"></rect>
+<circle cx="16" cy="15" r="4" stroke="currentColor" stroke-width="1.5"></circle>
+<path d="M12 7V5h8v2" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+</div>
+<h3 data-kh="តាមដាន Active vs. Idle">Active vs. Idle Tracking</h3>
+<p data-kh="តាមដានម៉ោងជួសជុលគិតលុយ vs. ទំនេរ/ទូរស័ព្ទ។ ចាប់ម៉ោង diagnostic និងតាមបំណងមិនបានគិតលុយ — មិនគិតថ្លៃទាបលើគម្រោងប្រែប្រួល។">
                 Automatically tracks billable wrench-time vs. idle/phone usage. Captures unbilled
                 diagnostic and custom fabrication hours so you never undercharge on variable projects.
               </p>
-            </article>
-            <article class="feature-card">
-              <div class="feature-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <path d="M6 24l6-8 5 4 9-12" stroke="currentColor" stroke-width="1.5" />
-                  <circle cx="26" cy="8" r="2" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </div>
-              <h3>Margins Loss Prevention</h3>
-              <p>
+</article>
+<article class="feature-card">
+<div aria-hidden="true" class="feature-icon">
+<svg fill="none" viewbox="0 0 32 32">
+<path d="M6 24l6-8 5 4 9-12" stroke="currentColor" stroke-width="1.5"></path>
+<circle cx="26" cy="8" r="2" stroke="currentColor" stroke-width="1.5"></circle>
+</svg>
+</div>
+<h3 data-kh="ការពារការខាតបង់ចំណេញ">Margins Loss Prevention</h3>
+<p data-kh="បង្ហាញកម្មការមិនគិតលុយ និង bay ទំនេរមុនវាក្លាយជាចំណូលខាតប្រចាំខែ — ការពារចំណេញដោយ Edge-AI មិនមែន spreadsheet មួយទៀត។">
                 Surfaces unbilled labor and idle bay time before it compounds into lost monthly
                 revenue — margin protection from edge-AI telemetry, not another spreadsheet.
               </p>
-            </article>
-            <article class="feature-card">
-              <div class="feature-icon" aria-hidden="true">
-                <svg viewBox="0 0 32 32" fill="none">
-                  <path d="M16 4l10 5v8c0 6-4.5 10.5-10 12C10.5 27.5 6 23 6 17V9l10-5z" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M12 16l3 3 5-6" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </div>
-              <h3>Safety Tracking</h3>
-              <p>
+</article>
+<article class="feature-card">
+<div aria-hidden="true" class="feature-icon">
+<svg fill="none" viewbox="0 0 32 32">
+<path d="M16 4l10 5v8c0 6-4.5 10.5-10 12C10.5 27.5 6 23 6 17V9l10-5z" stroke="currentColor" stroke-width="1.5"></path>
+<path d="M12 16l3 3 5-6" stroke="currentColor" stroke-width="1.5"></path>
+</svg>
+</div>
+<h3 data-kh="តាមដានសុវត្ថិភាព">Safety Tracking</h3>
+<p data-kh="តាមដានតំបន់ហានិភ័យក្រោម lift និងម៉ាស៊ីនកំពុងដើរ។ រាយការណ៍បំពានភ្លាមៗ ដើម្បីកាត់បន្ថយហានិភ័យ និងពេលឈប់ថ្លៃ។">
                 Tracks high-risk zones under lifts and around active machinery. Instantly flags
                 protocol violations to reduce liability exposure and eliminate costly downtime.
               </p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="section pricing-section" id="pricing">
-        <div class="container">
-          <header class="section-head pricing-head">
-            <p class="section-index">[ 06 ] Pricing</p>
-            <h2>Simple, transparent pricing. <span>No cloud tax.</span></h2>
-            <p class="section-copy">Start on the software you already have, or take the turnkey bay. Pay per bay. Nothing else.</p>
-          </header>
-
-          <div class="pricing-grid">
-            <article class="price-card">
-              <div class="price-top">
-                <p class="price-plan">Software Only</p>
-                <p class="price-for">Plug into your existing cameras and start recovering unbilled labor instantly.</p>
-              </div>
-              <p class="price-amount">
-                <span class="mono" data-count="99" data-prefix="$">$99</span>
-                <small>/ month per bay</small>
-              </p>
-              <button class="btn btn-ghost" data-open-demo data-plan="We have existing IP cameras" type="button">START WITH SOFTWARE</button>
-              <div class="price-rule"></div>
-              <ul>
-                <li>Capture unbilled diagnostic &amp; custom hours</li>
-                <li>Track active wrench-time vs. idle time</li>
-                <li>Daily Telegram performance scorecards</li>
-                <li>Instant safety &amp; hazard zone alerts</li>
-                <li>Free on-site CCTV integration &amp; calibration</li>
-              </ul>
-            </article>
-
-            <article class="price-card featured">
-              <div class="price-accent"></div>
-              <div class="price-top">
-                <div>
-                  <p class="price-plan">Turnkey Hardware</p>
-                  <p class="price-for">The complete invisible infrastructure. Installed, calibrated, and ready to track.</p>
-                </div>
-                <p class="popular">Most Popular</p>
-              </div>
-              <p class="price-amount">
-                <span class="mono" data-count="295" data-prefix="$">$295</span>
-                <small>upfront install</small>
-                <span class="plus">+</span>
-                <span class="mono" data-count="99" data-prefix="$">$99</span>
-                <small>/ month per bay</small>
-              </p>
-              <button class="btn btn-neon" data-open-demo data-plan="None / Need Turnkey Hardware ($295 setup)" type="button">
-                <span data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</span>
-                <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
-                </svg>
-              </button>
-              <div class="price-rule"></div>
-              <ul>
-                <li>All Software tier revenue recovery tools</li>
-                <li>Commercial 4MP PoE camera included</li>
-                <li>Physical cable running &amp; mounting</li>
-                <li>Custom bay calibration for precision tracking</li>
-                <li>Free on-site configuration &amp; onboarding</li>
-              </ul>
-            </article>
-          </div>
-
-          <div class="pricing-note-stack">
-            <p class="pricing-note pricing-note-bonus">
-              <span></span>
+</article>
+</div>
+</div>
+</section>
+<section class="section pricing-section" id="pricing">
+<div class="container">
+<header class="section-head pricing-head">
+<p class="section-index" data-kh="[ 06 ] តម្លៃ">[ 06 ] Pricing</p>
+<h2><span data-kh="តម្លៃសាមញ្ញ ច្បាស់លាស់។">Simple, transparent pricing. </span><span data-kh="គ្មានពន្ធ cloud។">No cloud tax.</span></h2>
+<p class="section-copy" data-kh="ចាប់ផ្តើមលើកាមេរ៉ាដែលមានស្រាប់ ឬយក turnkey bay។ គិតតាម bay។ គ្មានអ្វីផ្សេង។">Start on the software you already have, or take the turnkey bay. Pay per bay. Nothing else.</p>
+</header>
+<div class="pricing-grid">
+<article class="price-card">
+<div class="price-top">
+<p class="price-plan" data-kh="Software តែប៉ុណ្ណោះ">Software Only</p>
+<p class="price-for" data-kh="ភ្ជាប់កាមេរ៉ាដែលមាន និងចាប់ផ្តើមទាញកម្មការមិនគិតលុយភ្លាមៗ។">Plug into your existing cameras and start recovering unbilled labor instantly.</p>
+</div>
+<p class="price-amount">
+<span class="mono" data-count="99" data-prefix="$">$99</span>
+<small data-kh="/ ខែ ក្នុងមួយ bay">/ month per bay</small>
+</p>
+<button class="btn btn-ghost" data-kh="ចាប់ផ្តើមជាមួយ SOFTWARE" data-open-demo="True" data-plan="We have existing IP cameras" type="button">START WITH SOFTWARE</button>
+<div class="price-rule"></div>
+<ul>
+<li data-kh="ចាប់ម៉ោង diagnostic និងតាមបំណងមិនគិតលុយ">Capture unbilled diagnostic &amp; custom hours</li>
+<li data-kh="តាមដានម៉ោងជួសជុល vs. ទំនេរ">Track active wrench-time vs. idle time</li>
+<li data-kh="របាយការណ៍ប្រចាំថ្ងៃតាម Telegram">Daily Telegram performance scorecards</li>
+<li data-kh="ជូនដំណឹងសុវត្ថិភាពភ្លាមៗ">Instant safety &amp; hazard zone alerts</li>
+<li data-kh="ភ្ជាប់ និងកែតម្រូវ CCTV ផ្ទាល់ឥតគិតថ្លៃ">Free on-site CCTV integration &amp; calibration</li>
+</ul>
+</article>
+<article class="price-card featured">
+<div class="price-accent"></div>
+<div class="price-top">
+<div>
+<p class="price-plan" data-kh="ផ្នែករឹង Turnkey">Turnkey Hardware</p>
+<p class="price-for" data-kh="ប្រព័ន្ធស្ងាត់ៗពេញលេញ។ ដំឡើង កែតម្រូវ រួចតាមដាន។">The complete invisible infrastructure. Installed, calibrated, and ready to track.</p>
+</div>
+<p class="popular" data-kh="ពេញនិយមបំផុត">Most Popular</p>
+</div>
+<p class="price-amount">
+<span class="mono" data-count="295" data-prefix="$">$295</span>
+<small data-kh="ដំឡើងមុន">upfront install</small>
+<span class="plus">+</span>
+<span class="mono" data-count="99" data-prefix="$">$99</span>
+<small data-kh="/ ខែ ក្នុងមួយ bay">/ month per bay</small>
+</p>
+<button class="btn btn-neon" data-open-demo="True" data-plan="None / Need Turnkey Hardware ($295 setup)" type="button">
+<span data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</span>
+<svg aria-hidden="true" class="btn-arrow" fill="none" viewbox="0 0 24 24">
+<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-linecap="square" stroke-width="2"></path>
+</svg>
+</button>
+<div class="price-rule"></div>
+<ul>
+<li data-kh="ឧបករណ៍ទាញចំណូលគ្រប់យ៉ាងនៃ Software">All Software tier revenue recovery tools</li>
+<li data-kh="កាមេរ៉ា commercial 4MP PoE រួមបញ្ចូល">Commercial 4MP PoE camera included</li>
+<li data-kh="ដំឡើងខ្សែ និងជួសភ្ជាប់ផ្ទាល់">Physical cable running &amp; mounting</li>
+<li data-kh="កែតម្រូវ bay សម្រាប់តាមដានត្រឹមត្រូវ">Custom bay calibration for precision tracking</li>
+<li data-kh="កំណត់រចនាសម្ព័ន្ធ និង onboarding ផ្ទាល់ឥតគិតថ្លៃ">Free on-site configuration &amp; onboarding</li>
+</ul>
+</article>
+</div>
+<div class="pricing-note-stack">
+<p class="pricing-note pricing-note-bonus">
+<span></span>
               PHNOM PENH PILOT BONUS: Zero-fee on-site deployment and Telegram setup for all tiers.
             </p>
-            <p class="pricing-note">
-              <span></span>
+<p class="pricing-note">
+<span></span>
               Flat per-bay pricing. No seat licenses, no cloud storage fees, no hidden overages.
             </p>
-          </div>
-        </div>
-      </section>
-
-      <section class="section faq-section" id="faq">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index">[ 07 ] FAQ</p>
-            <h2>Questions owners ask before a bay install.</h2>
-          </header>
-
-          <div class="faq-list">
-            <details class="faq-item" open>
-              <summary>Why isn’t Face ID enough?</summary>
-              <p>
+</div>
+</div>
+</section>
+<section class="section faq-section" id="faq">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 07 ] សំណួរញឹកញាប់">[ 07 ] FAQ</p>
+<h2 data-kh="សំណួរដែលម្ចាស់សួរមុនដំឡើង bay។">Questions owners ask before a bay install.</h2>
+</header>
+<div class="faq-list">
+<details class="faq-item" open="">
+<summary data-kh="ហេតុអ្វី Face ID មិនគ្រប់គ្រាន់?">Why isn’t Face ID enough?</summary>
+<p data-kh="មុខបាត់ក្រោមគម្រប លើ lift និងក្រោយម៉ាស់។ យើងប្រើសម្គាល់មុខដើម្បីដឹងថាជាងណា ប៉ុន្តែ AI តាមដានចលនារាងកាយពេញ ដើម្បីបន្តរាប់ម៉ោងគិតលុយទោះមុខលាក់។ បង្កើតសម្រាប់ហាងពិត មិនមែនតុការិយាល័យ។">
                 Faces disappear under hoods, on lifts, and behind masks. We use face recognition just to
                 identify the mechanic, but our AI tracks their full-body movement to keep counting the
                 billable hours even when their face is completely hidden. It’s built for real garages, not
                 office desks.
               </p>
-            </details>
-            <details class="faq-item">
-              <summary>Does the video leave the shop?</summary>
-              <p>
+</details>
+<details class="faq-item">
+<summary data-kh="វីដេអូចេញពីហាងទេ?">Does the video leave the shop?</summary>
+<p data-kh="មិនដែល។ គ្មាន cloud storage។ វីដេអូវិភាគលើប្រអប់តូចក្នុងហាង រួចលុបភ្លាម។ អ្វីដែលចេញគឺតែសង្ខេបអត្ថបទប្រចាំថ្ងៃទៅ Telegram អ្នក។">
                 Never. We guarantee zero cloud storage. The video is analyzed entirely on a small box inside
                 your shop and instantly deleted. The only thing that ever leaves the building is the simple
                 daily text summary sent straight to your Telegram.
               </p>
-            </details>
-            <details class="faq-item">
-              <summary>I already have cameras. Do I need new ones?</summary>
-              <p>
+</details>
+<details class="faq-item">
+<summary data-kh="ខ្ញុំមានកាមេរ៉ារួចហើយ។ ត្រូវការថ្មីទេ?">I already have cameras. Do I need new ones?</summary>
+<p data-kh="ភាគច្រើនមិនត្រូវ។ បើមានកាមេរ៉ាសុវត្ថិភាពធម្មតា software $99/ខែភ្ជាប់បាន។ បើមានចំណុចងងឹត យើងអាចដំឡើងកាមេរ៉ា commercial HD តម្លៃថេរ $295 មុន។">
                 Usually not. If you have standard security cameras, our $99/month software can plug right into
                 them. If you have blind spots or need a better view, we can install a high-definition
                 commercial camera for a flat $295 upfront.
               </p>
-            </details>
-            <details class="faq-item">
-              <summary>How fast can we set this up?</summary>
-              <p>
+</details>
+<details class="faq-item">
+<summary data-kh="ដំឡើងបានលឿនប៉ុណ្ណា?">How fast can we set this up?</summary>
+<p data-kh="លឿន។ ក្រុមយើងនៅ Phnom Penh — ចុះហាងអ្នកដំឡើងឥតគិតថ្លៃ។ ភ្ជាប់ខ្សែ កែមុំកាមេរ៉ា និង Telegram ក្នុងមួយរសៀល។">
                 Fast. Because our team is based right here in Phnom Penh, we come to your shop and set it up
                 for free. We handle the wiring, adjust the camera angles, and connect your Telegram alerts in
                 a single afternoon.
               </p>
-            </details>
-            <details class="faq-item">
-              <summary>How is this different from a time-clock app?</summary>
-              <p>
+</details>
+<details class="faq-item">
+<summary data-kh="ខុសពីកម្មវិធីកត់ម៉ោងយ៉ាងណា?">How is this different from a time-clock app?</summary>
+<p data-kh="App ធម្មតាតាមដានតែពេលជាងនៅក្នុងអគារ។ យើងតាមដានពេលគេពិតជាកំពុងជួសជុលឡាន។ ចាប់ម៉ោងជួសជុលពិត អ្នកគិតលុយគម្រោងតាមបំណងដោយមិនទាយ។ ឧបករណ៍ទាញលុយខាត មិនមែន app HR។">
                 Standard apps only track when a mechanic is inside the building. We track exactly when they
                 are actually working on a car. By capturing real wrench-time, you can accurately bill for
                 custom projects without guessing. It’s a tool to recover your lost money, not an HR app.
               </p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      <section class="section team-section" id="team">
-        <div class="container">
-          <header class="section-head">
-            <p class="section-index" data-kh="[ 08 ] ក្រុមការងារ · ក្រុម KIT Hub">[ 08 ] Team · KIT Hub Crew</p>
-            <h2 data-kh="ក្រុមតែមួយ។ គោលដៅតែមួយ។">One squad. Same node.</h2>
-            <p class="section-copy" data-kh="អ្នកបង្កើត៤នាក់ពី Kirirom Institute of Technology Hub — ស្ថាបត្យកម្មប្រព័ន្ធ ផលិតផល ទិសដៅ និងការចុះធ្វើការនៅហាងផ្ទាល់ នៅក្រោមដំបូលតែមួយ។">
+</details>
+</div>
+</div>
+</section>
+<section class="section team-section" id="team">
+<div class="container">
+<header class="section-head">
+<p class="section-index" data-kh="[ 08 ] ក្រុមការងារ · ក្រុម KIT Hub">[ 08 ] Team · KIT Hub Crew</p>
+<h2 data-kh="ក្រុមតែមួយ។ គោលដៅតែមួយ។">One squad. Same node.</h2>
+<p class="section-copy" data-kh="អ្នកបង្កើត៤នាក់ពី Kirirom Institute of Technology Hub — ស្ថាបត្យកម្មប្រព័ន្ធ ផលិតផល ទិសដៅ និងការចុះធ្វើការនៅហាងផ្ទាល់ នៅក្រោមដំបូលតែមួយ។">
               Four builders from Kirirom Institute of Technology Hub — architecture, product, vision, and
               field ops under one roof.
             </p>
-          </header>
-          <div class="team-grid">
-            <a class="team-slot team-slot--link" href="team.html">
-              <div class="team-frame team-frame--photo">
-                <img src="assets/team/chanratharo.jpg" alt="Ratharo" width="320" height="426" loading="lazy" />
-              </div>
-              <span class="team-slot-caption">
-                <strong>Ratharo</strong>
-                <span>Founder · Architecture</span>
-              </span>
-            </a>
-            <a class="team-slot team-slot--link" href="team.html">
-              <div class="team-frame team-frame--photo">
-                <img src="assets/team/sothun.jpg" alt="Sothun" width="320" height="426" loading="lazy" />
-              </div>
-              <span class="team-slot-caption">
-                <strong>Sothun</strong>
-                <span>Co-founder · Product &amp; Edge</span>
-              </span>
-            </a>
-            <a class="team-slot team-slot--link" href="team.html">
-              <div class="team-frame team-frame--photo">
-                <img src="assets/team/hourmeng.jpg" alt="Hourmeng" width="320" height="426" loading="lazy" />
-              </div>
-              <span class="team-slot-caption">
-                <strong>Hourmeng</strong>
-                <span>Co-founder · Engineering</span>
-              </span>
-            </a>
-            <a class="team-slot team-slot--link" href="team.html">
-              <div class="team-frame team-frame--photo">
-                <img src="assets/team/vichea.jpg" alt="Vichea" width="320" height="426" loading="lazy" />
-              </div>
-              <span class="team-slot-caption">
-                <strong>Vichea</strong>
-                <span>Co-founder · Ops &amp; Deploy</span>
-              </span>
-            </a>
-          </div>
-          <p class="team-strip-cta">
-            <a class="btn btn-ghost" href="team.html">Full crew →</a>
-          </p>
-        </div>
-      </section>
-
-      <section class="section location-section" id="location">
-        <div class="container location-grid">
-          <div>
-            <p class="section-index" data-kh="[ 09 ] ទីតាំង">[ 09 ] Location</p>
-            <h2>Phnom Penh, Cambodia</h2>
-            <p class="section-copy" data-kh="កំពុងដំណើរការ៖ Phnom Penh។ យើងចុះដំឡើង Edge-AI និងដើរពិនិត្យហាងផ្ទាល់ តែក្នុងរាជធានីប៉ុណ្ណោះ។ យើងធ្វើការនៅលើផ្ទៃហាងផ្ទាល់ គ្មានការិយាល័យបើកជាសាធារណៈ។">
+</header>
+<div class="team-grid">
+<a class="team-slot team-slot--link" href="team.html">
+<div class="team-frame team-frame--photo">
+<img alt="Ratharo" height="426" loading="lazy" src="assets/team/chanratharo.jpg" width="320"/>
+</div>
+<span class="team-slot-caption">
+<strong>Ratharo</strong>
+<span data-kh="ស្ថាបនិក · ស្ថាបត្យកម្ម">Founder · Architecture</span>
+</span>
+</a>
+<a class="team-slot team-slot--link" href="team.html">
+<div class="team-frame team-frame--photo">
+<img alt="Sothun" height="426" loading="lazy" src="assets/team/sothun.jpg" width="320"/>
+</div>
+<span class="team-slot-caption">
+<strong>Sothun</strong>
+<span data-kh="សហស្ថាបនិក · Product &amp; Edge">Co-founder · Product &amp; Edge</span>
+</span>
+</a>
+<a class="team-slot team-slot--link" href="team.html">
+<div class="team-frame team-frame--photo">
+<img alt="Hourmeng" height="426" loading="lazy" src="assets/team/hourmeng.jpg" width="320"/>
+</div>
+<span class="team-slot-caption">
+<strong>Hourmeng</strong>
+<span data-kh="សហស្ថាបនិក · Engineering">Co-founder · Engineering</span>
+</span>
+</a>
+<a class="team-slot team-slot--link" href="team.html">
+<div class="team-frame team-frame--photo">
+<img alt="Vichea" height="426" loading="lazy" src="assets/team/vichea.jpg" width="320"/>
+</div>
+<span class="team-slot-caption">
+<strong>Vichea</strong>
+<span data-kh="សហស្ថាបនិក · Ops &amp; Deploy">Co-founder · Ops &amp; Deploy</span>
+</span>
+</a>
+</div>
+<p class="team-strip-cta">
+<a class="btn btn-ghost" data-kh="ក្រុមពេញ →" href="team.html">Full crew →</a>
+</p>
+</div>
+</section>
+<section class="section location-section" id="location">
+<div class="container location-grid">
+<div>
+<p class="section-index" data-kh="[ 09 ] ទីតាំង">[ 09 ] Location</p>
+<h2 data-kh="Phnom Penh, Cambodia">Phnom Penh, Cambodia</h2>
+<p class="section-copy" data-kh="កំពុងដំណើរការ៖ Phnom Penh។ យើងចុះដំឡើង Edge-AI និងដើរពិនិត្យហាងផ្ទាល់ តែក្នុងរាជធានីប៉ុណ្ណោះ។ យើងធ្វើការនៅលើផ្ទៃហាងផ្ទាល់ គ្មានការិយាល័យបើកជាសាធារណៈ។">
               Active Deployments: Phnom Penh. We conduct on-site edge installs and bay walkthroughs
               exclusively across the capital. Operating with direct floor presence; no public headquarters.
             </p>
-          </div>
-          <div class="map-block">
-            <div class="map-frame" data-pp-node>
-              <div class="map-corners" aria-hidden="true"></div>
-              <div
-                id="pp-map"
-                class="pp-map"
-                role="img"
-                aria-label="Map of Phnom Penh, Cambodia"
-              ></div>
-              <div class="map-telemetry mono">
-                <span>Phnom Penh · Cambodia</span>
-              </div>
-            </div>
-            <p class="map-credit mono">
+</div>
+<div class="map-block">
+<div class="map-frame" data-pp-node="">
+<div aria-hidden="true" class="map-corners"></div>
+<div aria-label="Map of Phnom Penh, Cambodia" class="pp-map" id="pp-map" role="img"></div>
+<div class="map-telemetry mono">
+<span data-kh="Phnom Penh · Cambodia">Phnom Penh · Cambodia</span>
+</div>
+</div>
+<p class="map-credit mono">
               Map ©
-              <a href="https://www.esri.com/" target="_blank" rel="noopener noreferrer">Esri</a>
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section class="final-cta">
-        <div class="final-media" aria-hidden="true">
-          <img src="assets/cta-workshop.png" alt="" />
-          <div class="hero-veil dense"></div>
-        </div>
-        <div class="container final-content">
-          <p class="section-index">[ 10 ] Deploy</p>
-          <h2>Start billing for the hours you actually work.</h2>
-          <button class="btn btn-neon btn-lg" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-          <p class="response-promise">We reply on Telegram within one business day · Phnom Penh time</p>
-        </div>
-      </section>
-    </main>
-
-    <div class="mobile-sticky-cta" id="mobile-sticky-cta">
-      <button class="btn btn-neon" data-open-demo type="button" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-    </div>
-
-    <!-- GA4: set window.INBOUND_GA4_ID = "G-XXXXXXXX" and restore consent UI when analytics is live. -->
-
-    <footer class="site-footer">
-      <div class="container footer-grid">
-        <div>
-          <a class="brand" href="#top" aria-label="Inbound Surveillance home">
-            <span class="brand-mark">
-              <img src="assets/brand-mark.png" alt="Inbound Surveillance mark" width="34" height="34" />
-            </span>
-            <span class="brand-text">
-              <span class="brand-name">INBOUND</span>
-              <span class="brand-sub">SURVEILLANCE</span>
-            </span>
-          </a>
-          <p class="footer-tag" data-kh="ប្រព័ន្ធស្ងាត់ៗពីក្រោយឆាក ជួយទាញម៉ោងជួសជុលដែលគិតលុយបានមកវិញ និងរក្សាចំណេញហាងអ្នក។">Invisible infrastructure to recover billable wrench-time and protect shop floor margins.</p>
-        </div>
-        <div>
-          <p class="footer-label">Contact</p>
-          <p>Phnom Penh, Cambodia</p>
-          <p><a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
-          <p>
-            &gt; DIRECT TELEGRAM:
-            <a href="https://t.me/+855965188669" target="_blank" rel="noopener noreferrer">+855 96 518 8669</a>
-          </p>
-        </div>
-        <div>
-          <p class="footer-label">Legal</p>
-          <p><a href="about.html">About</a></p>
-          <p><a href="team.html">Team</a></p>
-          <p><a href="privacy.html">Privacy Policy</a></p>
-          <p><a href="terms.html">Terms</a></p>
-          <p class="mono footer-entity">INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH</p>
-          <p>© 2026 Inbound Surveillance. All rights reserved.</p>
-        </div>
-      </div>
-    </footer>
-
-    <div class="modal" id="demo-modal" hidden>
-      <div class="modal-backdrop" data-close-demo></div>
-      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="demo-title">
-        <button class="modal-close" type="button" data-close-demo aria-label="Close">×</button>
-        <p class="section-index">Bay Demo</p>
-        <h2 id="demo-title" data-kh="កក់ដើរពិនិត្យហាងសាកល្បង ឥតគិតថ្លៃ។">Book a free pilot bay walkthrough.</h2>
-        <p class="modal-copy">
-          <span data-kh="យើងនឹងរៀបចំកន្លែងជួសជុលមួយ បង្ហាញម៉ោងជួសជុលកំពុងដើរផ្ទាល់ ហើយផ្ញើរបាយការណ៍ចូល Telegram ក្នុងទូរស័ព្ទអ្នក។">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</span>
-          <span class="response-promise inline">Reply within one business day · Phnom Penh time.</span>
-        </p>
-        <form
-          class="demo-form"
-          id="demo-form"
-          data-formspree="https://formsubmit.co/ajax/inboundcrew82@gmail.com"
-        >
-          <label>
-            Name
-            <input type="text" name="name" required autocomplete="name" />
-          </label>
-          <label>
-            Shop name
-            <input type="text" name="shop" required />
-          </label>
-          <label>
-            Telegram or phone
-            <input type="text" name="contact" required autocomplete="tel" />
-          </label>
-          <label>
-            Number of bays
-            <input type="number" name="bays" min="1" max="40" value="2" required />
-          </label>
-          <label class="full">
-            <span data-kh="កាមេរ៉ាដែលហាងមានស្រាប់">Current shop cameras</span>
-            <select name="plan" id="plan-select">
-              <option value="Not sure / Assess on site">Not sure / Assess on site</option>
-              <option value="None / Need Turnkey Hardware ($295 setup)">
+              <a href="https://www.esri.com/" rel="noopener noreferrer" target="_blank">Esri</a>
+</p>
+</div>
+</div>
+</section>
+<section class="final-cta">
+<div aria-hidden="true" class="final-media">
+<img alt="" src="assets/cta-workshop.png"/>
+<div class="hero-veil dense"></div>
+</div>
+<div class="container final-content">
+<p class="section-index" data-kh="[ 10 ] ដំឡើង">[ 10 ] Deploy</p>
+<h2 data-kh="ចាប់ផ្តើមគិតលុយម៉ោងដែលអ្នកពិតជាធ្វើការ។">Start billing for the hours you actually work.</h2>
+<button class="btn btn-neon btn-lg" data-kh="[ កក់សាកល្បង ]" data-open-demo="True" type="button">[ BOOK DEMO ]</button>
+<p class="response-promise" data-kh="ឆ្លើយតបតាម Telegram ក្នុងមួយថ្ងៃធ្វើការ · ម៉ោង Phnom Penh">We reply on Telegram within one business day · Phnom Penh time</p>
+</div>
+</section>
+</main>
+<div class="mobile-sticky-cta" id="mobile-sticky-cta">
+<button class="btn btn-neon" data-kh="[ កក់សាកល្បង ]" data-open-demo="True" type="button">[ BOOK DEMO ]</button>
+</div>
+<!-- GA4: set window.INBOUND_GA4_ID = "G-XXXXXXXX" and restore consent UI when analytics is live. -->
+<footer class="site-footer">
+<div class="container footer-grid">
+<div>
+<a aria-label="Inbound Surveillance home" class="brand" href="#top">
+<span class="brand-mark">
+<img alt="Inbound Surveillance mark" height="34" src="assets/brand-mark.png" width="34"/>
+</span>
+<span class="brand-text">
+<span class="brand-name">INBOUND</span>
+<span class="brand-sub">SURVEILLANCE</span>
+</span>
+</a>
+<p class="footer-tag" data-kh="ប្រព័ន្ធស្ងាត់ៗពីក្រោយឆាក ជួយទាញម៉ោងជួសជុលដែលគិតលុយបានមកវិញ និងរក្សាចំណេញហាងអ្នក។">Invisible infrastructure to recover billable wrench-time and protect shop floor margins.</p>
+</div>
+<div>
+<p class="footer-label" data-kh="ទំនាក់ទំនង">Contact</p>
+<p data-kh="Phnom Penh, Cambodia">Phnom Penh, Cambodia</p>
+<p><a href="mailto:inboundcrew82@gmail.com">inboundcrew82@gmail.com</a></p>
+<p><span data-kh="&gt; ទំនាក់ទំនង TELEGRAM ផ្ទាល់:">&gt; DIRECT TELEGRAM:</span> <a href="https://t.me/+855965188669" rel="noopener noreferrer" target="_blank">+855 96 518 8669</a></p>
+</div>
+<div>
+<p class="footer-label" data-kh="ផ្លូវច្បាប់">Legal</p>
+<p><a data-kh="អំពីយើង" href="about.html">About</a></p>
+<p><a data-kh="ក្រុមការងារ" href="team.html">Team</a></p>
+<p><a data-kh="គោលការណ៍ឯកជនភាព" href="privacy.html">Privacy Policy</a></p>
+<p><a data-kh="លក្ខខណ្ឌ" href="terms.html">Terms</a></p>
+<p class="mono footer-entity" data-kh="INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH">INBOUND SURVEILLANCE EDGE SYSTEMS // PHNOM PENH</p>
+<p data-kh="© 2026 Inbound Surveillance. រក្សាសិទ្ធិគ្រប់យ៉ាង។">© 2026 Inbound Surveillance. All rights reserved.</p>
+</div>
+</div>
+</footer>
+<div class="modal" hidden="True" id="demo-modal">
+<div class="modal-backdrop" data-close-demo="True"></div>
+<div aria-labelledby="demo-title" aria-modal="true" class="modal-panel" role="dialog">
+<button aria-label="Close" class="modal-close" data-close-demo="True" type="button">×</button>
+<p class="section-index" data-kh="សាកល្បង Bay">Bay Demo</p>
+<h2 data-kh="កក់ដើរពិនិត្យហាងសាកល្បង ឥតគិតថ្លៃ។" id="demo-title">Book a free pilot bay walkthrough.</h2>
+<p class="modal-copy">
+<span data-kh="យើងនឹងរៀបចំកន្លែងជួសជុលមួយ បង្ហាញម៉ោងជួសជុលកំពុងដើរផ្ទាល់ ហើយផ្ញើរបាយការណ៍ចូល Telegram ក្នុងទូរស័ព្ទអ្នក។">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</span>
+<span class="response-promise inline" data-kh="ឆ្លើយតបក្នុងមួយថ្ងៃធ្វើការ · ម៉ោង Phnom Penh។">Reply within one business day · Phnom Penh time.</span>
+</p>
+<form class="demo-form" data-formspree="https://formsubmit.co/ajax/inboundcrew82@gmail.com" id="demo-form">
+<label><span data-kh="ឈ្មោះ">Name</span><input autocomplete="name" name="name" required="True" type="text"/>
+</label>
+<label><span data-kh="ឈ្មោះហាង">Shop name</span><input name="shop" required="True" type="text"/>
+</label>
+<label><span data-kh="Telegram ឬទូរស័ព្ទ">Telegram or phone</span><input autocomplete="tel" name="contact" required="True" type="text"/>
+</label>
+<label><span data-kh="ចំនួន bay">Number of bays</span><input max="40" min="1" name="bays" required="True" type="number" value="2"/>
+</label>
+<label class="full">
+<span data-kh="កាមេរ៉ាសុវត្ថិភាពបច្ចុប្បន្ន">Current shop cameras</span>
+<select id="plan-select" name="plan">
+<option data-kh="មិនច្បាស់ / ត្រូវការចុះវាយតម្លៃផ្ទាល់" value="Not sure / Assess on site">Not sure / Assess on site</option>
+<option data-kh="គ្មាន / ត្រូវការដំឡើងឧបករណ៍ថ្មី ($295)" value="None / Need Turnkey Hardware ($295 setup)">
                 None / Need Turnkey Hardware ($295 setup)
               </option>
-              <option value="We have existing IP cameras">We have existing IP cameras</option>
-            </select>
-          </label>
-          <label class="full consent-check">
-            <input type="checkbox" name="operator_ack" required />
-            <span>
-              <span data-kh="ការយល់ព្រមពីម្ចាស់ហាង៖ ខ្ញុំបញ្ជាក់ថាខ្ញុំមានសិទ្ធិសម្រេចឲ្យចុះពិនិត្យហាង ហើយយល់ថាការសាកល្បងនេះគឺដើម្បីវាយតម្លៃប្រព័ន្ធតាមដានម៉ោងជួសជុលដោយ Edge-AI។">Operator Acknowledgment: I confirm I have the authority to request a bay walkthrough, and understand this pilot is for evaluating edge-AI wrench-time telemetry.</span>
-              <a href="privacy.html">Privacy Policy</a>
-            </span>
-          </label>
-          <button class="btn btn-neon full-btn" type="submit" data-kh="[ កក់សាកល្បង ]">[ BOOK DEMO ]</button>
-          <p class="modal-copy">
-            Or message us directly on Telegram:
-            <a href="https://t.me/+855965188669" target="_blank" rel="noopener noreferrer">+855 96 518 8669</a>
-          </p>
-          <p class="form-error" id="form-error" hidden role="alert"></p>
-        </form>
-        <p class="form-success" id="form-success" hidden>
+<option data-kh="យើងមានកាមេរ៉ា IP ស្រាប់" value="We have existing IP cameras">We have existing IP cameras</option>
+</select>
+</label>
+<label class="full consent-check">
+<input name="operator_ack" required="True" type="checkbox"/>
+<span>
+<span data-kh="ការយល់ព្រមពីម្ចាស់ហាង៖ ខ្ញុំបញ្ជាក់ថាខ្ញុំមានសិទ្ធិសម្រេចឲ្យចុះពិនិត្យហាង ហើយយល់ថាការសាកល្បងនេះគឺដើម្បីវាយតម្លៃប្រព័ន្ធតាមដានម៉ោងជួសជុលដោយ Edge-AI។">Operator Acknowledgment: I confirm I have the authority to request a bay walkthrough, and understand this pilot is for evaluating edge-AI wrench-time telemetry.</span>
+<a data-kh="គោលការណ៍ឯកជនភាព" href="privacy.html">Privacy Policy</a>
+</span>
+</label>
+<button class="btn btn-neon full-btn" data-kh="[ កក់សាកល្បង ]" type="submit">[ BOOK DEMO ]</button>
+<p class="modal-copy"><span data-kh="ឬផ្ញើសារផ្ទាល់តាម Telegram:">Or message us directly on Telegram:</span> <a href="https://t.me/+855965188669" rel="noopener noreferrer" target="_blank">+855 96 518 8669</a></p>
+<p class="form-error" hidden="True" id="form-error" role="alert"></p>
+</form>
+<p class="form-success" data-kh="ទទួលសំណើរួច។ យើងនឹងបញ្ជាក់តាម Telegram ក្នុងមួយថ្ងៃធ្វើការ។" hidden="True" id="form-success">
           Request received. We’ll confirm on Telegram within one business day.
         </p>
-      </div>
-    </div>
-
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
-    <script src="js/main.js"></script>
-  </body>
+</div>
+</div>
+<script crossorigin="True" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/main.js"></script>
+</body>
 </html>

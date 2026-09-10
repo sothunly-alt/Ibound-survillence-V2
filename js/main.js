@@ -655,6 +655,8 @@ function applyLang(lang) {
   document.documentElement.lang = next === "kh" ? "km" : "en";
 
   document.querySelectorAll("[data-kh]").forEach((el) => {
+    // Skip accidental parents: textContent swap would wipe inputs/links/SVG.
+    if (el.children.length > 0) return;
     if (!el.hasAttribute("data-en")) {
       el.setAttribute("data-en", el.textContent);
     }

@@ -127,12 +127,12 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | `--font-mono` | `"IBM Plex Mono", monospace` |
 
 ## Bilingual (EN | KH)
-- **Mechanism:** Live English text stays in the DOM. Mapped nodes carry `data-kh`. `js/main.js` `initLangToggle()` stashes `data-en` from `textContent` on first switch, then swaps `data-kh` / `data-en`.
-- **Control:** Compact `[ EN | KH ]` in `.header-actions` — IBM Plex Mono, Terminal Green when pressed, radius ≤4px. System setting, not a corporate dropdown.
+- **Mechanism:** Live English text stays in the DOM. Mapped nodes carry `data-kh`. `js/main.js` `initLangToggle()` stashes `data-en` from `textContent` on first switch, then swaps `data-kh` / `data-en`. Skips any `[data-kh]` node that still has element children (so inputs/links/SVG are never wiped).
+- **Control:** Compact `[ EN | KH ]` in `.header-actions` — IBM Plex Mono, Terminal Green when pressed, radius ≤4px. System setting, not a corporate dropdown. Present on landing + team.
 - **Persistence:** `localStorage.inbound_lang` (`en` | `kh`). Default `en`. `document.documentElement.lang` = `en` / `km`.
-- **Latin stays Latin:** Edge-AI, Telegram, KIT Hub, Kirirom Institute of Technology Hub, Phnom Penh, person names, form `value=` attributes.
+- **Latin stays Latin:** Edge-AI, Telegram, IP, KIT Hub, Inbound Surveillance, Phnom Penh, person names, emails, phones, form `value=` attributes.
 - **Tone:** Khmer must read as a local founder on a Phnom Penh bay floor — short, punchy, money-aware. Forbidden: government/HR/textbook register.
-- **Scope:** Pitch-critical surfaces on `index.html` only (CTA, System, Team, Location, footer tag, demo modal). Do not i18n-bloat the whole site without a new decision.
+- **Scope:** Full visible marketing copy on `index.html` + `team.html` (pitch path). Legal page bodies (`about` / `privacy` / `terms`) deferred.
 
 ## Decisions Log
 | Date | Decision | Rationale |
@@ -163,3 +163,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-10 | Sticky header solid chrome + logo → `#top` | Kill translucent header bleed; logo/mark unified back-to-top on landing |
 | 2026-09-10 | FirstWave consistency audit | Features triad locked on landing; HUD/Telegram Mechanic labels; payroll demoted in meta (background dual-clock only) |
 | 2026-09-10 | EN|KH `data-kh` bilingual layer | Lightweight DOM swap + localStorage; bay-floor Khmer tone; Latin for Edge-AI/Telegram/KIT Hub; freeze web for FirstWave after ship |
+| 2026-09-10 | Full EN|KH sweep index + team | Expand `data-kh` across landing + team bios/roles; legal page bodies still deferred |
