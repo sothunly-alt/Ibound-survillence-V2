@@ -172,7 +172,8 @@ function showFormError(message) {
   }
 }
 
-form?.addEventListener("submit", async (e) => {
+if (form && form.dataset.supabase !== "true") {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const submitBtn = form.querySelector('[type="submit"]');
   const payload = collectDemoPayload(form);
@@ -239,6 +240,7 @@ form?.addEventListener("submit", async (e) => {
     }
   }
 });
+}
 
 const navLinks = [...document.querySelectorAll(".nav-desktop a[href^='#']")];
 const navSections = navLinks

@@ -774,10 +774,12 @@
 <span data-kh="រៀបចំ bay មួយ បង្ហាញម៉ោងផ្ទាល់ ផ្ញើ Telegram។">We’ll map one bay, show live wrench-time, and drop a Telegram scorecard on your phone.</span>
 <span class="response-promise inline" data-kh="ឆ្លើយតបក្នុងមួយថ្ងៃធ្វើការ · ម៉ោង Phnom Penh។">Reply within one business day · Phnom Penh time.</span>
 </p>
-<form class="demo-form" data-formspree="https://formsubmit.co/ajax/inboundcrew82@gmail.com" id="demo-form">
+<form class="demo-form" data-supabase="true" id="demo-form">
 <label><span data-kh="ឈ្មោះ">Name</span><input autocomplete="name" name="name" required="True" type="text"/>
 </label>
-<label><span data-kh="ឈ្មោះហាង">Shop name</span><input name="shop" required="True" type="text"/>
+<label><span data-kh="អ៊ីមែល">Email</span><input autocomplete="email" name="email" required="True" type="email"/>
+</label>
+<label><span data-kh="ឈ្មោះហាង">Shop name</span><input name="company" required="True" type="text"/>
 </label>
 <label><span data-kh="Telegram ឬទូរស័ព្ទ">Telegram or phone</span><input autocomplete="tel" name="contact" required="True" type="text"/>
 </label>
@@ -804,12 +806,11 @@
 <p class="modal-copy"><span data-kh="ឬផ្ញើសារផ្ទាល់តាម Telegram:">Or message us directly on Telegram:</span> <a href="https://t.me/+855965188669" rel="noopener noreferrer" target="_blank">+855 96 518 8669</a></p>
 <p class="form-error" hidden="True" id="form-error" role="alert"></p>
 </form>
-<p class="form-success" data-kh="ទទួលសំណើរួច។ យើងនឹងបញ្ជាក់តាម Telegram ក្នុងមួយថ្ងៃធ្វើការ។" hidden="True" id="form-success">
-          Request received. We’ll confirm on Telegram within one business day.
-        </p>
+<p class="form-success" hidden="True" id="form-success">Thanks, we'll be in touch</p>
 </div>
 </div>
 <script crossorigin="True" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="/src/supabaseClient.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
