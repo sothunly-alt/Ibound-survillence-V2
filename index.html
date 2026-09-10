@@ -592,7 +592,7 @@
                 <span class="mono" data-count="99" data-prefix="$">$99</span>
                 <small>/ month per bay</small>
               </p>
-              <button class="btn btn-ghost" data-open-demo data-plan="Software Only" type="button">START WITH SOFTWARE</button>
+              <button class="btn btn-ghost" data-open-demo data-plan="We have existing IP cameras" type="button">START WITH SOFTWARE</button>
               <div class="price-rule"></div>
               <ul>
                 <li>Capture unbilled diagnostic &amp; custom hours</li>
@@ -619,7 +619,7 @@
                 <span class="mono" data-count="99" data-prefix="$">$99</span>
                 <small>/ month per bay</small>
               </p>
-              <button class="btn btn-neon" data-open-demo data-plan="Turnkey Hardware Install" type="button">
+              <button class="btn btn-neon" data-open-demo data-plan="None / Need Turnkey Hardware ($295 setup)" type="button">
                 [ BOOK DEMO ]
                 <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square" />
@@ -890,22 +890,21 @@
             <input type="number" name="bays" min="1" max="40" value="2" required />
           </label>
           <label class="full">
-            Plan interest
+            Current shop cameras
             <select name="plan" id="plan-select">
-              <option value="Software Only">Software Only ($99/bay/mo)</option>
-              <option value="Turnkey Hardware Install">Turnkey Hardware ($295 setup + $99/bay/mo)</option>
+              <option value="Not sure / Assess on site">Not sure / Assess on site</option>
+              <option value="None / Need Turnkey Hardware ($295 setup)">
+                None / Need Turnkey Hardware ($295 setup)
+              </option>
+              <option value="We have existing IP cameras">We have existing IP cameras</option>
             </select>
           </label>
           <label class="full consent-check">
             <input type="checkbox" name="operator_ack" required />
             <span>
               <strong>Operator Acknowledgment:</strong>
-              Client confirms that Inbound Surveillance hardware will be deployed strictly for internal
-              labor accounting, bay occupancy auditing, and workflow automation. Client assumes sole
-              responsibility for notifying all personnel and contractors that automated optical labor
-              tracking is operational within designated service bays, indemnifying Inbound Surveillance
-              against unauthorized surveillance claims resulting from failure to provide adequate
-              workplace notice.
+              I confirm I have the authority to request a bay walkthrough, and understand this pilot is
+              for evaluating edge-AI wrench-time telemetry.
               <a href="privacy.html">Privacy Policy</a>
             </span>
           </label>

@@ -105,7 +105,7 @@ Location is **city hub presence** — show we are based in Phnom Penh, Cambodia.
 - **Primary sales email:** `inboundcrew82@gmail.com` (footer, forms, legal pages, FormSubmit / mailto fallback). Never use a different public sales inbox.
 - **Primary sales contact:** direct Telegram founder line — display `+855 96 518 8669`, href `https://t.me/+855965188669` (new tab, `noopener noreferrer`).
 - **Footer Contact:** city line (Phnom Penh) + email + `> DIRECT TELEGRAM:` link. No `#location` footer link. Do not use `@Inbound_Surveillance_bot` as the primary sales CTA.
-- **Demo modal:** keep form submit; add bypass line under `[ BOOK DEMO ]`: `Or message us directly on Telegram: +855 96 518 8669`.
+- **Demo modal:** keep form submit; Telegram bypass under `[ BOOK DEMO ]`: `Or message us directly on Telegram: +855 96 518 8669`. Dropdown = **Current shop cameras** (qualify hardware for walkthrough — not billing plan). Operator ack = one short authority sentence; full indemnification stays on [`privacy.html`](privacy.html) / install contracts only.
 - **Product bot:** `@Inbound_Surveillance_bot` may remain in scorecard demo/FAQ copy — that is product dispatch, not sales contact.
 
 ## Token contract (canonical)
@@ -147,3 +147,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-09 | Terms ↔ Privacy legal twin | terms.html MVP entity + disclaimer; scope = pitch triad; operator notice = safety/active-idle; contact stays inboundcrew82@gmail.com |
 | 2026-09-09 | FAQ rewritten for non-technical owners | Kill model/RTSP/edge jargon in FAQ; garage-owner language only |
 | 2026-09-09 | Team + About owner-language scrub | Kill model/RTSP/inference jargon on public marketing pages; bios map to B2B pillars |
+| 2026-09-10 | Demo modal conversion friction | Short authority Operator Ack (full legal stays on privacy/install); dropdown = Current shop cameras, not Plan interest |
