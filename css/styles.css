@@ -2871,3 +2871,49 @@ h3 {
     display: none;
   }
 }
+
+/* ======== KHMER MODE (html[lang="km"]) ======== */
+/* Glyph-safe Industrial Overwatch — EN tokens untouched */
+html[lang="km"] {
+  --font-display: "Kantumruy Pro", sans-serif;
+  --font-sans: "Kantumruy Pro", sans-serif;
+  --font-mono: "Kantumruy Pro", sans-serif;
+}
+
+html[lang="km"] h1,
+html[lang="km"] h2,
+html[lang="km"] h3,
+html[lang="km"] .btn,
+html[lang="km"] .section-index {
+  letter-spacing: normal;
+  text-transform: none; /* Bebas uppercase tracking fights Khmer shapes */
+}
+
+html[lang="km"] h1,
+html[lang="km"] h2,
+html[lang="km"] h3,
+html[lang="km"] p,
+html[lang="km"] .lede,
+html[lang="km"] .section-copy {
+  line-height: 1.6;
+}
+
+html[lang="km"] h1 {
+  font-size: calc(var(--fs-display) * 1.08);
+}
+
+html[lang="km"] h2 {
+  font-size: calc(var(--fs-h2) * 1.08);
+}
+
+html[lang="km"] .lede,
+html[lang="km"] .section-copy,
+html[lang="km"] p {
+  font-size: calc(var(--fs-body) * 1.1);
+}
+
+html[lang="km"] .btn,
+html[lang="km"] .lang-toggle-btn {
+  padding-block: 0.85em; /* keep CTA + EN|KH vertically centered with taller glyphs */
+  line-height: 1.45;
+}

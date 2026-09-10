@@ -132,6 +132,7 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 - **Persistence:** `localStorage.inbound_lang` (`en` | `kh`). Default `en`. `document.documentElement.lang` = `en` / `km`.
 - **Latin stays Latin:** Edge-AI, Telegram, IP, KIT Hub, Inbound Surveillance, Phnom Penh, person names, emails, phones, form `value=` attributes.
 - **Tone:** Khmer must read as a local founder on a Phnom Penh bay floor — short, punchy, money-aware. Forbidden: government/HR/textbook register.
+- **Typography (KH):** Kantumruy Pro via `html[lang="km"]` token remap (`--font-display` / `--font-sans` / `--font-mono`). EN keeps Bebas + IBM Plex. KH resets letter-spacing, raises line-height to 1.6, and bumps optical size (~8–10%) so tall vowels/subscripts do not clip.
 - **Scope:** Full visible marketing copy on `index.html` + `team.html` (pitch path). Legal page bodies (`about` / `privacy` / `terms`) deferred.
 
 ## Decisions Log
@@ -164,3 +165,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-10 | FirstWave consistency audit | Features triad locked on landing; HUD/Telegram Mechanic labels; payroll demoted in meta (background dual-clock only) |
 | 2026-09-10 | EN|KH `data-kh` bilingual layer | Lightweight DOM swap + localStorage; bay-floor Khmer tone; Latin for Edge-AI/Telegram/KIT Hub; freeze web for FirstWave after ship |
 | 2026-09-10 | Full EN|KH sweep index + team | Expand `data-kh` across landing + team bios/roles; legal page bodies still deferred |
+| 2026-09-10 | Khmer Kantumruy Pro via `html[lang="km"]` | Glyph-safe tracking/line-height/optical bump; EN Bebas/Plex unchanged |
