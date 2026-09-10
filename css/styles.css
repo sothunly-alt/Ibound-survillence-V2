@@ -661,11 +661,10 @@ h3 {
 
 .bbox {
   position: absolute;
-  left: 41%;
-  top: 48%;
-  width: 10%;
-  height: auto;
-  aspect-ratio: 1;
+  left: 33%;
+  top: 50%;
+  width: 15%;
+  height: 46%;
   border: 2px solid color-mix(in srgb, var(--surveillance-green) 22%, transparent);
   opacity: 0;
   transform: scale(0.96);
@@ -2015,6 +2014,7 @@ h3 {
 }
 
 .pp-node-pin {
+  position: relative;
   display: grid;
   place-items: center;
   width: 28px;
@@ -2022,6 +2022,8 @@ h3 {
 }
 
 .pp-node-pin i {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 10px;
   height: 10px;
@@ -2032,25 +2034,28 @@ h3 {
     0 0 12px color-mix(in srgb, var(--surveillance-green) 70%, transparent);
 }
 
-.pp-node-pin--pulse i {
-  animation: pp-node-pulse 1.8s ease-out infinite;
+.pp-node-pin--pulse::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background-color: var(--surveillance-green);
+  pointer-events: none;
+  animation: radar-pulse 2s infinite ease-out;
 }
 
-@keyframes pp-node-pulse {
+@keyframes radar-pulse {
   0% {
-    box-shadow:
-      0 0 0 2px #000,
-      0 0 0 0 color-mix(in srgb, var(--surveillance-green) 55%, transparent);
-  }
-  70% {
-    box-shadow:
-      0 0 0 2px #000,
-      0 0 0 14px transparent;
+    transform: scale(1);
+    opacity: 0.8;
   }
   100% {
-    box-shadow:
-      0 0 0 2px #000,
-      0 0 0 0 transparent;
+    transform: scale(4);
+    opacity: 0;
   }
 }
 
@@ -2071,8 +2076,9 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pp-node-pin--pulse i {
+  .pp-node-pin--pulse::after {
     animation: none;
+    content: none;
   }
 }
 
@@ -2132,7 +2138,7 @@ h3 {
 }
 
 .site-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid color-mix(in srgb, var(--surveillance-green) 15%, transparent);
   padding: 48px 0 64px;
   color: var(--muted);
   font-size: 14px;
@@ -2525,11 +2531,10 @@ h3 {
   }
 
   .bbox {
-    left: 32%;
+    left: 28%;
     top: 48%;
-    width: 18%;
-    height: auto;
-    aspect-ratio: 1;
+    width: 22%;
+    height: 46%;
   }
 
   .hero {
