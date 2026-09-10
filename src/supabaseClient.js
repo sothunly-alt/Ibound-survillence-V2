@@ -1,7 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+function projectUrl(raw) {
+  const value = String(raw || "").trim().replace(/\/+$/, "");
+  return value.replace(/\/rest\/v1$/i, "");
+}
+
+const supabaseUrl = projectUrl(import.meta.env.VITE_SUPABASE_URL);
+const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
 
 export const supabase =
   supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
@@ -16,10 +21,11 @@ function showError(form, message) {
 function showSuccess() {
   const form = document.getElementById("demo-form");
   const success = document.getElementById("form-success");
+  const card = success?.querySelector(".form-success-card");
   if (form) form.hidden = true;
   if (success) {
     success.hidden = false;
-    success.textContent = "Thanks, we'll be in touch";
+    card?.focus();
   }
 }
 

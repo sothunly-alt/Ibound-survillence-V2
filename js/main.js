@@ -82,7 +82,13 @@ document.querySelectorAll(".nav-mobile a").forEach((link) => {
 });
 
 /* —— Demo modal open/close + lead form —— */
+function resetDemoForm() {
+  if (form) form.hidden = false;
+  if (success) success.hidden = true;
+}
+
 function openDemo(plan) {
+  resetDemoForm();
   modal.hidden = false;
   document.body.style.overflow = "hidden";
   if (plan && planSelect) planSelect.value = plan;
@@ -92,6 +98,7 @@ function openDemo(plan) {
 function closeDemo() {
   modal.hidden = true;
   document.body.style.overflow = "";
+  resetDemoForm();
 }
 
 document.querySelectorAll("[data-open-demo]").forEach((btn) => {
@@ -152,8 +159,7 @@ function showFormSuccess() {
   if (form) form.hidden = true;
   if (success) {
     success.hidden = false;
-    success.textContent =
-      "Request ready. Your email client should open — send it so we can confirm on Telegram within one business day.";
+    success.querySelector(".form-success-card")?.focus();
   }
 }
 
@@ -198,12 +204,7 @@ form.addEventListener("submit", async (e) => {
         }),
       });
       if (!res.ok) throw new Error(`Form endpoint returned ${res.status}`);
-      if (success) {
-        success.hidden = false;
-        success.textContent =
-          "Request received. We’ll confirm on Telegram within one business day.";
-      }
-      form.hidden = true;
+      showFormSuccess();
       setTimeout(() => {
         window.location.href = "thank-you.html";
       }, 600);

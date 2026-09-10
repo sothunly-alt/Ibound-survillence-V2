@@ -2295,6 +2295,10 @@ h3 {
   gap: 14px;
 }
 
+.demo-form[hidden] {
+  display: none !important;
+}
+
 .demo-form label {
   display: grid;
   gap: 6px;
@@ -2352,9 +2356,82 @@ h3 {
   font-weight: 600;
 }
 
+.form-success[hidden] {
+  display: none !important;
+}
+
 .form-success {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.form-success-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: pointer;
+}
+
+.form-success-card {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  background: var(--elevated);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-neon);
+  padding: 40px 28px 28px;
+}
+
+.form-success-kicker {
+  margin: 0;
   color: var(--neon);
   font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.form-success-title {
+  margin: 0;
+  color: var(--neon);
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.form-success-copy {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--fs-ui);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .form-success:not([hidden]) {
+    animation: form-success-in 220ms ease-out;
+  }
+}
+
+@keyframes form-success-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .legal-page {
