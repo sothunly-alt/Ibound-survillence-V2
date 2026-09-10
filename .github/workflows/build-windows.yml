@@ -71,6 +71,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Fetch Visual C++ Redistributable
+        run: node scripts/fetch-vc-redist.mjs
+
       - name: Pre-fetch NSIS
         shell: powershell
         run: |
@@ -92,8 +95,13 @@ jobs:
           tagName: v__VERSION__
           releaseName: Inbound Surveillance Windows v__VERSION__
           releaseBody: |
-            Automated release for Inbound Surveillance desktop application.
-            *Note:* If the camera engine fails to launch on Windows, please install the [Microsoft Visual C++ 2015–2022 Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+            Automated Windows installer for Inbound Surveillance.
+
+            Download the **Setup.exe** (NSIS). The installer detects missing system software and installs it:
+            - Microsoft Edge WebView2 (the desktop UI)
+            - Visual C++ 2015–2022 x64 (required by the camera engine)
+
+            If the camera engine still reports a missing C++ runtime after setup, use **Install now** on the boot screen. That button runs the copy bundled inside the app. No extra download.
           releaseDraft: true
           prerelease: false
 

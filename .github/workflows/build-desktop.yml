@@ -84,6 +84,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev libglib2.0-dev pkg-config
 
+      - name: Fetch Visual C++ Redistributable
+        if: runner.os == 'Windows'
+        run: node scripts/fetch-vc-redist.mjs
+
       - name: Build Python sidecar binary
         shell: bash
         env:
@@ -102,7 +106,14 @@ jobs:
           args: --target ${{ matrix.target }}
           tagName: v__VERSION__
           releaseName: Inbound Surveillance v__VERSION__
-          releaseBody: Automated release for Inbound Surveillance desktop application.
+          releaseBody: |
+            Automated release for Inbound Surveillance.
+
+            **Windows:** install the `-setup.exe`. It detects and installs WebView2 and the Visual C++ runtime if they are missing.
+
+            **Linux (Ubuntu/Debian):** install the `.deb` with `sudo apt install ./Inbound*.deb`. APT pulls in WebKitGTK, OpenMP, and the other libraries the camera engine needs.
+
+            **Linux (other distros):** download the `.AppImage`, then `chmod +x` it. If it fails with a FUSE error, install `libfuse2`.
           releaseDraft: true
           prerelease: false
 

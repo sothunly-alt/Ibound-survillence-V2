@@ -2,11 +2,21 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { engineBaseUrl, enginePort } from "./engine-url";
 
+interface MissingRuntime {
+  id: string;
+  title: string;
+  description: string;
+  install_hint: string;
+  install_command: string;
+  can_install: boolean;
+}
+
 interface EngineFailure {
   exit_code?: number | null;
   error_summary: string;
   log_path: string;
   is_dll_error: boolean;
+  missing_runtime?: MissingRuntime | null;
 }
 
 const status = document.getElementById("status");
@@ -15,6 +25,12 @@ const errorPanel = document.getElementById("error-panel") as HTMLElement | null;
 const errorTitle = document.getElementById("error-title");
 const errorDesc = document.getElementById("error-desc");
 const vcredistBox = document.getElementById("vcredist-box") as HTMLElement | null;
+const runtimeTitle = document.getElementById("runtime-title");
+const runtimeDesc = document.getElementById("runtime-desc");
+const runtimeHint = document.getElementById("runtime-hint");
+const runtimeCommand = document.getElementById("runtime-command");
+const btnInstallRuntime = document.getElementById("btn-install-runtime") as HTMLButtonElement | null;
+const btnCopyCommand = document.getElementById("btn-copy-command") as HTMLButtonElement | null;
 const errorLog = document.getElementById("error-log");
 const errorPath = document.getElementById("error-path");
 const btnRetry = document.getElementById("btn-retry");
@@ -67,14 +83,47 @@ function showEngineFailure(failure: EngineFailure) {
         : "Engine Startup Failed";
   }
 
+  const missing = failure.missing_runtime ?? null;
+
   if (errorDesc) {
-    errorDesc.textContent = failure.is_dll_error
-      ? "A required system C++ library is missing from this Windows installation."
-      : "The camera engine exited unexpectedly during startup.";
+    errorDesc.textContent = missing
+      ? missing.description
+      : failure.is_dll_error
+        ? "A required system C++ library is missing from this Windows installation."
+        : "The camera engine exited unexpectedly during startup.";
   }
 
   if (vcredistBox) {
-    vcredistBox.style.display = failure.is_dll_error ? "block" : "none";
+    vcredistBox.style.display = missing || failure.is_dll_error ? "block" : "none";
+  }
+
+  if (runtimeTitle) {
+    runtimeTitle.textContent = missing?.title || "Missing Visual C++ runtime";
+  }
+  if (runtimeDesc) {
+    runtimeDesc.textContent =
+      missing?.description ||
+      "PyTorch and OpenCV require Microsoft Visual C++ 2015–2022 Redistributable (x64).";
+  }
+  if (runtimeHint) {
+    runtimeHint.textContent = missing?.install_hint || "";
+  }
+
+  const command = missing?.install_command?.trim() || "";
+  if (runtimeCommand) {
+    runtimeCommand.textContent = command;
+    runtimeCommand.style.display = command ? "block" : "none";
+  }
+
+  if (btnInstallRuntime) {
+    const canInstall = Boolean(missing?.can_install || failure.is_dll_error);
+    btnInstallRuntime.style.display = canInstall ? "inline-flex" : "none";
+    btnInstallRuntime.disabled = false;
+    btnInstallRuntime.textContent = "Install now";
+  }
+  if (btnCopyCommand) {
+    btnCopyCommand.style.display = command ? "inline-flex" : "none";
+    btnCopyCommand.textContent = "Copy install command";
   }
 
   if (errorLog) {
@@ -138,6 +187,40 @@ function initErrorActions() {
     startPolling();
   });
 
+  btnInstallRuntime?.addEventListener("click", async () => {
+    if (!btnInstallRuntime) return;
+    btnInstallRuntime.disabled = true;
+    btnInstallRuntime.textContent = "Installing…";
+    setStatus("Installing the missing Visual C++ runtime…");
+    try {
+      const message = await invoke<string>("install_bundled_runtime");
+      btnInstallRuntime.textContent = "Installed";
+      setStatus(message || "Runtime installed. Restarting engine…");
+      if (errorPanel) errorPanel.style.display = "none";
+      if (pulseDot) pulseDot.style.display = "block";
+      try {
+        await invoke("retry_engine");
+      } catch (_) {}
+      startPolling();
+    } catch (err) {
+      btnInstallRuntime.disabled = false;
+      btnInstallRuntime.textContent = "Install now";
+      setStatus(String(err), true);
+    }
+  });
+
+  btnCopyCommand?.addEventListener("click", async () => {
+    const command = lastFailure?.missing_runtime?.install_command?.trim();
+    if (!command) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      if (btnCopyCommand) btnCopyCommand.textContent = "Copied!";
+      window.setTimeout(() => {
+        if (btnCopyCommand) btnCopyCommand.textContent = "Copy install command";
+      }, 2000);
+    } catch (_) {}
+  });
+
   btnOpenLog?.addEventListener("click", async () => {
     try {
       await invoke("open_engine_log");
@@ -145,11 +228,16 @@ function initErrorActions() {
   });
 
   btnCopyError?.addEventListener("click", async () => {
+    const missing = lastFailure?.missing_runtime;
     const text = [
       `Exit Code: ${lastFailure?.exit_code ?? "N/A"}`,
       `Log Path: ${lastFailure?.log_path ?? "N/A"}`,
+      missing ? `Missing: ${missing.title}` : "",
+      missing?.install_command ? `Install: ${missing.install_command}` : "",
       `Error Summary:\n${lastFailure?.error_summary ?? "N/A"}`,
-    ].join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     try {
       await navigator.clipboard.writeText(text);
       if (btnCopyError) btnCopyError.textContent = "Copied!";
@@ -205,4 +293,3 @@ async function boot() {
 }
 
 void boot();
-

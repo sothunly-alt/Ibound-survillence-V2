@@ -139,6 +139,18 @@
       margin-bottom: 4px;
       font-size: 13px;
     }
+    .runtime-command {
+      display: none;
+      margin-top: 8px;
+      background: #080808;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #e5e5e5;
+      word-break: break-all;
+    }
     .error-log-box {
       background: #080808;
       border: 1px solid rgba(255, 255, 255, 0.1);
@@ -226,12 +238,17 @@
         </div>
 
         <div id="vcredist-box" class="vcredist-box">
-          <strong>Missing Visual C++ Runtime Detected</strong>
-          <span>PyTorch and OpenCV require Microsoft Visual C++ 2015–2022 Redistributable (x64) on Windows.</span>
-          <div style="margin-top: 8px;">
-            <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank" class="btn btn-primary" style="font-size: 11px; padding: 6px 10px;">
-              Install Visual C++ (x64)
-            </a>
+          <strong id="runtime-title">Missing software detected</strong>
+          <span id="runtime-desc">This computer is missing a library the camera engine needs.</span>
+          <span id="runtime-hint" style="display:block; margin-top: 6px; opacity: 0.9;"></span>
+          <code id="runtime-command" class="runtime-command"></code>
+          <div id="runtime-actions" style="margin-top: 8px;">
+            <button id="btn-install-runtime" class="btn btn-primary" type="button" style="font-size: 11px; padding: 6px 10px;">
+              Install now
+            </button>
+            <button id="btn-copy-command" class="btn btn-secondary" type="button" style="font-size: 11px; padding: 6px 10px; display: none;">
+              Copy install command
+            </button>
           </div>
         </div>
 

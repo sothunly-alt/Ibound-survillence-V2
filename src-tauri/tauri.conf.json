@@ -40,13 +40,35 @@
     "externalBin": [
       "binaries/inbound-engine"
     ],
+    "resources": [
+      "resources/*"
+    ],
     "macOS": {
       "minimumSystemVersion": "10.15",
       "exceptionDomain": "localhost"
     },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1",
+          "librsvg2-2",
+          "libjavascriptcoregtk-4.1-0",
+          "libglib2.0-0",
+          "libgomp1",
+          "libgl1"
+        ]
+      }
+    },
     "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "./windows/hooks.nsh"
       }
     }
   }

@@ -8,6 +8,7 @@ renames it with the Tauri target triple and copies it to
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -132,6 +133,40 @@ go2rtc_bin = EDGE / "bin" / go2rtc_name
 if go2rtc_bin.is_file():
     binaries.append((str(go2rtc_bin), "bin"))
 
+
+def _msvc_runtime_binaries() -> list[tuple[str, str]]:
+    """Ship the Visual C++ runtime next to the sidecar so Windows users
+    do not need a separate system-wide redistributable for the camera engine.
+    """
+    if sys.platform != "win32":
+        return []
+    roots = [
+        Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32",
+        Path(sys.base_prefix),
+        Path(sys.base_prefix) / "Library" / "bin",
+    ]
+    names = (
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "msvcp140_atomic_wait.dll",
+        "concrt140.dll",
+        "vcomp140.dll",
+    )
+    found: list[tuple[str, str]] = []
+    for name in names:
+        for folder in roots:
+            src = folder / name
+            if src.is_file():
+                found.append((str(src), "."))
+                break
+    return found
+
+
+binaries += _msvc_runtime_binaries()
+
 for pkg in ("ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests"):
     try:
         pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
@@ -157,6 +192,20 @@ a = Analysis(
     excludes=["tkinter", "matplotlib.tests", "pytest", "IPython"],
     noarchive=False,
 )
+
+if sys.platform == "win32":
+    bundled_names = set()
+    for item in a.binaries:
+        name = item[0] if isinstance(item, (tuple, list)) else getattr(item, "name", "")
+        bundled_names.add(Path(str(name)).name.lower())
+    extra = []
+    for src, _dest in _msvc_runtime_binaries():
+        dll = Path(src).name
+        if dll.lower() not in bundled_names:
+            extra.append((dll, src, "BINARY"))
+    if extra:
+        a.binaries += extra
+        print("Forced MSVC runtime DLLs into sidecar:", [item[0] for item in extra], flush=True)
 
 pyz = PYZ(a.pure)
 
