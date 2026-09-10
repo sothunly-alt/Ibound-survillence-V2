@@ -233,15 +233,15 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 172800
 
-# Use a production-ready SMTP server
+# Use a production-ready SMTP server (e.g. Gmail App Password)
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
+# host = "smtp.gmail.com"
 # port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# user = "Inboundcrew82@gmail.com"
+# pass = "env(GMAIL_APP_PASSWORD)"
+# admin_email = "Inboundcrew82@gmail.com"
+# sender_name = "Inbound Surveillance"
 
 [auth.email.template.confirmation]
 subject = "Welcome to Inbound Surveillance — confirm your account"
