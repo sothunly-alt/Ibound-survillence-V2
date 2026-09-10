@@ -2572,7 +2572,6 @@ h3 {
     right: auto;
     bottom: auto;
     left: auto;
-    display: none;
     width: 100%;
     max-width: 320px;
     height: auto;
@@ -2582,7 +2581,6 @@ h3 {
   }
 
   .phone.is-on {
-    display: block;
     opacity: 1;
     pointer-events: none;
   }
@@ -2937,170 +2935,27 @@ html[lang="km"] .lang-toggle-btn {
   line-height: 1.45;
 }
 
-/* ======== MOBILE AUDIT (max-width: 768px) ======== */
-/* Desktop-safe hardening — Industrial Overwatch tokens untouched */
+html[lang="km"] .brand,
+html[lang="km"] i,
+html[lang="km"] .icon {
+  font-family: inherit !important;
+}
+
+/* ======== MOBILE (max-width: 768px) — dumb stack only ======== */
 @media (max-width: 768px) {
-  html,
-  body {
-    overflow-x: hidden;
-    max-width: 100%;
-  }
-
-  :root {
-    --header-h: 56px;
-  }
-
-  .container {
-    width: min(1120px, 100% - 32px);
-  }
-
-  .site-header {
-    height: var(--header-h);
-  }
-
-  .header-inner {
-    height: var(--header-h);
-    gap: 12px;
-  }
-
-  .header-actions {
-    flex-shrink: 0;
-    gap: 8px;
-  }
-
-  .lang-toggle-btn {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 8px 10px;
-  }
-
-  .header-actions .btn-sm {
-    min-height: 44px;
-    padding: 10px 12px;
-  }
-
-  .section {
-    padding: 60px 0;
-  }
-
-  .hero-content {
-    padding: 48px 0 40px;
-  }
-
-  .hero h1 {
-    font-size: clamp(2rem, 8vw, 2.75rem);
-    line-height: 1.15;
-  }
-
-  .section-head h2,
-  .final-content h2 {
-    font-size: clamp(1.6rem, 6vw, 2.1rem);
-    line-height: 1.15;
-  }
-
-  .feature-grid,
-  .pricing-grid,
-  .flow-steps,
-  .partners,
-  .discovery-grid,
-  .field-matrix,
-  .team-grid,
-  .location-grid,
-  .footer-grid,
-  .demo-form,
-  .arch-grid,
-  .roi-sliders,
-  .roi-calc-pair,
-  .crew-detail {
+  .team-grid {
     grid-template-columns: 1fr;
   }
 
   .hud-stage {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 24px;
-    aspect-ratio: auto;
+    gap: 1rem;
+  }
+
+  img,
+  .phone-mockup {
+    max-width: 100%;
     height: auto;
-    overflow: visible;
-  }
-
-  .hud-media {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 3 / 4;
-  }
-
-  .phone {
-    position: relative;
-    inset: auto;
-    top: auto;
-    right: auto;
-    bottom: auto;
-    left: auto;
-    display: none;
-    width: 100%;
-    max-width: 320px;
-    height: auto;
-    filter: none;
-    transform: none;
-    z-index: 1;
-  }
-
-  .phone.is-on {
-    display: block;
-    opacity: 1;
-    pointer-events: none;
-  }
-
-  .phone-mockup,
-  .phone.is-on .phone-mockup {
-    width: 100%;
-    max-width: 320px;
-    height: auto;
-    max-height: none;
-    aspect-ratio: 9 / 17;
-  }
-
-  .demo-section.is-phone-focus .hud-stage {
-    aspect-ratio: auto;
-    max-height: none;
-  }
-
-  .demo-section.is-phone-focus .section-head,
-  .demo-section.is-phone-focus .flow-steps,
-  .demo-section.is-phone-focus .hud-chrome,
-  .demo-section.is-phone-focus .hud-footer,
-  .demo-section.is-phone-focus .hud-feed,
-  .demo-section.is-phone-focus .scanlines,
-  .demo-section.is-phone-focus .bbox {
-    filter: none;
-    opacity: 1;
-  }
-
-  .demo-section.is-phone-focus .hud-stage::after {
-    content: none;
-    display: none;
-  }
-
-  .modal-panel {
-    width: min(560px, 100% - 24px);
-    margin: 4vh auto;
-    padding: 20px;
-  }
-
-  .demo-form input,
-  .demo-form select,
-  .demo-form .btn,
-  .modal .btn,
-  .full-btn .btn,
-  .mobile-sticky-cta .btn {
-    width: 100%;
-    min-height: 44px;
-  }
-
-  .demo-form input,
-  .demo-form select {
-    padding: 12px 14px;
   }
 }

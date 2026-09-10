@@ -167,3 +167,4 @@ Source files: [`src/theme/tokens.ts`](src/theme/tokens.ts), [`src/theme/digital-
 | 2026-09-10 | Full EN|KH sweep index + team | Expand `data-kh` across landing + team bios/roles; legal page bodies still deferred |
 | 2026-09-10 | Khmer Kantumruy Pro via `html[lang="km"]` | Glyph-safe tracking/line-height/optical bump; EN Bebas/Plex unchanged |
 | 2026-09-10 | Mobile audit `@media (max-width: 768px)` + web freeze | Overflow/stack/type/touch hardening only; desktop + Industrial Overwatch untouched; FirstWave deck next |
+| 2026-09-10 | Dumb mobile + KH copy trim | Strip aggressive 768 audit; protect `.brand`/icons under `lang=km`; shorten wrapping `data-kh` |
