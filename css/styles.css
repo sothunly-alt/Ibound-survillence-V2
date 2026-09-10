@@ -1,3 +1,4 @@
+/* ======== VARIABLES ======== */
 :root {
   --absolute-black: #000000;
   --surveillance-green: #00ff41;
@@ -13,6 +14,9 @@
   --text: #eef3ef;
   --muted: #8d958f;
   --leak: #fabd34;
+  --brand-text: #ececec;
+  --surface-inset: #0a0a0a;
+  --map-void: #050505;
   --header-h: 72px;
   --radius: 4px;
   --font-display: "Bebas Neue", sans-serif;
@@ -29,9 +33,10 @@
   --page-wash:
     radial-gradient(ellipse 80% 55% at 0% 0%, rgba(0, 255, 85, 0.28), transparent 58%),
     radial-gradient(ellipse 70% 50% at 100% 100%, rgba(0, 194, 68, 0.2), transparent 55%),
-    linear-gradient(165deg, #000000 0%, #04180c 42%, #000000 100%);
+    linear-gradient(165deg, var(--absolute-black) 0%, #04180c 42%, var(--absolute-black) 100%);
 }
 
+/* ======== BASE ======== */
 *,
 *::before,
 *::after {
@@ -124,6 +129,7 @@ select {
   font: inherit;
 }
 
+/* ======== TYPOGRAPHY ======== */
 h1,
 h2,
 h3 {
@@ -136,7 +142,6 @@ h3 {
 }
 
 .mono,
-.tel-value,
 .bbox-tag strong,
 .price-amount .mono,
 .hud-clock,
@@ -144,8 +149,7 @@ h3 {
 .hud-live,
 .hud-footer,
 .section-index,
-.partners-label,
-.tg-brief dd {
+.partners-label {
   font-family: var(--font-mono);
   font-weight: 600;
 }
@@ -170,6 +174,7 @@ h3 {
   }
 }
 
+/* ======== HEADER / NAV ======== */
 .site-header {
   position: sticky;
   top: 0;
@@ -234,7 +239,7 @@ h3 {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 22px;
-  color: #ececec;
+  color: var(--brand-text);
   margin-right: -0.08em;
 }
 
@@ -244,7 +249,7 @@ h3 {
   font-size: 9px;
   letter-spacing: 0.34em;
   text-transform: uppercase;
-  color: #ececec;
+  color: var(--brand-text);
   margin-right: -0.34em;
 }
 
@@ -360,6 +365,7 @@ h3 {
   font-size: 13px;
 }
 
+/* ======== HERO ======== */
 .hero {
   position: relative;
   min-height: clamp(640px, calc(100vh - var(--header-h)), 900px);
@@ -468,9 +474,9 @@ h3 {
 }
 
 .hero-video-frame {
-  border: 1px solid #00ff41;
+  border: 1px solid var(--neon);
   border-radius: 0;
-  background: #000;
+  background: var(--absolute-black);
   overflow: hidden;
   aspect-ratio: 16 / 10;
 }
@@ -480,7 +486,7 @@ h3 {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: #000;
+  background: var(--absolute-black);
 }
 
 .hero-video-caption {
@@ -498,28 +504,6 @@ h3 {
   margin-top: 40px;
 }
 
-.tel-chip {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 12px;
-  background: rgba(8, 10, 12, 0.72);
-  border: 1px solid var(--line);
-  font-size: 11px;
-}
-
-.tel-label,
-.tel-value {
-  letter-spacing: 0.08em;
-}
-
-.tel-state {
-  color: var(--neon);
-}
-
-.tel-state.idle {
-  color: var(--muted);
-}
 
 .section,
 .site-footer,
@@ -559,6 +543,7 @@ h3 {
   line-height: 1.6;
 }
 
+/* ======== SYSTEM HUD ======== */
 .hud-frame {
   border: 1px solid var(--line-strong);
   background: var(--bg-2);
@@ -712,7 +697,7 @@ h3 {
   max-width: min(260px, 70vw);
   padding: 2px 6px;
   background: var(--neon);
-  color: #000;
+  color: var(--absolute-black);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -745,6 +730,7 @@ h3 {
   50% { opacity: 1; }
 }
 
+/* ======== TELEGRAM DEVICE ======== */
 .phone {
   position: absolute;
   right: 3%;
@@ -1078,10 +1064,11 @@ h3 {
   line-height: 1.55;
 }
 
+/* ======== ROI / FEATURES / PRICING ======== */
 .roi-calc {
   margin-bottom: 24px;
   padding: 2rem;
-  background: #0d0d0d;
+  background: var(--elevated);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   box-shadow: var(--shadow-neon);
@@ -1272,19 +1259,6 @@ h3 {
   align-items: stretch;
 }
 
-.feature-card--lead {
-  grid-column: 1 / -1;
-  border-color: var(--line-strong);
-}
-
-.feature-card--lead h3 {
-  font-size: clamp(1.25rem, 2.4vw, 1.6rem);
-  max-width: 28ch;
-}
-
-.feature-card--lead p {
-  max-width: 72ch;
-}
 
 .feature-icon {
   width: 40px;
@@ -1423,7 +1397,7 @@ h3 {
 .price-card.featured {
   border-color: rgba(255, 255, 255, 0.25);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  background: #000;
+  background: var(--absolute-black);
   transform: none;
 }
 
@@ -1779,67 +1753,14 @@ h3 {
   line-height: 1.5;
 }
 
-.guarantee-note {
-  margin: 12px 0 0;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
 
-.cases-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
+/* ======== TEAM ======== */
 .team-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 
-.case-card {
-  border: 1px dashed color-mix(in srgb, var(--neon) 35%, transparent);
-  background: var(--elevated);
-  border-radius: var(--radius);
-  padding: 20px;
-}
-
-.case-badge {
-  margin: 0 0 12px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--neon);
-}
-
-.case-card h3 {
-  font-family: var(--font-display);
-  font-size: 1.45rem;
-  letter-spacing: 0.04em;
-  margin: 0 0 14px;
-}
-
-.case-label {
-  margin: 12px 0 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.case-card p {
-  margin: 0;
-  color: #c5cdc8;
-  font-size: 14px;
-  line-height: 1.45;
-}
-
-.case-metric {
-  color: var(--neon);
-  margin-top: 4px !important;
-}
 
 .team-slot {
   margin: 0;
@@ -1865,7 +1786,7 @@ h3 {
 .team-frame {
   position: relative;
   aspect-ratio: 3 / 4;
-  background: #0a0a0a;
+  background: var(--surface-inset);
   border: 1px dashed #2a2a2a;
   display: grid;
   place-items: center;
@@ -1905,12 +1826,6 @@ h3 {
     linear-gradient(var(--neon), var(--neon)) bottom right / 1.5px 14px no-repeat;
 }
 
-.team-placeholder {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  color: #555;
-}
 
 .team-slot figcaption,
 .team-slot-caption {
@@ -2028,17 +1943,7 @@ h3 {
   margin: 8px 0 48px;
 }
 
-@media (max-width: 860px) {
-  .crew-detail {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .crew-detail .team-frame {
-    max-width: 280px;
-  }
-}
-
+/* ======== LOCATION / MAP ======== */
 .location-grid {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
@@ -2057,7 +1962,7 @@ h3 {
   position: relative;
   min-height: 400px;
   border: 1px solid color-mix(in srgb, var(--surveillance-green) 42%, transparent);
-  background: #050505;
+  background: var(--map-void);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-dim) 35%, transparent);
@@ -2066,7 +1971,7 @@ h3 {
 .pp-map {
   width: 100%;
   height: 400px;
-  background: #050505;
+  background: var(--map-void);
   z-index: 0;
 }
 
@@ -2144,7 +2049,7 @@ h3 {
   border-radius: 50%;
   background: var(--surveillance-green);
   box-shadow:
-    0 0 0 2px #000,
+    0 0 0 2px var(--absolute-black),
     0 0 12px color-mix(in srgb, var(--surveillance-green) 70%, transparent);
 }
 
@@ -2189,6 +2094,7 @@ h3 {
   color: var(--text);
 }
 
+/* ======== REDUCED MOTION ======== */
 @media (prefers-reduced-motion: reduce) {
   .pp-node-pin--pulse::after {
     animation: none;
@@ -2245,12 +2151,14 @@ h3 {
   margin-top: 24px;
 }
 
+/* ======== RESPONSIVE ======== */
 @media (max-width: 980px) {
   .team-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
+/* ======== FOOTER / MODAL ======== */
 .site-footer {
   border-top: 1px solid color-mix(in srgb, var(--surveillance-green) 15%, transparent);
   padding: 48px 0 64px;
@@ -2502,6 +2410,15 @@ h3 {
 }
 
 @media (max-width: 860px) {
+  .crew-detail {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .crew-detail .team-frame {
+    max-width: 280px;
+  }
+
   .header-actions .btn-sm {
     padding: 8px 12px;
     font-size: 12px;
@@ -2524,7 +2441,6 @@ h3 {
   .flow-steps,
   .partners,
   .discovery-grid,
-  .cases-grid,
   .field-matrix,
   .team-grid,
   .location-grid,
@@ -2700,11 +2616,12 @@ h3 {
   }
 }
 
+/* ======== BOOT ======== */
 /* —— Edge Neural Boot Sequence —— */
 .boot-overlay {
   position: fixed;
   inset: 0;
-  background-color: #000000;
+  background-color: var(--absolute-black);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -2727,7 +2644,7 @@ h3 {
 .boot-modal {
   width: 100%;
   max-width: 480px;
-  background-color: #0a0a0a;
+  background-color: var(--surface-inset);
   border: 1px solid #1f1f1f;
   border-radius: 4px;
   padding: 20px;
@@ -2755,9 +2672,9 @@ h3 {
 .boot-dot {
   width: 6px;
   height: 6px;
-  background-color: #00ff41;
+  background-color: var(--neon);
   border-radius: 50%;
-  box-shadow: 0 0 8px #00ff41;
+  box-shadow: 0 0 8px var(--neon);
   animation: pulse-dot 1s infinite alternate;
   flex-shrink: 0;
 }
@@ -2796,7 +2713,7 @@ h3 {
 }
 
 .log-entry.log-highlight {
-  color: #00ff41;
+  color: var(--neon);
 }
 
 .boot-progress-wrapper {
@@ -2814,7 +2731,7 @@ h3 {
 .boot-progress-fill {
   width: 0%;
   height: 100%;
-  background-color: #00ff41;
+  background-color: var(--neon);
   box-shadow: 0 0 10px rgba(0, 255, 65, 0.6);
   transition: width 0.08s linear;
 }
@@ -2837,7 +2754,7 @@ h3 {
 }
 
 #boot-percentage {
-  color: #00ff41;
+  color: var(--neon);
   font-weight: 600;
   flex-shrink: 0;
 }

@@ -1,3 +1,6 @@
+/* Landing page interactions — script loads at end of body (no DOMContentLoaded wrap). */
+
+/* —— Shared DOM refs —— */
 const header = document.getElementById("header");
 const mobileNav = document.getElementById("mobile-nav");
 const menuToggle = document.querySelector("[data-menu-toggle]");
@@ -26,6 +29,7 @@ function tickClock(el, start = new Date()) {
 
 document.querySelectorAll("[data-hud-clock]").forEach((el) => tickClock(el));
 
+/* —— System HUD demo loop (bbox + Telegram phone phases) —— */
 const bbox = document.querySelector("[data-bbox]");
 const bboxTimer = document.querySelector("[data-bbox-timer]");
 const phone = document.querySelector("[data-phone]");
@@ -63,6 +67,7 @@ if (bboxTimer) {
   runDemoLoop();
 }
 
+/* —— Mobile nav toggle —— */
 menuToggle?.addEventListener("click", () => {
   const open = mobileNav.hasAttribute("hidden");
   mobileNav.toggleAttribute("hidden", !open);
@@ -76,6 +81,7 @@ document.querySelectorAll(".nav-mobile a").forEach((link) => {
   });
 });
 
+/* —— Demo modal open/close + lead form —— */
 function openDemo(plan) {
   modal.hidden = false;
   document.body.style.overflow = "hidden";
@@ -239,6 +245,7 @@ const navSections = navLinks
   .map((link) => document.querySelector(link.getAttribute("href")))
   .filter(Boolean);
 
+/* —— ROI calculator —— */
 function formatMoney(value) {
   return `$${Math.round(value).toLocaleString("en-US")}`;
 }
@@ -301,6 +308,7 @@ function initRoiCalculator() {
 
 initRoiCalculator();
 
+/* —— Scroll chrome: header state, progress bar, mobile sticky CTA —— */
 let scrollTick = false;
 let scrollHideTimer = null;
 
@@ -449,6 +457,7 @@ if (shot) {
   });
 }
 
+/* —— Boot loader (opt-in via ?boot=1; skipped by default for judges) —— */
 function finishBoot(overlay, { hold = false } = {}) {
   if (!overlay) {
     document.body.classList.remove("is-booting");
@@ -592,6 +601,7 @@ function initBootSequence() {
 
 initBootSequence();
 
+/* —— Leaflet Phnom Penh map —— */
 function initPpNodeMap() {
   const el = document.getElementById("pp-map");
   if (!el || typeof L === "undefined") return;
