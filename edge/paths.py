@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import os
 import sys
+import traceback
 from pathlib import Path
+
+INBOUND_APP_VERSION = "0.1.2"
+INBOUND_BUILD_ID = os.environ.get("INBOUND_BUILD_ID", "").strip() or INBOUND_APP_VERSION
 
 
 def _meipass() -> Path | None:
@@ -12,6 +16,10 @@ def _meipass() -> Path | None:
     if meipass:
         return Path(meipass)
     return None
+
+
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False) or _meipass() is not None)
 
 
 def resource_dir() -> Path:
@@ -27,9 +35,7 @@ def get_resource_path(relative_path: str) -> Path:
     PyInstaller extracts datas into ``sys._MEIPASS``. Source checkouts
     resolve relative to this module (the ``edge/`` directory).
     """
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / relative_path
-    return Path(__file__).resolve().parent / relative_path
+    return resource_dir() / relative_path
 
 
 def data_dir() -> Path:
@@ -45,7 +51,7 @@ def data_dir() -> Path:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
-    if getattr(sys, "frozen", False) or _meipass() is not None:
+    if is_frozen():
         if sys.platform == "win32":
             base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
             path = base / "Inbound Surveillance"
@@ -61,3 +67,21 @@ def data_dir() -> Path:
     path = Path(__file__).resolve().parent
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def log_boot_banner() -> None:
+    """Print a one-line identity so Windows engine.log proves which build ran."""
+    print(
+        f"[INBOUND_BOOT] build={INBOUND_BUILD_ID} version={INBOUND_APP_VERSION} "
+        f"platform={sys.platform} frozen={int(is_frozen())} "
+        f"resource={resource_dir()} data={data_dir()}",
+        flush=True,
+    )
+
+
+def fatal_boot(exc: BaseException) -> None:
+    """Log a startup crash and exit. Used by the frozen Windows sidecar."""
+    print(f"[FATAL] Engine startup failed: {exc}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    sys.exit(1)

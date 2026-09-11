@@ -70,6 +70,22 @@ def test_platform_and_stream_id() -> None:
     print(f"ok platform tag={tag} binary={name}")
 
 
+def test_ffmpeg_candidates_skip_unix_paths_on_windows_shape() -> None:
+    from media.go2rtc import candidate_binary_paths, ffmpeg_candidate_paths
+    from paths import resource_dir
+
+    bins = candidate_binary_paths()
+    assert any(p.name.startswith("go2rtc") for p in bins)
+    assert any(str(p).startswith(str(resource_dir())) for p in bins)
+
+    ff = ffmpeg_candidate_paths()
+    assert ff
+    if sys.platform == "win32":
+        assert all("/usr/bin/" not in p for p in ff)
+    else:
+        assert any(p.endswith("ffmpeg") for p in ff)
+
+
 def test_create_adapter_gateway_routing() -> None:
     class FakeClient:
         def __init__(self):
@@ -536,6 +552,7 @@ def test_clean_teardown(mgr: Go2RtcManager) -> None:
 
 def main() -> None:
     test_platform_and_stream_id()
+    test_ffmpeg_candidates_skip_unix_paths_on_windows_shape()
     test_create_adapter_gateway_routing()
     test_bind_gateway_keeps_previous_streams()
     test_mjpeg_part_includes_content_length()

@@ -158,29 +158,37 @@ def extract_dual_crops(frame: np.ndarray, keypoints: list | None = None, bbox: t
 
 
 def _load_env_or_config() -> tuple[str, str]:
+    from paths import data_dir, is_frozen, resource_dir
+
     api_key = os.environ.get("FIREWORKS_API_KEY", "").strip().strip('"').strip("'")
     model = os.environ.get("FIREWORKS_MODEL", "").strip().strip('"').strip("'")
-    for p in (Path(__file__).parent / ".env", Path(__file__).parent.parent / ".env"):
-        if p.is_file():
-            try:
-                for line in p.read_text().splitlines():
-                    line = line.strip()
-                    if line.startswith("FIREWORKS_API_KEY=") and not api_key:
-                        api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    elif line.startswith("FIREWORKS_MODEL=") and not model:
-                        model = line.split("=", 1)[1].strip().strip('"').strip("'")
-            except Exception:
-                pass
-    cfg_path = Path(__file__).parent / "config.yaml"
+    data = data_dir()
+    resource = resource_dir()
+    env_candidates = [data / ".env", resource / ".env"]
+    if not is_frozen():
+        env_candidates.append(resource.parent / ".env")
+    for p in env_candidates:
+        if not p.is_file():
+            continue
+        try:
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("FIREWORKS_API_KEY=") and not api_key:
+                    api_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                elif line.startswith("FIREWORKS_MODEL=") and not model:
+                    model = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+    cfg_path = data / "config.yaml"
     if cfg_path.is_file():
         try:
             import yaml
 
-            data = yaml.safe_load(cfg_path.read_text()) or {}
-            if not api_key and "fireworks_api_key" in data:
-                api_key = str(data["fireworks_api_key"]).strip().strip('"').strip("'")
-            if not model and "fireworks_model" in data:
-                model = str(data["fireworks_model"]).strip().strip('"').strip("'")
+            payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            if not api_key and "fireworks_api_key" in payload:
+                api_key = str(payload["fireworks_api_key"]).strip().strip('"').strip("'")
+            if not model and "fireworks_model" in payload:
+                model = str(payload["fireworks_model"]).strip().strip('"').strip("'")
         except Exception:
             pass
     if not model:

@@ -24,7 +24,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from paths import data_dir, get_resource_path, resource_dir
+from paths import (
+    INBOUND_BUILD_ID,
+    data_dir,
+    fatal_boot,
+    get_resource_path,
+    is_frozen,
+    log_boot_banner,
+    resource_dir,
+)
 
 # Default FFmpeg RTSP options for any leftover OpenCV opens (CLI preview).
 # The grabber's RTSPAdapter overrides per-attempt with a 2s stimeout.
@@ -37,16 +45,22 @@ os.environ.setdefault(
 if sys.platform.startswith("linux"):
     os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
-import cv2
-import numpy as np
-import requests
-import yaml
-
-import re
-
 ROOT = resource_dir()
 DATA_DIR = data_dir()
-VIDEOS_DIR = ROOT / "videos"
+VIDEOS_DIR = DATA_DIR / "videos"
+log_boot_banner()
+
+try:
+    import cv2
+    import numpy as np
+    import requests
+    import yaml
+except Exception as _boot_err:
+    if __name__ == "__main__":
+        fatal_boot(_boot_err)
+    raise
+
+import re
 
 
 DEFAULT_SUPABASE_URL = "https://rmepwjywobowktdmkusu.supabase.co"
@@ -127,9 +141,11 @@ def public_supabase_config() -> dict[str, Any]:
 
 def init_videos_dir() -> Path:
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
-    sample = ROOT.parent / "tools" / "virtual-camera" / "videos" / "sample_garage_demo.mp4"
     target = VIDEOS_DIR / "sample_garage_demo.mp4"
-    if not target.exists() and sample.is_file():
+    sample = None
+    if not is_frozen():
+        sample = ROOT.parent / "tools" / "virtual-camera" / "videos" / "sample_garage_demo.mp4"
+    if not target.exists() and sample is not None and sample.is_file():
         try:
             target.symlink_to(sample.resolve())
         except Exception:
@@ -145,91 +161,96 @@ init_videos_dir()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from adapters import create_adapter, ingest_kind
-from adapters.base import (
-    BaseCameraAdapter,
-    FramePacket,
-    parse_source,
-    protocol_from_source,
-    redact_source,
-    unwrap_local_video_source,
-    webcam_index,
-)
-from adapters.onvif import onvif_xaddr
-from adapters.webcam import open_webcam_index as _open_webcam_index
-from capture import AsyncFrameGrabber, request_still
-from discovery import DiscoveryEngine
-from media.go2rtc import Go2RtcManager, sanitize_stream_id
-from db import (
-    add_wifi_minutes,
-    close_bay_sessions,
-    close_empty_bays,
-    complete_vehicle_job,
-    connect,
-    get_daily_garage_summary,
-    get_or_create_vehicle_job,
-    get_recent_ai_audits,
-    get_vehicle_job_history,
-    has_opened_today,
-    insert_event,
-    list_vehicle_jobs,
-    record_ai_audit_verdict,
-    record_face_clock_in,
-    record_face_clock_out,
-    update_technician_activity,
-    update_vehicle_job_activity,
-    upsert_minute,
-)
-from face_id import (
-    create_identity,
-    delete_identity,
-    delete_identity_photo,
-    get_identity,
-    identity_photo_path,
-    list_identities,
-    save_identity_photo,
-    till_status_label,
-    try_create_face_recognizer,
-)
-from ai_auditor import AIAuditorQueue, AIAuditVerdict, TokenSaverGate
-from occupancy import (
-    DEFAULT_BAYS,
-    UNKNOWN_WORKER,
-    BayZoneManager,
-    GhostCounter,
-    GhostState,
-    detection_in_bay,
-    normalize_bays,
-    roi_to_pixels,
-)
-from bay_zoom import occupancy_hints, zoom_empty_bays
-from corroborate import veto_vehicle_interior
-from liveness import LivenessProbe
-from negatives import bank_hard_negatives
-from person import Detection, draw_detection, person_detections
-from proof import save_proof, scale_roi_px
-from reid import try_create_body_reid
-from report import build_report
-from runtime import (
-    resolve_bay_zoom,
-    resolve_bay_zoom_pad,
-    resolve_imgsz,
-    resolve_kpt_conf,
-    resolve_min_aspect,
-    resolve_min_keypoints,
-    resolve_min_person_height,
-    resolve_occupy_clear_seconds,
-    resolve_person_conf,
-    resolve_runtime,
-    resolve_under_car_grace_seconds,
-    resolve_weights_file,
-)
-from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
-from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
-from telegram_link import TelegramLinkService
-from telegram_out import TelegramOut
-from tracker import PersonTracker, run_identity_pipeline
-from vehicle import VehicleDetection, extract_vehicle_detections
+try:
+    from adapters import create_adapter, ingest_kind
+    from adapters.base import (
+        BaseCameraAdapter,
+        FramePacket,
+        parse_source,
+        protocol_from_source,
+        redact_source,
+        unwrap_local_video_source,
+        webcam_index,
+    )
+    from adapters.onvif import onvif_xaddr
+    from adapters.webcam import open_webcam_index as _open_webcam_index
+    from capture import AsyncFrameGrabber, request_still
+    from discovery import DiscoveryEngine
+    from media.go2rtc import Go2RtcManager, sanitize_stream_id
+    from db import (
+        add_wifi_minutes,
+        close_bay_sessions,
+        close_empty_bays,
+        complete_vehicle_job,
+        connect,
+        get_daily_garage_summary,
+        get_or_create_vehicle_job,
+        get_recent_ai_audits,
+        get_vehicle_job_history,
+        has_opened_today,
+        insert_event,
+        list_vehicle_jobs,
+        record_ai_audit_verdict,
+        record_face_clock_in,
+        record_face_clock_out,
+        update_technician_activity,
+        update_vehicle_job_activity,
+        upsert_minute,
+    )
+    from face_id import (
+        create_identity,
+        delete_identity,
+        delete_identity_photo,
+        get_identity,
+        identity_photo_path,
+        list_identities,
+        save_identity_photo,
+        till_status_label,
+        try_create_face_recognizer,
+    )
+    from ai_auditor import AIAuditorQueue, AIAuditVerdict, TokenSaverGate
+    from occupancy import (
+        DEFAULT_BAYS,
+        UNKNOWN_WORKER,
+        BayZoneManager,
+        GhostCounter,
+        GhostState,
+        detection_in_bay,
+        normalize_bays,
+        roi_to_pixels,
+    )
+    from bay_zoom import occupancy_hints, zoom_empty_bays
+    from corroborate import veto_vehicle_interior
+    from liveness import LivenessProbe
+    from negatives import bank_hard_negatives
+    from person import Detection, draw_detection, person_detections
+    from proof import save_proof, scale_roi_px
+    from reid import try_create_body_reid
+    from report import build_report
+    from runtime import (
+        resolve_bay_zoom,
+        resolve_bay_zoom_pad,
+        resolve_imgsz,
+        resolve_kpt_conf,
+        resolve_min_aspect,
+        resolve_min_keypoints,
+        resolve_min_person_height,
+        resolve_occupy_clear_seconds,
+        resolve_person_conf,
+        resolve_runtime,
+        resolve_under_car_grace_seconds,
+        resolve_weights_file,
+    )
+    from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
+    from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
+    from telegram_link import TelegramLinkService
+    from telegram_out import TelegramOut, normalize_chat_id
+    from tracker import PersonTracker, run_identity_pipeline
+    from vehicle import VehicleDetection, extract_vehicle_detections
+except Exception as _boot_err:
+    if __name__ == "__main__":
+        fatal_boot(_boot_err)
+    raise
 
 
 def find_free_port(default_port: int = 8765) -> int:
@@ -268,7 +289,7 @@ def read_config() -> dict[str, Any]:
         or str(data.get("telegram_bot_token") or "").strip()
         or DEFAULT_TELEGRAM_BOT_TOKEN
     )
-    chat = os.environ.get("TELEGRAM_CHAT_ID", data.get("telegram_chat_id") or "")
+    chat = normalize_chat_id(os.environ.get("TELEGRAM_CHAT_ID", data.get("telegram_chat_id") or ""))
     data["telegram_bot_token"] = token
     data["telegram_chat_id"] = chat
     if os.environ.get("TELEGRAM_BOT_TOKEN", "").strip():
@@ -1007,7 +1028,7 @@ class LiveStreamEngine:
                 str(self.cfg.get("telegram_chat_id")),
                 str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
             )
-        proofs_audit_dir = Path(__file__).parent / "proofs" / "ai_audits"
+        proofs_audit_dir = DATA_DIR / "proofs" / "ai_audits"
         audit_cooldown = float(self.cfg.get("ai_audit_cooldown_seconds") or 45.0)
         self.ai_auditor = AIAuditorQueue(
             gate=TokenSaverGate(cooldown_seconds=audit_cooldown),
@@ -1552,7 +1573,7 @@ class LiveStreamEngine:
     def apply_hub_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
         updates: dict[str, Any] = {}
         if "telegram_chat_id" in payload:
-            updates["telegram_chat_id"] = str(payload.get("telegram_chat_id") or "")
+            updates["telegram_chat_id"] = normalize_chat_id(payload.get("telegram_chat_id"))
         if "venue" in payload:
             updates["venue"] = str(payload.get("venue") or "").strip() or "Demo Garage"
             updates["garage_name"] = updates["venue"]
@@ -2355,7 +2376,7 @@ class LiveStreamEngine:
         }
 
     def apply_telegram_link(self, chat_id: str) -> dict[str, Any]:
-        chat = str(chat_id or "").strip()
+        chat = normalize_chat_id(chat_id)
         if not chat:
             return {"success": False, "error": "chat_id required."}
         self.telegram_links.set_active_chat(
@@ -3075,7 +3096,22 @@ class LiveStreamEngine:
             record_face_clock_out(self.conn, name, stamp)
 
 
-GLOBAL_ENGINE = LiveStreamEngine()
+GLOBAL_ENGINE: LiveStreamEngine | None = None
+
+
+def init_global_engine() -> LiveStreamEngine:
+    """Create the process-wide engine. Deferred on frozen Windows so import
+    failures and config errors are logged from ``main()`` instead of crashing
+    before the boot banner.
+    """
+    global GLOBAL_ENGINE
+    if GLOBAL_ENGINE is None:
+        GLOBAL_ENGINE = LiveStreamEngine()
+    return GLOBAL_ENGINE
+
+
+if not is_frozen():
+    init_global_engine()
 
 
 HUB_HTML_PATH = get_resource_path("hub.html")
@@ -3295,16 +3331,17 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             search_dirs = [
                 ROOT,
                 ROOT / "public",
-                ROOT.parent,
-                ROOT.parent / "public",
-                Path(__file__).resolve().parent,
-                Path(__file__).resolve().parent / "public",
-                Path(__file__).resolve().parent.parent,
-                Path(__file__).resolve().parent.parent / "public",
                 DATA_DIR,
                 Path.cwd(),
                 Path.cwd() / "public",
             ]
+            if not is_frozen():
+                search_dirs.extend(
+                    [
+                        ROOT.parent,
+                        ROOT.parent / "public",
+                    ]
+                )
             content = None
             resolved_ext = Path(filename).suffix.lower()
             for name in names_to_try:
@@ -3341,9 +3378,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             rel_path = parsed.path.lstrip("/")
             candidates = [
                 ROOT / rel_path,
-                ROOT.parent / rel_path,
-                Path(__file__).resolve().parent / rel_path,
+                DATA_DIR / rel_path,
             ]
+            if not is_frozen():
+                candidates.append(ROOT.parent / rel_path)
             content = None
             for cand in candidates:
                 if cand.exists() and cand.is_file():
@@ -3663,7 +3701,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         elif parsed.path.startswith("/proofs/ai_audits/"):
             rel_name = parsed.path[len("/proofs/ai_audits/"):].lstrip("/")
             safe_name = Path(rel_name).name
-            proof_file = Path(__file__).parent / "proofs" / "ai_audits" / safe_name
+            proof_file = DATA_DIR / "proofs" / "ai_audits" / safe_name
             if proof_file.exists() and proof_file.is_file():
                 self.send_response(200)
                 self.send_header("Content-Type", "image/jpeg")
@@ -4050,17 +4088,21 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
 
 def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
+    engine = init_global_engine()
     actual_port = find_free_port(port)
     ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer(("127.0.0.1", actual_port), DashboardRequestHandler)
     server.daemon_threads = True
 
-    GLOBAL_ENGINE.start()
+    engine.start()
 
     url = f"http://127.0.0.1:{actual_port}"
     print("Inbound Garage", flush=True)
     print(f"Dashboard: {url}", flush=True)
-    print(f"[INBOUND_SERVER_READY] port={actual_port}", flush=True)
+    print(
+        f"[INBOUND_SERVER_READY] port={actual_port} build={INBOUND_BUILD_ID}",
+        flush=True,
+    )
 
     if open_browser:
         try:
@@ -4076,7 +4118,7 @@ def start_unified_server(port: int = 8765, open_browser: bool = True) -> None:
         shutting_down["done"] = True
         print("\nStopping Inbound Garage...", flush=True)
         try:
-            GLOBAL_ENGINE.stop()
+            engine.stop()
         except Exception:
             pass
         try:
@@ -4121,8 +4163,4 @@ if __name__ == "__main__":
         args = parse_args()
         start_unified_server(port=args.port, open_browser=not args.no_browser)
     except Exception as _boot_err:
-        import traceback
-        print(f"[FATAL] Engine startup failed: {_boot_err}", file=sys.stderr, flush=True)
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-        sys.exit(1)
+        fatal_boot(_boot_err)

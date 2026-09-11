@@ -21,7 +21,7 @@ from urllib.parse import quote
 import requests
 
 from media.client import Go2RtcClient
-from paths import data_dir, resource_dir
+from paths import data_dir, is_frozen, resource_dir
 
 GO2RTC_VERSION = "1.9.14"
 GITHUB_RELEASE = f"https://github.com/AlexxIT/go2rtc/releases/download/v{GO2RTC_VERSION}"
@@ -95,6 +95,12 @@ def _is_executable_file(path: Path) -> bool:
     return path.stat().st_size > 100_000
 
 
+def _writable_bin_dir() -> Path:
+    if is_frozen():
+        return data_dir() / "bin"
+    return resource_dir() / "bin"
+
+
 def candidate_binary_paths() -> list[Path]:
     """Search order for a local go2rtc binary (dev, frozen, Tauri)."""
     name = binary_filename()
@@ -111,35 +117,29 @@ def candidate_binary_paths() -> list[Path]:
         seen.add(resolved)
         out.append(path)
 
-    edge = Path(__file__).resolve().parent.parent
-    add(edge / "bin" / name)
+    res = resource_dir()
+    add(res / "bin" / name)
+    add(res / name)
+    add(_writable_bin_dir() / name)
 
-    try:
-        res = resource_dir()
-        add(res / "bin" / name)
-        add(res / name)
-    except Exception:
-        pass
-
-    if getattr(sys, "frozen", False):
+    if is_frozen():
         exe_dir = Path(sys.executable).resolve().parent
         add(exe_dir / name)
         add(exe_dir / "bin" / name)
+    else:
+        binaries = res.parent / "src-tauri" / "binaries"
+        add(binaries / name)
+        tag = platform_tag()
+        add(binaries / f"go2rtc-{tag}")
+        add(binaries / f"go2rtc-{tag}.exe")
+        triple = os.environ.get("TAURI_ENV_TARGET_TRIPLE", "").strip()
+        if triple:
+            add(binaries / tauri_sidecar_name(triple))
+        if binaries.is_dir():
+            for extra in binaries.glob("go2rtc-*"):
+                add(extra)
 
-    repo = edge.parent
-    binaries = repo / "src-tauri" / "binaries"
-    add(binaries / name)
-    tag = platform_tag()
-    add(binaries / f"go2rtc-{tag}")
-    add(binaries / f"go2rtc-{tag}.exe")
-    triple = os.environ.get("TAURI_ENV_TARGET_TRIPLE", "").strip()
-    if triple:
-        add(binaries / tauri_sidecar_name(triple))
-    if binaries.is_dir():
-        for extra in binaries.glob("go2rtc-*"):
-            add(extra)
-
-    which = shutil.which("go2rtc")
+    which = shutil.which("go2rtc") or shutil.which("go2rtc.exe")
     if which:
         add(Path(which))
     return out
@@ -193,7 +193,7 @@ def download_binary(dest: Path | None = None) -> Path:
         )
     filename, is_zip = asset
     if dest is None:
-        dest = Path(__file__).resolve().parent.parent / "bin" / binary_filename()
+        dest = _writable_bin_dir() / binary_filename()
     dest.parent.mkdir(parents=True, exist_ok=True)
     url = f"{GITHUB_RELEASE}/{filename}"
     print(f"[go2rtc] downloading {url}", flush=True)
@@ -262,22 +262,68 @@ def _port_open(host: str, port: int, timeout: float = 0.25) -> bool:
         return False
 
 
-def find_ffmpeg_binary() -> str | None:
-    """Find a usable ffmpeg executable for go2rtc transcoding and frame capture."""
-    candidates = [
+def _is_runnable(path: str) -> bool:
+    if not path or not os.path.isfile(path):
+        return False
+    if sys.platform == "win32":
+        return True
+    return os.access(path, os.X_OK)
+
+
+def ffmpeg_candidate_paths() -> list[str]:
+    """Ordered ffmpeg lookup. Unix paths are skipped on Windows and vice versa."""
+    ffmpeg_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+    candidates: list[str | None] = [
         shutil.which("ffmpeg"),
-        str(Path.home() / ".local" / "bin" / "ffmpeg"),
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
+        shutil.which("ffmpeg.exe") if sys.platform == "win32" else None,
     ]
     try:
         res = resource_dir()
-        candidates.append(str(res / "bin" / "ffmpeg"))
-        candidates.append(str(res / "ffmpeg"))
+        data = data_dir()
+        candidates.extend(
+            [
+                str(res / "bin" / ffmpeg_name),
+                str(res / ffmpeg_name),
+                str(data / "bin" / ffmpeg_name),
+            ]
+        )
     except Exception:
         pass
+    if sys.platform == "win32":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", "")
+        candidates.extend(
+            [
+                str(Path(pf) / "ffmpeg" / "bin" / "ffmpeg.exe"),
+                str(Path(pf86) / "ffmpeg" / "bin" / "ffmpeg.exe"),
+            ]
+        )
+        if local:
+            candidates.append(str(Path(local) / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe"))
+        candidates.append(str(Path.home() / "scoop" / "shims" / "ffmpeg.exe"))
+    else:
+        candidates.extend(
+            [
+                str(Path.home() / ".local" / "bin" / "ffmpeg"),
+                "/usr/bin/ffmpeg",
+                "/usr/local/bin/ffmpeg",
+            ]
+        )
+    out: list[str] = []
+    seen: set[str] = set()
     for cand in candidates:
-        if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
+        if not cand or cand in seen:
+            continue
+        seen.add(cand)
+        out.append(cand)
+    return out
+
+
+def find_ffmpeg_binary() -> str | None:
+    """Find a usable ffmpeg executable for go2rtc transcoding and frame capture."""
+    for cand in ffmpeg_candidate_paths():
+        if _is_runnable(cand):
             return cand
     return None
 

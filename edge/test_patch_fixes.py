@@ -108,5 +108,30 @@ class TestPatchFixes(unittest.TestCase):
         self.assertNotIn("slow_cam", pool._workers)
 
 
+class TestFrozenPathSplit(unittest.TestCase):
+    def test_videos_live_in_writable_data_dir(self):
+        from launcher import DATA_DIR, ROOT, VIDEOS_DIR, init_global_engine
+        from paths import INBOUND_APP_VERSION, data_dir, resource_dir
+
+        self.assertEqual(VIDEOS_DIR, DATA_DIR / "videos")
+        self.assertEqual(DATA_DIR, data_dir())
+        self.assertEqual(ROOT, resource_dir())
+        self.assertEqual(INBOUND_APP_VERSION, "0.1.2")
+        engine = init_global_engine()
+        self.assertEqual(engine.ai_auditor.save_crops_dir, DATA_DIR / "proofs" / "ai_audits")
+
+    def test_ffmpeg_candidates_are_os_specific(self):
+        from media.go2rtc import ffmpeg_candidate_paths
+
+        paths = ffmpeg_candidate_paths()
+        blob = "\n".join(paths)
+        if sys.platform == "win32":
+            self.assertIn("ffmpeg.exe", blob)
+            self.assertNotIn("/usr/bin/ffmpeg", blob)
+        else:
+            self.assertTrue(any(p.endswith("/ffmpeg") or p.endswith("ffmpeg") for p in paths))
+            self.assertNotIn("ProgramFiles", blob)
+
+
 if __name__ == "__main__":
     unittest.main()

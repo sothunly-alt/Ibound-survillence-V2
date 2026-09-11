@@ -25,36 +25,31 @@ def resolve_video_path(raw_path: str | Path) -> Path:
     if p.is_absolute() and p.is_file():
         return p
 
-    edge_dir = Path(__file__).resolve().parent.parent
-    project_root = edge_dir.parent
+    from paths import data_dir, is_frozen, resource_dir
 
-    data_videos = None
-    try:
-        from paths import data_dir
-
-        data_videos = data_dir() / "videos"
-    except Exception:
-        pass
+    resource = resource_dir()
+    data_videos = data_dir() / "videos"
 
     candidates = [
         p,
         Path.cwd() / p,
+        data_videos / p,
+        data_videos / p.name,
+        resource / "videos" / p,
+        resource / "videos" / p.name,
     ]
-    if data_videos is not None:
-        candidates.extend([
-            data_videos / p,
-            data_videos / p.name,
-        ])
-    candidates.extend([
-        edge_dir / "videos" / p,
-        edge_dir / "videos" / p.name,
-        project_root / "tools" / "virtual-camera" / "videos" / p,
-        project_root / "tools" / "virtual-camera" / "videos" / p.name,
-        Path.cwd() / "tools" / "virtual-camera" / "videos" / p,
-        Path.cwd() / "tools" / "virtual-camera" / "videos" / p.name,
-        project_root / p,
-        edge_dir / p,
-    ])
+    if not is_frozen():
+        project_root = resource.parent
+        candidates.extend(
+            [
+                project_root / "tools" / "virtual-camera" / "videos" / p,
+                project_root / "tools" / "virtual-camera" / "videos" / p.name,
+                Path.cwd() / "tools" / "virtual-camera" / "videos" / p,
+                Path.cwd() / "tools" / "virtual-camera" / "videos" / p.name,
+                project_root / p,
+                resource / p,
+            ]
+        )
 
     for cand in candidates:
         try:
