@@ -2,7 +2,7 @@
 
 > **Document Type:** Team Architecture, Role Ownership & Commercial Strategy  
 > **Prepared For:** FirstWave Competition & Startup Growth Strategy  
-> **PDF Manual:** [Inbound_Crew_Team_Structure.pdf](file:///home/george/Documents/Inbound-Surveillance/Inbound_Crew_Team_Structure.pdf)  
+> **PDF Manual:** [Inbound_Crew_Team_Structure.pdf](Inbound_Crew_Team_Structure.pdf)  
 
 ---
 

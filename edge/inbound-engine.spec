@@ -23,7 +23,6 @@ binaries: list = []
 hiddenimports = [
     "ultralytics",
     "torch",
-    "torchvision",
     "cv2",
     "onnxruntime",
     "yaml",
@@ -118,7 +117,6 @@ for name in (
     "config.example.yaml",
     "hub.html",
     "inb_surveillance.png",
-    "inb_surveillance-removebg-preview.png",
 ):
     src = EDGE / name
     if src.exists():
@@ -131,25 +129,29 @@ for ov_dir in list(EDGE.glob("*_openvino_model")) + list(EDGE.parent.glob("*_ope
     if ov_dir.is_dir():
         datas.append((str(ov_dir), ov_dir.name))
 
-REPO = EDGE.parent
-for env_candidate in (EDGE / ".env", REPO / ".env"):
-    if env_candidate.is_file():
-        datas.append((str(env_candidate), "."))
-        break
+# NOTE: Privacy & Security Guardrails:
+# 1. NEVER package .env (contains local Telegram tokens, Supabase secrets, API keys).
+# 2. NEVER package edge/faces (contains private enrolled staff photos; runtime loads from user AppData).
+# 3. NEVER package edge/videos (heavy test videos; runtime loads from user AppData/camera streams).
 
-faces = EDGE / "faces"
-if faces.is_dir():
-    datas.append((str(faces), "faces"))
 static_dir = EDGE / "static"
 if static_dir.is_dir():
     datas.append((str(static_dir), "static"))
+
+# Only bundle active production ONNX models; exclude deprecated TinyPose weights.
+PRODUCTION_MODELS = (
+    "face_detection_yunet_2023mar.onnx",
+    "face_recognition_sface_2021dec.onnx",
+    "osnet_x0_25_market1501.onnx",
+    "rtmpose-s_simcc-body7_pt-body7_420e-256x192-acd4a1ef_20230504.onnx",
+    "yolox_tiny_8xb8-300e_humanart-6f3252f9.onnx",
+)
 models = EDGE / "models"
 if models.is_dir():
-    for onnx in models.glob("*.onnx"):
-        datas.append((str(onnx), "models"))
-videos = EDGE / "videos"
-if videos.is_dir():
-    datas.append((str(videos), "videos"))
+    for m in PRODUCTION_MODELS:
+        onnx = models / m
+        if onnx.is_file():
+            datas.append((str(onnx), "models"))
 
 go2rtc_name = "go2rtc.exe" if sys.platform == "win32" else "go2rtc"
 go2rtc_bin = EDGE / "bin" / go2rtc_name
@@ -190,12 +192,10 @@ def _msvc_runtime_binaries() -> list[tuple[str, str]]:
 
 binaries += _msvc_runtime_binaries()
 
-pkgs_to_collect = ["ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
-try:
-    import openvino
-    pkgs_to_collect.append("openvino")
-except Exception:
-    pass
+# Collect essential engine packages only. Exclude torchvision (not used)
+# and avoid blind collect_all("openvino") which pulls 330MB of 5 unused framework frontends.
+pkgs_to_collect = ["ultralytics", "torch", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
+
 # Native audio libs only. Do not collect_all(silero_vad): it pulls torchaudio
 # and, with CUDA Torch, nvidia/* wheels that blow past PyInstaller's 4 GiB
 # one-file CArchive limit (struct.error: 'I' format requires <= 4294967295).
@@ -230,11 +230,19 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         "tkinter",
+        "matplotlib",
         "matplotlib.tests",
         "pytest",
         "IPython",
         "torchaudio",
+        "torchvision",
         "triton",
+        "polars",
+        "_polars_runtime_32",
+        "_polars_runtime_64",
+        "_polars_runtime_compat",
+        "scipy.spatial.tests",
+        "scipy.sparse.tests",
     ],
     noarchive=False,
 )
@@ -242,6 +250,7 @@ a = Analysis(
 _BUNDLE_BLOAT = (
     "nvidia",
     "torchaudio",
+    "torchvision",
     "triton",
     "libtorch_cuda",
     "cudnn",
@@ -259,6 +268,19 @@ _BUNDLE_BLOAT = (
     "cufile",
     "cuda_runtime",
     "cuda-cupti",
+    "polars",
+    "_polars_runtime",
+    "openvino_tensorflow_frontend",
+    "openvino_paddle_frontend",
+    "openvino_pytorch_frontend",
+    "openvino_jax_frontend",
+    "openvino_onnx_frontend",
+    "openvino_intel_gpu_plugin",
+    "torch/bin/test",
+    "torch/include",
+    "torch/share",
+    "tinypose",
+    "picodet",
 )
 
 
@@ -279,7 +301,7 @@ _before_binaries, _before_datas = len(a.binaries), len(a.datas)
 a.binaries = [item for item in a.binaries if _keep_collected(item)]
 a.datas = [item for item in a.datas if _keep_collected(item)]
 print(
-    f"Stripped CUDA/audio bloat: binaries {_before_binaries}->{len(a.binaries)} "
+    f"Stripped CUDA/audio/bloat: binaries {_before_binaries}->{len(a.binaries)} "
     f"datas {_before_datas}->{len(a.datas)}",
     flush=True,
 )

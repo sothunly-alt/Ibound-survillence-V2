@@ -562,15 +562,7 @@ def generate_pdf(output_path: str):
 
     # Sync to root and artifacts
     import shutil
-    root_pdf = repo_dir / "Inbound_Surveillance_User_Manual.pdf"
-    if pdf_path != root_pdf:
-        shutil.copy2(pdf_path, root_pdf)
-        print(f"[SYNC] Copied to root: {root_pdf}")
-
-    artifact_dir = Path("/home/george/.gemini/antigravity/brain/ab42098d-c830-4ae4-845c-8313b5465973")
-    if artifact_dir.exists():
-        shutil.copy2(pdf_path, artifact_dir / "Inbound_Surveillance_User_Manual.pdf")
-        print(f"[SYNC] Copied to artifact directory")
+    pass
 
 
 if __name__ == "__main__":

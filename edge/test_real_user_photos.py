@@ -11,11 +11,11 @@ import cv2
 import numpy as np
 
 from face_id import FaceRecognizer, CustomerFaceGallery
-from reid import appearance_embedding
+import os
 
-UPLOAD_DIR = Path("/home/ratanakvichea/.gemini/antigravity-ide/brain/b913444a-fcc5-4b94-a80d-bdd23945873a/.user_uploaded")
-IMG1_PATH = UPLOAD_DIR / "media_1790055429425.jpg"
-IMG2_PATH = UPLOAD_DIR / "media_1790055429461.jpg"
+UPLOAD_DIR = Path(os.environ.get("USER_PHOTOS_DIR", ""))
+IMG1_PATH = UPLOAD_DIR / "media_1790055429425.jpg" if str(UPLOAD_DIR) else Path("")
+IMG2_PATH = UPLOAD_DIR / "media_1790055429461.jpg" if str(UPLOAD_DIR) else Path("")
 
 
 def test_user_photos():

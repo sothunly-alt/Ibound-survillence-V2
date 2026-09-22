@@ -62,9 +62,9 @@ def test_routing_and_gateway_bypass() -> None:
     assert protocol_from_source("test.mp4") == "video"
     assert protocol_from_source("file:///path/to/vid.mkv") == "video"
     recovered = unwrap_local_video_source(
-        "rtsp://hello@home/george/Documents/Inbound-Surveillance/edge/videos/clip.mp4"
+        "rtsp://hello@home/user/app/edge/videos/clip.mp4"
     )
-    assert recovered == "/home/george/Documents/Inbound-Surveillance/edge/videos/clip.mp4"
+    assert recovered == "/home/user/app/edge/videos/clip.mp4"
     from adapters.base import decode_file_uri
 
     assert decode_file_uri("file:///tmp/clip.mp4") == "/tmp/clip.mp4"

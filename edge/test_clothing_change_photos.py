@@ -24,15 +24,11 @@ from face_id import CustomerFaceGallery, FaceRecognizer
 from reid import appearance_embedding
 from paths import data_dir
 
+import os
+
 DEFAULT_PHOTOS = [
-    Path(
-        "/home/ratanakvichea/.cursor/projects/home-ratanakvichea-Ibound-survillence-V2/assets/"
-        "photo_6165496888979821067_w-0a373527-aa8a-4d77-ab6b-347ae132996f.jpg"
-    ),
-    Path(
-        "/home/ratanakvichea/.cursor/projects/home-ratanakvichea-Ibound-survillence-V2/assets/"
-        "photo_6165496888979821066_w-b1124499-ee13-40a7-822e-f4be68e4ca6f.jpg"
-    ),
+    Path(os.environ.get("CLOTHING_PHOTO_A", "")),
+    Path(os.environ.get("CLOTHING_PHOTO_B", "")),
 ]
 
 

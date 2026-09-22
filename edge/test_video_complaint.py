@@ -19,9 +19,13 @@ import os
 from pathlib import Path
 import random
 import sys
-import wave
+import unittest
 
-import av
+try:
+    import av
+except ImportError:
+    raise unittest.SkipTest("PyAV ('av') is not installed")
+
 import cv2
 import numpy as np
 
@@ -218,7 +222,7 @@ def process_video_file(video_path: str, bay_id: str = "bay_1") -> dict:
 
 
 if __name__ == "__main__":
-    video_input = sys.argv[1] if len(sys.argv) > 1 else "/home/ratanakvichea/Ibound-survillence-V2/IMG_1053.MOV"
+    video_input = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("COMPLAINT_VIDEO_INPUT", "IMG_1053.MOV")
     result = process_video_file(video_input)
     print("\n" + "=" * 60)
     print("VIDEO COMPLAINT ANALYSIS RESULT")

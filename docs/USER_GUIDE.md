@@ -3,7 +3,7 @@
 > **System Version:** 2.4  
 > **Platform:** Inbound Surveillance & Garage Operations Console  
 > **Document Type:** Concise Customer Operations & Quick-Start Manual  
-> **PDF Manual:** [Inbound_Surveillance_User_Manual.pdf](file:///home/george/Documents/Inbound-Surveillance/Inbound_Surveillance_User_Manual.pdf)
+> **PDF Manual:** [Inbound_Surveillance_User_Manual.pdf](Inbound_Surveillance_User_Manual.pdf)
 
 ---
 
