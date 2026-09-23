@@ -51,11 +51,11 @@ export function AuthScreen() {
     view === "set-password"
       ? "Choose a new password for this operator account. Use at least 8 characters."
       : view === "confirm"
-        ? "Enter the 6-digit code from your email to confirm this account. Type the code yourself — inbox scanners often burn one-click links."
+        ? "Enter the 8-digit code from your email to confirm this account. Type the code yourself — inbox scanners often burn one-click links."
         : view === "code"
-          ? "Enter the 6-digit code from your email, then choose a new password. Type the code yourself — inbox scanners often burn one-click reset links."
+          ? "Enter the 8-digit code from your email, then choose a new password. Type the code yourself — inbox scanners often burn one-click reset links."
           : view === "forgot"
-            ? "We email a 6-digit code instead of a magic link. Codes survive email security scanners; one-click links often do not."
+            ? "We email an 8-digit code instead of a magic link. Codes survive email security scanners; one-click links often do not."
             : "Each account keeps profile, workplace type, crew identities, ROI, camera protocol, and stream URLs private. Other operators cannot read them.";
 
   const redirectTo = useMemo(() => `${window.location.origin}/dashboard.html?mode=reset`, []);
@@ -129,13 +129,13 @@ export function AuthScreen() {
         });
         if (signError) throw signError;
         if (!data.session) {
-          go("confirm", "Account created. Enter the 6-digit code we just emailed.");
+          go("confirm", "Account created. Enter the 8-digit code we just emailed.");
         }
         return;
       }
       if (view === "confirm") {
         const token = code.replace(/\s/g, "");
-        if (!/^\d{6}$/.test(token)) throw new Error("Enter the 6-digit code from the email.");
+        if (!/^\d{8}$/.test(token)) throw new Error("Enter the 8-digit code from the email.");
         const { error: otpError } = await supabase.auth.verifyOtp({
           email: email.trim(),
           token,
@@ -149,12 +149,12 @@ export function AuthScreen() {
           redirectTo,
         });
         if (resetError) throw resetError;
-        go("code", "If that email has an account, a 6-digit code is on its way.");
+        go("code", "If that email has an account, an 8-digit code is on its way.");
         return;
       }
       if (view === "code") {
         const token = code.replace(/\s/g, "");
-        if (!/^\d{6}$/.test(token)) throw new Error("Enter the 6-digit code from the email.");
+        if (!/^\d{8}$/.test(token)) throw new Error("Enter the 8-digit code from the email.");
         if (password.length < 8) throw new Error("Password must be at least 8 characters.");
         if (password !== confirmPassword) throw new Error("Passwords do not match.");
         beginPasswordRecovery();
@@ -189,7 +189,7 @@ export function AuthScreen() {
         if (isEmailUnconfirmed(signError)) {
           go(
             "confirm",
-            "This account is not confirmed yet. Enter the 6-digit code from your email, or send a new one.",
+            "This account is not confirmed yet. Enter the 8-digit code from your email, or send a new one.",
           );
           return;
         }
@@ -316,8 +316,9 @@ export function AuthScreen() {
             <input
               className="otp-input"
               value={code}
-              onChange={(event) => setCode(event.target.value.replace(/[^\d]/g, "").slice(0, 6))}
-              placeholder="6-digit code"
+              onChange={(event) => setCode(event.target.value.replace(/[^\d]/g, "").slice(0, 8))}
+              placeholder="8-digit code"
+              maxLength={8}
               inputMode="numeric"
               autoComplete="one-time-code"
               required

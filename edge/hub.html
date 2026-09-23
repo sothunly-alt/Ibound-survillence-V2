@@ -813,7 +813,7 @@
       </label>
       <label id="auth-code-field" class="hidden">
         <span id="auth-code-label">Reset code</span>
-        <input id="auth-code" class="otp-input" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code" maxlength="6" oninput="this.value=this.value.replace(/[^\d]/g,'').slice(0,6)" />
+        <input id="auth-code" class="otp-input" inputmode="numeric" autocomplete="one-time-code" placeholder="8-digit code" maxlength="8" oninput="this.value=this.value.replace(/[^\d]/g,'').slice(0,8)" />
       </label>
       <label id="auth-password-field">
         <span id="auth-password-label">Password</span>
@@ -1603,9 +1603,9 @@
       const copy = {
         signin: 'Profile, crew, ROI, camera protocol, and stream URLs stay private to this login.',
         signup: 'Profile, crew, ROI, camera protocol, and stream URLs stay private to this login.',
-        forgot: 'We email a 6-digit code instead of a magic link. Codes survive email scanners; one-click links often do not.',
-        code: 'Enter the 6-digit code from your email, then choose a new password.',
-        confirm: 'Enter the 6-digit code from your email to confirm this account. Type the code yourself — inbox scanners often burn one-click links.',
+        forgot: 'We email an 8-digit code instead of a magic link. Codes survive email scanners; one-click links often do not.',
+        code: 'Enter the 8-digit code from your email, then choose a new password.',
+        confirm: 'Enter the 8-digit code from your email to confirm this account. Type the code yourself — inbox scanners often burn one-click links.',
         'set-password': 'Choose a new password for this operator account. Use at least 8 characters.',
       };
       const titles = {
@@ -1842,13 +1842,13 @@
           });
           if (error) throw error;
           if (!data.session) {
-            setHubAuthMode('confirm', 'Account created. Enter the 6-digit code we just emailed.');
+            setHubAuthMode('confirm', 'Account created. Enter the 8-digit code we just emailed.');
           }
           return false;
         }
 
         if (mode === 'confirm') {
-          if (!/^\d{6}$/.test(code)) throw new Error('Enter the 6-digit code from the email.');
+          if (!/^\d{8}$/.test(code)) throw new Error('Enter the 8-digit code from the email.');
           const { error } = await supabaseClient.auth.verifyOtp({
             email,
             token: code,
@@ -1865,12 +1865,12 @@
             redirectTo: window.location.origin + '/',
           });
           if (error) throw error;
-          setHubAuthMode('code', 'If that email has an account, a 6-digit code is on its way.');
+          setHubAuthMode('code', 'If that email has an account, an 8-digit code is on its way.');
           return false;
         }
 
         if (mode === 'code') {
-          if (!/^\d{6}$/.test(code)) throw new Error('Enter the 6-digit code from the email.');
+          if (!/^\d{8}$/.test(code)) throw new Error('Enter the 8-digit code from the email.');
           if (password.length < 8) throw new Error('Password must be at least 8 characters.');
           if (password !== confirmPassword) throw new Error('Passwords do not match.');
           hubPasswordRecovery = true;
@@ -1899,7 +1899,7 @@
           if (error.code === 'email_not_confirmed' || /email not confirmed/i.test(error.message || '')) {
             setHubAuthMode(
               'confirm',
-              'This account is not confirmed yet. Enter the 6-digit code from your email, or send a new one.',
+              'This account is not confirmed yet. Enter the 8-digit code from your email, or send a new one.',
             );
             return false;
           }
@@ -5599,7 +5599,7 @@
       return n + ' ' + (n === 1 ? zoneNoun() : zoneNounPlural());
     }
 
-    function setHidden(el, hidden) {
+    function setElementHidden(el, hidden) {
       if (!el) return;
       el.classList.toggle('hidden', !!hidden);
     }
@@ -5620,7 +5620,7 @@
           : 'Live attendance, wrench time, and garage Wi-Fi presence for today.';
       }
       const util = document.getElementById('scorecard-util');
-      setHidden(util, massage);
+      setElementHidden(util, massage);
       const hint = document.getElementById('live-roi-hint');
       if (hint) {
         hint.textContent = 'Hover edge/corner to stretch angles · Drag inside to move · Press R to rotate (one-shot)';
@@ -5647,7 +5647,7 @@
       if (idleEmpty) idleEmpty.textContent = 'Add a camera to set an idle-zone alert.';
       const telemNoun = document.getElementById('telem-zone-noun');
       if (telemNoun) telemNoun.textContent = title + 's';
-      document.querySelectorAll('[data-garage-only]').forEach((el) => setHidden(el, massage));
+      document.querySelectorAll('[data-garage-only]').forEach((el) => setElementHidden(el, massage));
       syncBayTypeMenu();
     }
 
