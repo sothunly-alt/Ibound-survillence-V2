@@ -245,7 +245,7 @@ for pkg in pkgs_to_collect:
 # metadata by default, so a frozen engine died with PackageNotFoundError the
 # moment the ML thread imported ultralytics - which silently disabled person
 # detection. Bundle the metadata ultralytics actually queries.
-for _meta_pkg in ("torchvision",):
+for _meta_pkg in ("torch", "torchvision"):
     try:
         datas += copy_metadata(_meta_pkg)
     except Exception as _meta_exc:
@@ -325,6 +325,11 @@ def _keep_collected(item) -> bool:
         dest = str(getattr(item, "name", item) or "")
         src = str(getattr(item, "path", "") or "")
     text = f"{dest} {src}".replace("\\", "/").lower()
+    # Package metadata (dist-info) is a handful of text files, but ultralytics
+    # calls importlib.metadata.version("torchvision") at import time. Stripping
+    # it re-breaks ML in the frozen engine, so never treat it as bloat.
+    if ".dist-info" in text:
+        return True
     return not any(marker in text for marker in _BUNDLE_BLOAT)
 
 
