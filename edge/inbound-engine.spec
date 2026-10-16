@@ -267,7 +267,6 @@ a = Analysis(
         "pytest",
         "IPython",
         "torchaudio",
-        "torchvision",
         "triton",
         "polars",
         "_polars_runtime_32",
@@ -282,7 +281,6 @@ a = Analysis(
 _BUNDLE_BLOAT = (
     "nvidia",
     "torchaudio",
-    "torchvision",
     "triton",
     "libtorch_cuda",
     "cudnn",
