@@ -9,15 +9,18 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
+
+if TYPE_CHECKING:
+    from telegram_link import TelegramLinkService
 
 from analytics.churn import compute_churn_risks, format_churn_watchlist
 from analytics.monthly_customer_brief import build_monthly_strategic_brief
 from analytics.scorecard import build_daily_scorecard
 from analytics.weekly_customer_brief import build_weekly_customer_brief
-from telegram_out import normalize_chat_id
+from telegram_out import ensure_get_updates_ready, normalize_chat_id
 from visitor_registry import get_visitor_display_name, set_visitor_alias
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -75,6 +78,7 @@ class TelegramController:
         db_path: Path | str | None = None,
         branch_id: str = "champei-pp-01",
         session: requests.Session | None = None,
+        link_service: TelegramLinkService | None = None,
     ) -> None:
         self.token = (
             str(token if token is not None else os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
@@ -92,6 +96,9 @@ class TelegramController:
         self.db_path = Path(db_path) if db_path is not None else None
         self.branch_id = str(branch_id or "champei-pp-01").strip() or "champei-pp-01"
         self._session = session or requests.Session()
+        # Shared link service. When set, this controller is the sole getUpdates
+        # owner and forwards /start pairing updates to it (see run_champei).
+        self.link_service = link_service
         self._offset = 0
         self._last_error = ""
         self._backoff = 1.0
@@ -254,6 +261,14 @@ class TelegramController:
         text = str(message.get("text") or "").strip()
         if not text:
             return False
+        # One-click Connect Telegram: this controller owns getUpdates, so
+        # forward /start <code> to the shared link service to complete pairing.
+        if text.lower().startswith("/start") and self.link_service is not None:
+            try:
+                return bool(self.link_service.handle_pairing_update(update))
+            except Exception as exc:
+                self._last_error = str(exc)
+                return False
         chat = message.get("chat") or {}
         chat_id = normalize_chat_id(chat.get("id"))
         if not chat_id:
@@ -266,6 +281,10 @@ class TelegramController:
 
     def run_loop(self, stop_event: threading.Event | None = None) -> None:
         stop = stop_event if stop_event is not None else threading.Event()
+        # Telegram refuses getUpdates while a webhook is set; this controller is
+        # the sole getUpdates owner, so clear any stray webhook before polling.
+        if self.token:
+            ensure_get_updates_ready(self.token)
         while not stop.is_set():
             if not self.token:
                 if stop.wait(0.5):

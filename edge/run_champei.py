@@ -216,10 +216,23 @@ def main(argv: list[str] | None = None) -> int:
         default=default_branch,
         help="Branch id for scorecards",
     )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not auto-open the dashboard in the default browser",
+    )
     args = parser.parse_args(argv)
 
     # Import launcher early so load_dotenv_files() populates TELEGRAM_* from .env.
-    import launcher  # noqa: F401
+    import launcher
+
+    # The TelegramController is the single getUpdates owner. Keep the link
+    # service's own poller off and drive its /start pairing from the controller,
+    # otherwise two getUpdates consumers fight (HTTP 409) and the one-click
+    # "Connect Telegram" flow never completes.
+    engine = launcher.init_global_engine(telegram_link_poll=False)
+    tg_token = str(engine.cfg.get("telegram_bot_token") or "").strip()
+    link_service = engine.telegram_links
 
     db_path = data_dir() / "events.db"
     _verify_wal(db_path)
@@ -235,7 +248,12 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, _stop_background)
 
-    controller = TelegramController(db_path=db_path, branch_id=args.branch)
+    controller = TelegramController(
+        db_path=db_path,
+        branch_id=args.branch,
+        token=tg_token or None,
+        link_service=link_service,
+    )
     tg_thread = threading.Thread(
         target=controller.run_loop,
         kwargs={"stop_event": stop_event},
@@ -294,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             # TelegramController owns getUpdates; disable link-service poller.
             start_unified_server(
                 port=args.port,
-                open_browser=False,
+                open_browser=not args.no_browser,
                 telegram_link_poll=False,
             )
     except (KeyboardInterrupt, SystemExit):
