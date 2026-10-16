@@ -423,6 +423,10 @@ if ($VideoFile -and (Test-Path $VideoFile)) {
             if (Test-Path $engineOut) { Get-Content $engineOut | Select-Object -Last 40 | ForEach-Object { Write-Host "  | $_" } }
             Write-Host "  ---- engine stderr tail (inference diagnostics) ----"
             if (Test-Path $engineErr) { Get-Content $engineErr | Select-Object -Last 40 | ForEach-Object { Write-Host "  ! $_" } }
+            try {
+                $pipeProbe = Invoke-Check "http://127.0.0.1:8765/api/pipeline" $script:SessionToken
+                if ($pipeProbe) { Write-Host ("  RAW /api/pipeline: {0}" -f $pipeProbe.Content) }
+            } catch { Write-Host "  could not probe /api/pipeline" }
         }
     }
 }
