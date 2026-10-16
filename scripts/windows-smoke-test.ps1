@@ -541,6 +541,16 @@ if ($appProc) {
     Assert-That "GUI-spawned engine serves the dashboard" `
         ($null -ne $guiRoot -and $guiRoot.StatusCode -eq 200 -and $guiRoot.Content -match "<title>Inbound Surveillance</title>") `
         $(if ($guiRoot) { "status=" + $guiRoot.StatusCode + " bytes=" + $guiRoot.RawContentLength } else { "no response" })
+
+    # The packaged app ships in no-login mode (the Tauri shell passes
+    # HUB_NO_AUTH=1). The engine it spawns must advertise the bypass so the
+    # WebView skips the Supabase gate and opens straight into the dashboard.
+    $guiPub = Invoke-Check "http://127.0.0.1:8765/api/public-config"
+    if ($guiPub) {
+        $gj = $guiPub.Content | ConvertFrom-Json
+        Assert-That "GUI engine runs in no-login mode (authBypass=true)" ($gj.authBypass -eq $true) `
+            "authBypass=$($gj.authBypass)"
+    }
 }
 
 # ---------------------------------------------------------------- collect logs

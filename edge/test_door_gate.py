@@ -185,8 +185,23 @@ class DoorMonitorConfigTests(unittest.TestCase):
             raise unittest.SkipTest(f"{name} not present")
         return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
+    @classmethod
+    def _live_config(cls):
+        """The config the engine boots with on the customer PC.
+
+        The installer deploys ``config.champei.yaml`` as ``config.yaml`` in the
+        writable data dir, so on a deployed box both are identical. In a source
+        checkout ``config.yaml`` is a gitignored developer file, so prefer the
+        tracked customer config (``config.champei.yaml``) here.
+        """
+        for name in ("config.champei.yaml", "config.yaml"):
+            path = Path(__file__).resolve().parent / name
+            if path.is_file():
+                return cls._load(name)
+        raise unittest.SkipTest("no shipped config present")
+
     def test_live_config_records_door_traffic(self):
-        cfg = self._load("config.yaml")
+        cfg = self._live_config()
         block = cfg.get("door_monitor")
         self.assertIsInstance(block, dict, "config.yaml has no door_monitor block")
         self.assertTrue(
@@ -196,7 +211,7 @@ class DoorMonitorConfigTests(unittest.TestCase):
         )
 
     def test_live_door_zone_is_wellformed(self):
-        block = self._load("config.yaml").get("door_monitor") or {}
+        block = self._live_config().get("door_monitor") or {}
         zone = block.get("zone")
         self.assertEqual(len(zone), 2, f"door_monitor.zone must be [x1, x2], got {zone!r}")
         zx1, zx2 = float(zone[0]), float(zone[1])
@@ -232,7 +247,7 @@ class DoorMonitorConfigTests(unittest.TestCase):
 
     def test_monitor_still_fires_from_shipped_config(self):
         """End-to-end: build the monitor from the live config and walk a guest in."""
-        block = self._load("config.yaml").get("door_monitor") or {}
+        block = self._live_config().get("door_monitor") or {}
         if not block.get("enabled"):
             self.skipTest("door_monitor disabled")
         mon = DoorTrafficMonitor({**block, "proofs": False})

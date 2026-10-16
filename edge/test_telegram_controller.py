@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from telegram_controller import (
     DENIED,
@@ -124,6 +125,75 @@ class TelegramControllerRbacTests(unittest.TestCase):
         self.assertIn("/scorecard", reply)
         self.assertIn("/churn", reply)
         self.assertIn("/weekly", reply)
+
+
+class TelegramControllerPairingForwardTests(unittest.TestCase):
+    """The controller is the sole getUpdates owner in the local install, so it
+    must forward /start pairing updates to the shared link service rather than
+    swallow them as unknown commands."""
+
+    def test_start_update_forwarded_to_link_service(self) -> None:
+        forwarded: list[dict] = []
+
+        class FakeLink:
+            def handle_pairing_update(self, update: dict) -> bool:
+                forwarded.append(update)
+                return True
+
+        ctrl = TelegramController(
+            token="test-token", session=MagicMock(), link_service=FakeLink()
+        )
+        handled = ctrl._dispatch_update(
+            {
+                "update_id": 1,
+                "message": {
+                    "text": "/start abc123",
+                    "chat": {"id": 42},
+                    "from": {"id": 7},
+                },
+            }
+        )
+        self.assertTrue(handled)
+        self.assertEqual(len(forwarded), 1)
+        self.assertEqual(forwarded[0]["update_id"], 1)
+
+    def test_start_is_ignored_without_link_service(self) -> None:
+        ctrl = TelegramController(token="test-token", session=MagicMock())
+        with patch.object(ctrl, "send_reply") as mock_reply:
+            handled = ctrl._dispatch_update(
+                {"update_id": 2, "message": {"text": "/start", "chat": {"id": 42}}}
+            )
+        self.assertFalse(handled)
+        mock_reply.assert_not_called()
+
+    def test_link_service_error_is_recorded_not_raised(self) -> None:
+        class BoomLink:
+            def handle_pairing_update(self, update: dict) -> bool:
+                raise RuntimeError("telegram down")
+
+        ctrl = TelegramController(
+            token="test-token", session=MagicMock(), link_service=BoomLink()
+        )
+        handled = ctrl._dispatch_update(
+            {"update_id": 3, "message": {"text": "/start x", "chat": {"id": 1}}}
+        )
+        self.assertFalse(handled)
+        self.assertIn("telegram down", ctrl.last_error)
+
+    def test_run_loop_clears_webhook_before_polling(self) -> None:
+        ctrl = TelegramController(token="test-token", session=MagicMock())
+        stop = threading.Event()
+
+        def fake_poll(timeout: int = 10) -> int:
+            stop.set()
+            return 0
+
+        with patch.object(ctrl, "poll_once", side_effect=fake_poll) as mock_poll, patch(
+            "telegram_controller.ensure_get_updates_ready"
+        ) as mock_ensure:
+            ctrl.run_loop(stop)
+        mock_ensure.assert_called_once_with("test-token")
+        self.assertTrue(mock_poll.called)
 
 
 if __name__ == "__main__":
