@@ -3,13 +3,13 @@ venue: Champei Spa
 # Any other value silently falls back to "garage" and yields garage zones/UI.
 workplace_type: massage
 branch_id: champei-pp-01
-source: videos/document_6161011834561243252 (1).mp4
+source: videos/document_6161011834561243252.mp4
 
 cameras:
   - id: champei-entrance-01
     name: Entrance & Guard Post
     camera_role: entrance
-    source: videos/document_6161011834561243252 (1).mp4
+    source: videos/document_6161011834561243252.mp4
     protocol: file
     vendor: generic
     rotate: 0
@@ -28,6 +28,14 @@ cameras:
     ml_enabled: true
 
 active_camera_id: champei-entrance-01
+
+# Vendor (Inbound Surveillance) shared alert bot. The operator connects their own
+# Telegram chat to this bot in one click (Settings -> Integrations -> Connect
+# Telegram -> tap Start). The linked chat id is saved to telegram_chat_id below
+# automatically; leave it empty for a fresh install.
+telegram_bot_token: "8987540090:AAEntu6IaceRsrnNl0Eow7ZrOYHBR90FkZU"
+telegram_chat_id: ""
+
 runtime: cpu
 pose_engine: yolo
 weights: yolo11n-pose.pt
@@ -60,6 +68,17 @@ store_customer_avatars: false
 face_match_threshold: 0.38
 door_monitor:
   enabled: true
+  line_x: 0.55
+  zone: [0.50, 1.00]
   enter_direction: right_to_left
+  confirm_obs: 3
+  cooldown_seconds: 20.0
+  leave_seconds: 5.0
+  relink_seconds: 30.0
+  relink_distance: 0.28
+  motion_confirm: false
+  motion_thresh: 2.5
+  max_sessions: 2
+  proofs: true
 
 

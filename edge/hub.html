@@ -1792,6 +1792,27 @@
       }
     }
 
+    async function enterHubBypass() {
+      if (enteringHub) return;
+      enteringHub = true;
+      hubAuthToken = null;
+      try {
+        // Local install has no cloud account. Provide a stable synthetic identity
+        // so Telegram linking and the profile UI work fully offline.
+        if (!hubAccountUser) {
+          hubAccountUser = { id: 'local-operator', email: '', user_metadata: {} };
+        }
+        if (!hubAccountProfile) {
+          hubAccountProfile = { display_name: 'Operator', venue_name: '' };
+        }
+        // Deliberately no /api/auth-session sync: a real saved session must survive.
+        document.body.classList.remove('auth-locked');
+        startHub();
+      } finally {
+        enteringHub = false;
+      }
+    }
+
     const DEFAULT_SUPABASE_URL = "https://rmepwjywobowktdmkusu.supabase.co";
     const DEFAULT_SUPABASE_ANON_KEY =
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0.u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4";
@@ -1965,6 +1986,12 @@
 
         const supabaseUrl = (cfg && cfg.supabaseUrl ? cfg.supabaseUrl : DEFAULT_SUPABASE_URL).trim();
         const supabaseAnonKey = (cfg && cfg.supabaseAnonKey ? cfg.supabaseAnonKey : DEFAULT_SUPABASE_ANON_KEY).trim();
+
+        // Local single-machine install: server started with HUB_NO_AUTH=1, skip login.
+        if (cfg && cfg.authBypass) {
+          await enterHubBypass();
+          return;
+        }
 
         if (!window.supabase) {
           showAuthMessage('Supabase library failed to load. Please verify network connectivity.', true);
@@ -6710,6 +6737,9 @@
       }
         if (data.just_linked) {
         stopTelegramLinkPoll();
+        // Paint first so the badge flips to Linked even in the local no-account
+        // install, where persistTelegramLinkToAccount has no Supabase to save to.
+        paintTelegramLinkStatus(data);
         await persistTelegramLinkToAccount(data.just_linked);
         const feedback = document.getElementById('tg-feedback');
         showBanner(feedback, true, 'Telegram linked. Alerts will go to this chat.');

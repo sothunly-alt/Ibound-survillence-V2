@@ -115,6 +115,7 @@ for name in (
     "yolo11n-pose.onnx",
     "yolo11n.onnx",
     "config.example.yaml",
+    "config.champei.yaml",
     "hub.html",
     "inb_surveillance.png",
     "inb_surveillance-removebg-preview.png",
@@ -137,6 +138,10 @@ for ov_dir in list(EDGE.glob("*_openvino_model")) + list(EDGE.parent.glob("*_ope
 # 1. NEVER package .env (Telegram tokens, Supabase secrets, API keys).
 # 2. NEVER package edge/faces (enrolled photos; runtime seeds AppData).
 # 3. NEVER package edge/videos (test clips; runtime loads AppData / camera).
+#
+# config.champei.yaml IS bundled on purpose: it is the venue config (including
+# the shared alert-bot token) that get_config_path() seeds into the writable
+# data dir on first run so the packaged desktop app starts fully configured.
 
 static_dir = EDGE / "static"
 if static_dir.is_dir():
@@ -235,7 +240,7 @@ for pkg in pkgs_to_collect:
     hiddenimports += pkg_hidden
 
 a = Analysis(
-    [str(EDGE / "launcher.py")],
+    [str(EDGE / "run_champei.py")],
     pathex=[str(EDGE)],
     binaries=binaries,
     datas=datas,

@@ -460,11 +460,15 @@ fn spawn_engine(app: tauri::AppHandle) {
     ensure_windows_runtimes(&app);
 
     let command = match app.shell().sidecar("inbound-engine") {
-        Ok(cmd) => cmd.args(["--port", ENGINE_PORT, "--no-browser"]),
+        Ok(cmd) => cmd
+            .args(["--port", ENGINE_PORT, "--no-browser"])
+            // Local single-machine install: the spa operator opens straight into
+            // the dashboard, no Supabase account. The engine binds 127.0.0.1 only.
+            .env("HUB_NO_AUTH", "1"),
         Err(err) => {
             log::warn!(
                 "inbound-engine sidecar is not available ({err}); \
-                 start `python edge/launcher.py --no-browser` for local development"
+                 start `python edge/run_champei.py --no-browser` for local development"
             );
             if cfg!(debug_assertions) {
                 notify_engine_ready(&app, 8765);
@@ -588,7 +592,7 @@ fn spawn_engine(app: tauri::AppHandle) {
                 "ENGINE",
                 &format!(
                     "failed to spawn inbound-engine ({err}); \
-                     start `python edge/launcher.py --no-browser` for local development"
+                     start `python edge/run_champei.py --no-browser` for local development"
                 )
             );
             if cfg!(debug_assertions) {

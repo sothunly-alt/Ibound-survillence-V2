@@ -189,6 +189,15 @@ def open_host_url(url: str) -> bool:
         return False
 
 
+def auth_bypass_enabled() -> bool:
+    """Dev-only escape hatch: set HUB_NO_AUTH=1 to skip the login gate.
+
+    Intended for local development on a trusted machine. The hub already binds
+    to 127.0.0.1 only, so this never exposes the console off-box.
+    """
+    return os.environ.get("HUB_NO_AUTH", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def public_supabase_config() -> dict[str, Any]:
     url = (
         os.environ.get("VITE_SUPABASE_URL")
@@ -205,6 +214,7 @@ def public_supabase_config() -> dict[str, Any]:
         "supabaseUrl": url,
         "supabaseAnonKey": key,
         "configured": bool(url and key),
+        "authBypass": auth_bypass_enabled(),
     }
 
 
@@ -376,6 +386,23 @@ def resolve_khmer_stt_model(value: str) -> str:
 def get_config_path() -> Path:
     real = DATA_DIR / "config.yaml"
     if real.exists():
+        return real
+    # Packaged (frozen) first run: seed the writable config from what the
+    # installer bundled so the venue's settings and Telegram token are in
+    # force without any manual step. Prefer the customer config, fall back to
+    # the generic example. Source checkouts keep reading the example directly
+    # so dev/test runs are never affected.
+    if is_frozen():
+        for name in ("config.champei.yaml", "config.example.yaml"):
+            bundled = get_resource_path(name)
+            if bundled.exists():
+                try:
+                    import shutil
+
+                    shutil.copyfile(bundled, real)
+                    return real
+                except Exception:
+                    return bundled
         return real
     example = get_resource_path("config.example.yaml")
     if example.exists():
@@ -4139,6 +4166,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _authorized(self) -> bool:
+        if auth_bypass_enabled():
+            return True
         header = self.headers.get("Authorization") or ""
         token = header[len("Bearer "):] if header[:7].lower() == "bearer " else ""
         expected = _load_session_token()
