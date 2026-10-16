@@ -3623,7 +3623,7 @@ class LiveStreamEngine:
                                 self.cached_vehicles = vehicles
                                 self.last_vehicle_infer = now
                             except Exception as ex:
-                                print(f"[VehicleInfer] Prediction error: {ex}")
+                                print(f"[VehicleInfer] Prediction error: {ex}", flush=True)
                         elif not flags["vehicle_detect"]:
                             vehicles = []
                             self.cached_vehicles = []
@@ -3644,7 +3644,7 @@ class LiveStreamEngine:
                                         if eval_report:
                                             print(f"[Performance Evaluation] Job {eval_report.job_id}: Grade={eval_report.performance_grade}, Score={eval_report.performance_score}, Efficiency={eval_report.efficiency_pct:.1f}% by {eval_report.primary_technician}")
                                     except Exception as ex:
-                                        print(f"[Vehicle Departure] Error completing/evaluating job {bay_cfg.get('job_id')}: {ex}")
+                                        print(f"[Vehicle Departure] Error completing/evaluating job {bay_cfg.get('job_id')}: {ex}", flush=True)
                     track_low_thresh = float(self.cfg.get("track_low_thresh", 0.10))
                     if flags["person_detect"] and result is not None:
                         last_accepted, last_rejected, low_dets = person_detections_split(
@@ -3955,9 +3955,9 @@ class LiveStreamEngine:
                                 else:
                                     print(f"[LiveStreamEngine Alert] Failed to send photo to Telegram")
                         except Exception as bot_err:
-                            print(f"[LiveStreamEngine Alert] Error sending Telegram photo: {bot_err}")
+                            print(f"[LiveStreamEngine Alert] Error sending Telegram photo: {bot_err}", flush=True)
                 except Exception as exc:
-                    print(f"[LiveStreamEngine Infer Error] {exc}")
+                    print(f"[LiveStreamEngine Infer Error] {exc}", flush=True)
 
             annotated = frame.copy()
             bay_cfgs = self.bay_manager.configs()
