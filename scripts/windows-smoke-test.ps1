@@ -247,6 +247,26 @@ function Invoke-Check {
     }
 }
 
+function Invoke-PostCheck {
+    param([string]$Url, [string]$Token = "", [string]$Body = "")
+    try {
+        $h = @{}
+        if ($Token) { $h["Authorization"] = "Bearer $Token" }
+        if ($h.Count -gt 0) {
+            return Invoke-WebRequest -Uri $Url -Method POST -Body $Body -ContentType "application/json" `
+                -UseBasicParsing -TimeoutSec 30 -Headers $h
+        }
+        return Invoke-WebRequest -Uri $Url -Method POST -Body $Body -ContentType "application/json" `
+            -UseBasicParsing -TimeoutSec 30
+    }
+    catch {
+        $code = ""
+        if ($_.Exception.Response) { $code = " http=$([int]$_.Exception.Response.StatusCode)" }
+        Write-Host "  request error:$code $($_.Exception.Message)"
+        return $null
+    }
+}
+
 $root = Invoke-Check "http://127.0.0.1:8765/"
 Assert-That "GET / returns 200" ($null -ne $root -and $root.StatusCode -eq 200) $(if ($root) { "status=$($root.StatusCode)" } else { "no response" })
 if ($root) {
@@ -324,6 +344,29 @@ Assert-That "API refuses requests with no bearer token" ($unauthCode -eq 401) "h
 # This is the product: frames decoded, model executed, telemetry advancing.
 # "Serves HTTP with no camera" never proves any of that.
 if ($VideoFile -and (Test-Path $VideoFile)) {
+    Write-Step "Start the camera stream (what the dashboard auto-connects)"
+    # The engine boots to STANDBY; capture starts only when the dashboard loads
+    # and POSTs /api/connect-stream. Reproduce that real path (bearer + payload)
+    # so the ML pipeline below runs on decoded frames, exactly as a customer's
+    # first second of use would.
+    $startSource = ""
+    if ($vidYaml) { $startSource = $vidYaml }
+    elseif ($rawCfg -match '(?m)^\s*source:\s*(\S+)') { $startSource = $Matches[1].Trim().Trim('"').Trim("'") }
+    $activeCamId = ""
+    if (($dest) -and (Test-Path $dest) -and ((Get-Content $dest -Raw) -match '(?m)^\s*active_camera_id:\s*(\S+)')) {
+        $activeCamId = $Matches[1].Trim().Trim('"').Trim("'")
+    }
+    $connectBody = @{
+        source      = $startSource
+        camera_id   = $activeCamId
+        camera_name = "Smoke Test Entrance"
+        protocol    = "video"
+    } | ConvertTo-Json -Depth 4
+    $connectRes = Invoke-PostCheck "http://127.0.0.1:8765/api/connect-stream" $script:SessionToken $connectBody
+    Assert-That "POST /api/connect-stream started capture" `
+        ($null -ne $connectRes -and $connectRes.StatusCode -eq 200) `
+        $(if ($connectRes) { "status=$($connectRes.StatusCode)" } else { "no response" })
+
     Write-Step "Live inference (decoded frames + ML on Windows)"
     $tel = $null
     for ($i = 0; $i -lt 24; $i++) {
@@ -342,7 +385,10 @@ if ($VideoFile -and (Test-Path $VideoFile)) {
         Write-Host ("  protocol={0} connection={1} ingest_fps={2} fps={3} infer_ms={4} res={5}" -f `
             $tel.protocol, $tel.connection, $tel.ingest_fps, $tel.fps, $tel.infer_ms, $tel.resolution)
 
-        Assert-That "engine opened the test clip as a file source" ("$($tel.protocol)" -eq "file") "protocol=$($tel.protocol)"
+        # A local file is a "video" source to the engine (the dashboard sends
+        # protocol: video for uploads); accept "file" too so the wording of the
+        # configured protocol does not fail the run.
+        Assert-That "engine opened the test clip as a file source" ("$($tel.protocol)" -in @("file", "video")) "protocol=$($tel.protocol)"
         Assert-That "frames are being decoded (ingest_fps > 0)" ([double]$tel.ingest_fps -gt 0) "ingest_fps=$($tel.ingest_fps)"
         Assert-That "stream reports a real resolution" `
             ("$($tel.resolution)" -match "\d+x\d+") "resolution=$($tel.resolution)"
