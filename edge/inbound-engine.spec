@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PyInstaller.building.api import EXE, PYZ
 from PyInstaller.building.build_main import Analysis
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 EDGE = Path(SPECPATH).resolve()
 
@@ -238,6 +238,18 @@ for pkg in pkgs_to_collect:
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
+
+# ultralytics resolves its own dependency versions from package metadata at
+# import time (TORCHVISION_VERSION = importlib.metadata.version("torchvision")
+# in ultralytics/utils/__init__.py). PyInstaller does not ship .dist-info
+# metadata by default, so a frozen engine died with PackageNotFoundError the
+# moment the ML thread imported ultralytics - which silently disabled person
+# detection. Bundle the metadata ultralytics actually queries.
+for _meta_pkg in ("torchvision",):
+    try:
+        datas += copy_metadata(_meta_pkg)
+    except Exception as _meta_exc:
+        print(f"[SPEC] copy_metadata('{_meta_pkg}') failed: {_meta_exc}", flush=True)
 
 a = Analysis(
     [str(EDGE / "run_champei.py")],
