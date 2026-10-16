@@ -210,7 +210,7 @@ binaries += _msvc_runtime_binaries()
 # Intel path calls core.read_model() on ONNX, which needs the ONNX frontend
 # and the CPU plugin. Unused framework frontends and the GPU plugin are
 # stripped below so they cannot blow the 4 GiB one-file CArchive.
-pkgs_to_collect = ["ultralytics", "torch", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
+pkgs_to_collect = ["ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
 try:
     import openvino  # noqa: F401
     pkgs_to_collect.append("openvino")
@@ -238,6 +238,11 @@ for pkg in pkgs_to_collect:
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
+# Ensure torchvision ops are present (onnxruntime uses torchvision::nms)
+try:
+    hiddenimports += collect_submodules("torchvision.ops")
+except Exception:
+    pass
 
 # ultralytics resolves its own dependency versions from package metadata at
 # import time (TORCHVISION_VERSION = importlib.metadata.version("torchvision")
