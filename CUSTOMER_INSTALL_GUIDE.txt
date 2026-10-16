@@ -1,46 +1,60 @@
 ====================================================================
-          CHAMPEI SPA INTELLIGENCE - CUSTOMER INSTALLATION GUIDE
+        INBOUND SURVEILLANCE - CHAMPEI SPA
+        WINDOWS INSTALLATION GUIDE (ONE-CLICK)
 ====================================================================
 
-PACKAGE: Champei_Spa_Intelligence.zip (~710 MB)
 TARGET PLATFORM: Windows 10 / Windows 11 (64-bit)
 
-DOWNLOAD LINK:
-[Insert your GitHub Release or Cloud Storage Link here]
-(e.g., https://github.com/sothunly-alt/Ibound-survillence-V2/releases/latest/download/Champei_Spa_Intelligence.zip)
+--------------------------------------------------------------------
+WHAT YOU RECEIVED
+--------------------------------------------------------------------
+A single installer file:
+
+    Inbound Surveillance_0.1.5_x64-setup.exe
+
+You do NOT need to install Python or any other software first. The
+installer sets everything up on its own.
 
 --------------------------------------------------------------------
-STEP 1: DOWNLOAD & EXTRACT
+STEP 1: INSTALL
 --------------------------------------------------------------------
-1. Download "Champei_Spa_Intelligence.zip" from the link above.
-2. Right-click the ZIP file and select "Extract All...".
-3. Choose a folder destination (e.g., C:\Champei_Spa_Intelligence) and click "Extract".
+1. Double-click "Inbound Surveillance_0.1.5_x64-setup.exe".
+2. If Windows shows a permission prompt, click "Yes".
+3. Click "Install" and wait for it to finish.
+4. When it is done, the app is installed and a shortcut is created.
 
 --------------------------------------------------------------------
-STEP 2: INSTALL PYTHON (If not already installed)
+STEP 2: OPEN THE APP
 --------------------------------------------------------------------
-1. Download Python (version 3.10, 3.11, or 3.12) from:
-   https://www.python.org/downloads/
-2. Run the installer.
-3. [CRITICAL]: Make sure to check the box:
-   [✔] "Add Python to PATH" (at the bottom of the installer window).
-4. Click "Install Now" and finish setup.
+- Open "Inbound Surveillance" from the Start Menu (or the desktop
+  shortcut).
+- The dashboard opens automatically. There is NO login or password.
+- NOTE: the first launch may take a few seconds while the camera
+  engine starts.
 
 --------------------------------------------------------------------
-STEP 3: 1-CLICK AUTOMATIC SETUP
+STEP 3: CONNECT TELEGRAM ALERTS
 --------------------------------------------------------------------
-1. Open your extracted "Champei_Spa_Intelligence" folder.
-2. Double-click "INSTALL_WINDOWS.bat".
-3. Wait 1-2 minutes while it configures components and runs diagnostics.
-4. When finished, press any key to close the window.
+1. In the dashboard, go to: Settings -> Integrations.
+2. Click "Connect Telegram".
+3. Telegram opens - tap "Start". The chat is now linked and alerts
+   will be delivered there.
 
 --------------------------------------------------------------------
-STEP 4: RUNNING THE APPLICATION
+STEP 4: ADD YOUR CAMERAS
 --------------------------------------------------------------------
-- Double-click the new "Champei Spa Intelligence" shortcut on your Desktop.
-  (Or double-click "start_champei.bat" inside the folder).
-- The system will open your camera surveillance and analytics dashboard.
+1. In the dashboard, open the camera settings.
+2. Paste your camera / DVR link, for example:
+      rtsp://username:password@192.168.1.10:554/stream1
+3. Click "Connect". Live video and detections will begin.
+
+--------------------------------------------------------------------
+EVERYDAY USE
+--------------------------------------------------------------------
+- Open "Inbound Surveillance" whenever the venue is operating.
+- Keep it running so alerts are sent.
+- To close the system, simply close the app window.
 
 ====================================================================
-Support & Inquiries: Champei Spa Intelligence Team
+Support & Inquiries: Inbound Surveillance Team
 ====================================================================

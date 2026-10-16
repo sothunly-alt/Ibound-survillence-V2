@@ -106,22 +106,40 @@ def check_database() -> bool:
 def check_telegram_config() -> bool:
     print_header("3. TELEGRAM BOT & NOTIFICATION ROUTING AUDIT")
     from telegram_out import resolve_telegram_credentials, resolve_routed_chat_ids
-    
-    token, chat_id = resolve_telegram_credentials()
-    staff_chat, owner_chat = resolve_routed_chat_ids()
-    
+
+    cfg_token = ""
+    cfg_chat = ""
+    try:
+        import launcher
+
+        cfg = launcher.read_config()
+        cfg_token = str(cfg.get("telegram_bot_token") or "")
+        cfg_chat = str(cfg.get("telegram_chat_id") or "")
+    except Exception:
+        pass
+
+    token, chat_id = resolve_telegram_credentials(cfg_token, cfg_chat)
+    staff_chat, owner_chat = resolve_routed_chat_ids(chat_id)
+
     masked_token = f"{token[:10]}...{token[-5:]}" if len(token) > 15 else (token or "(not set)")
     print(f"• Bot Token         : {masked_token}")
     print(f"• Primary Chat ID   : {chat_id or '(not set)'}")
     print(f"• Staff Group Chat  : {staff_chat or '(not set)'}")
     print(f"• Owner Direct Chat : {owner_chat or '(not set)'}")
-    
-    if token and owner_chat:
+
+    if token and (owner_chat or chat_id):
         print(f"  {PASS} Telegram Credentials Configured: Ready")
         return True
-    else:
-        print(f"  {WARN} Telegram Credentials Incomplete: Fill in .env before running in live production.")
-        return False
+    if token:
+        # One-click pairing: the bot token ships with the system; the operator
+        # links their own chat at runtime via Settings -> Integrations.
+        print(
+            f"  {PASS} Alert Bot Ready: open the dashboard -> Integrations -> "
+            "'Connect Telegram' to link a chat."
+        )
+        return True
+    print(f"  {WARN} Telegram Credentials Incomplete: Fill in .env before running in live production.")
+    return False
 
 
 def check_schedulers_and_timezone() -> bool:
