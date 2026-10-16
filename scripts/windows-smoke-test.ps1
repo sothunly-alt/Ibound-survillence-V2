@@ -25,6 +25,12 @@ param(
 $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 
+# Frozen Python block-buffers stdout when it is redirected to a file, so log
+# lines emitted after boot (e.g. the inference-loop's caught exceptions) are
+# lost when the engine is killed. Force unbuffered output so those lines land
+# in engine.out.log and the diagnostics artifact.
+$env:PYTHONUNBUFFERED = "1"
+
 $script:Results = New-Object System.Collections.Generic.List[object]
 $script:Failures = 0
 
@@ -407,6 +413,17 @@ if ($VideoFile -and (Test-Path $VideoFile)) {
             "max_infer_ms=$maxInfer status='$($tel.status)' fps=$($tel.fps)"
         $errText = "$($tel.error)"
         Assert-That "no capture/inference error reported" ($errText -eq "" -or $null -eq $tel.error) "error='$errText'"
+
+        # Surface any swallowed inference-loop exception. The engine catches
+        # per-frame errors and only prints them, so a stdout/stderr dump is the
+        # only place the real cause (e.g. a missing module or ONNX failure)
+        # shows up when infer_ms never advances.
+        if ($maxInfer -le 0) {
+            Write-Host "  ---- engine stdout tail (inference diagnostics) ----"
+            if (Test-Path $engineOut) { Get-Content $engineOut | Select-Object -Last 40 | ForEach-Object { Write-Host "  | $_" } }
+            Write-Host "  ---- engine stderr tail (inference diagnostics) ----"
+            if (Test-Path $engineErr) { Get-Content $engineErr | Select-Object -Last 40 | ForEach-Object { Write-Host "  ! $_" } }
+        }
     }
 }
 
