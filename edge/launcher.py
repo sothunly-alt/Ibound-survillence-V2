@@ -3628,6 +3628,8 @@ class LiveStreamEngine:
                             vehicles = []
                             self.cached_vehicles = []
 
+                    self.infer_ms = (time.perf_counter() - t_pred) * 1000.0
+
                     auto_create = bool(self.cfg.get("auto_create_bays", False))
                     departed_bays = self.bay_manager.sync_auto_vehicles(
                         vehicles, w, h, now=now, auto_create=auto_create
