@@ -368,14 +368,25 @@ if ($VideoFile -and (Test-Path $VideoFile)) {
         $(if ($connectRes) { "status=$($connectRes.StatusCode)" } else { "no response" })
 
     Write-Step "Live inference (decoded frames + ML on Windows)"
+    # The first ONNX session build + first inference can take many seconds on a
+    # cold CI CPU. Poll long enough to tell a genuinely stalled pipeline from a
+    # slow cold start, and print every sample so a failure report shows whether
+    # fps collapsed (inference running slowly) or stayed at the source rate
+    # (inference never entered the loop), plus the engine's own status text.
     $tel = $null
-    for ($i = 0; $i -lt 24; $i++) {
+    $maxInfer = 0.0
+    for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Seconds 5
         $probe = Invoke-Check "http://127.0.0.1:8765/api/telemetry" $script:SessionToken
         if ($null -ne $probe -and $probe.StatusCode -eq 200) {
             $t = $probe.Content | ConvertFrom-Json
-            if ([double]$t.ingest_fps -gt 0 -and [double]$t.infer_ms -gt 0) { $tel = $t; break }
-            if (-not $tel) { $tel = $t }
+            $inf = 0.0; try { $inf = [double]$t.infer_ms } catch {}
+            $ing = 0.0; try { $ing = [double]$t.ingest_fps } catch {}
+            if ($inf -gt $maxInfer) { $maxInfer = $inf }
+            Write-Host ("  t+{0,3}s status='{1}' conn={2} fps={3} ingest_fps={4} infer_ms={5}" -f `
+                (($i + 1) * 5), $t.status, $t.connection, $t.fps, $t.ingest_fps, $t.infer_ms)
+            if ($null -eq $tel) { $tel = $t }
+            if ($ing -gt 0 -and $inf -gt 0) { $tel = $t; break }
         }
     }
 
@@ -392,8 +403,8 @@ if ($VideoFile -and (Test-Path $VideoFile)) {
         Assert-That "frames are being decoded (ingest_fps > 0)" ([double]$tel.ingest_fps -gt 0) "ingest_fps=$($tel.ingest_fps)"
         Assert-That "stream reports a real resolution" `
             ("$($tel.resolution)" -match "\d+x\d+") "resolution=$($tel.resolution)"
-        Assert-That "ML inference executed on Windows (infer_ms > 0)" ([double]$tel.infer_ms -gt 0) `
-            "infer_ms=$($tel.infer_ms) fps=$($tel.fps)"
+        Assert-That "ML inference executed on Windows (infer_ms > 0)" ($maxInfer -gt 0) `
+            "max_infer_ms=$maxInfer status='$($tel.status)' fps=$($tel.fps)"
         $errText = "$($tel.error)"
         Assert-That "no capture/inference error reported" ($errText -eq "" -or $null -eq $tel.error) "error='$errText'"
     }
