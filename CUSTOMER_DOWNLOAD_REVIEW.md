@@ -4,7 +4,7 @@
 
 | Attribute | Details |
 | :--- | :--- |
-| **Package File** | `Inbound Surveillance_0.1.6_x64-setup.exe` |
+| **Package File** | `Inbound.Surveillance_0.1.6_x64-setup.exe` |
 | **Type** | Windows installer (NSIS) — one double-click |
 | **Target OS** | Windows 10 / Windows 11 (64-bit) |
 | **Included AI Models** | Person detection, pose, role classification, ReID (`.onnx`, `.pt`) |
@@ -28,7 +28,7 @@
 ### 🏆 Option 1: GitHub Release (Recommended for Public Direct Download)
 1. Go to: [New GitHub Release](https://github.com/sothunly-alt/Ibound-survillence-V2/releases/new)
 2. Create a tag (e.g., `v0.1.6`).
-3. Drag & drop `Inbound Surveillance_0.1.6_x64-setup.exe` into **Attach binaries**.
+3. Drag & drop `Inbound.Surveillance_0.1.6_x64-setup.exe` into **Attach binaries**.
 4. Give the customer your direct download link:
    ```text
    https://github.com/sothunly-alt/Ibound-survillence-V2/releases/latest
@@ -48,7 +48,7 @@ from the `build-windows.yml` workflow.
 ## 📋 Instructions to Send to the Customer
 
 ### 1. Install
-* Double-click **`Inbound Surveillance_0.1.6_x64-setup.exe`**.
+* Double-click **`Inbound.Surveillance_0.1.6_x64-setup.exe`**.
 * If Windows asks for permission, click **Yes**.
 * Click **Install** and wait for it to finish. (It is normal for the first
   launch to take a few extra seconds while the engine starts.)

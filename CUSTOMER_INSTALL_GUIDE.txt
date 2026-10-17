@@ -10,7 +10,7 @@ WHAT YOU RECEIVED
 --------------------------------------------------------------------
 A single installer file:
 
-    Inbound Surveillance_0.1.6_x64-setup.exe
+    Inbound.Surveillance_0.1.6_x64-setup.exe
 
 You do NOT need to install Python or any other software first. The
 installer sets everything up on its own.
@@ -18,7 +18,7 @@ installer sets everything up on its own.
 --------------------------------------------------------------------
 STEP 1: INSTALL
 --------------------------------------------------------------------
-1. Double-click "Inbound Surveillance_0.1.6_x64-setup.exe".
+1. Double-click "Inbound.Surveillance_0.1.6_x64-setup.exe".
 2. If Windows shows a permission prompt, click "Yes".
 3. Click "Install" and wait for it to finish.
 4. When it is done, the app is installed and a shortcut is created.
