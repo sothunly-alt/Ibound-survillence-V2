@@ -9,7 +9,7 @@ from typing import Any
 
 import requests
 
-from telegram_out import TelegramOut, normalize_chat_id
+from telegram_out import TelegramOut, ensure_get_updates_ready, normalize_chat_id
 
 API = "https://api.telegram.org/bot{token}/{method}"
 
@@ -133,6 +133,9 @@ class TelegramLinkService:
     def start(self) -> None:
         if not self.token:
             return
+        # Telegram refuses getUpdates while a webhook is set; clear it once
+        # before the first poll so one-click pairing can actually receive /start.
+        ensure_get_updates_ready(self.token)
         with self._lock:
             if self._poll_thread and self._poll_thread.is_alive():
                 return
@@ -320,6 +323,15 @@ class TelegramLinkService:
         with self._lock:
             self._last_error = ""
         return handled
+
+    def handle_pairing_update(self, update: dict[str, Any]) -> bool:
+        """Public entry point for an external getUpdates owner.
+
+        ``run_champei`` lets ``TelegramController`` own getUpdates (the link
+        service's own poller is disabled), so the controller forwards any
+        ``/start <code>`` update here to complete the one-click pairing.
+        """
+        return self._handle_update(update)
 
     def _handle_update(self, update: dict[str, Any]) -> bool:
         message = update.get("message") or update.get("edited_message") or {}

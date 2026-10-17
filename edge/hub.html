@@ -1287,6 +1287,17 @@
                 <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Filled automatically after /start" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
               </div>
             </details>
+            <details class="text-xs text-on-surface-variant">
+              <summary class="cursor-pointer select-none">Advanced: paste bot token manually</summary>
+              <div class="mt-2 flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Bot Token</label>
+                <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" autocomplete="off" placeholder="Paste bot token from @BotFather"/>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-1.5 px-3 rounded-lg text-xs border border-outline-variant" onclick="saveTelegramToken()">Save token</button>
+                  <span class="text-on-surface-variant">Needed only if Connect Telegram says the token is missing.</span>
+                </div>
+              </div>
+            </details>
             <p id="tg-feedback" class="hidden text-sm"></p>
           </div>
         </div>
@@ -1792,6 +1803,27 @@
       }
     }
 
+    async function enterHubBypass() {
+      if (enteringHub) return;
+      enteringHub = true;
+      hubAuthToken = null;
+      try {
+        // Local install has no cloud account. Provide a stable synthetic identity
+        // so Telegram linking and the profile UI work fully offline.
+        if (!hubAccountUser) {
+          hubAccountUser = { id: 'local-operator', email: '', user_metadata: {} };
+        }
+        if (!hubAccountProfile) {
+          hubAccountProfile = { display_name: 'Operator', venue_name: '' };
+        }
+        // Deliberately no /api/auth-session sync: a real saved session must survive.
+        document.body.classList.remove('auth-locked');
+        startHub();
+      } finally {
+        enteringHub = false;
+      }
+    }
+
     const DEFAULT_SUPABASE_URL = "https://rmepwjywobowktdmkusu.supabase.co";
     const DEFAULT_SUPABASE_ANON_KEY =
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZXB3anl3b2Jvd2t0ZG1rdXN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDA0MDYsImV4cCI6MjEwNDMxNjQwNn0.u_hg9uXPSK7AE1kD3ol9LUmYgyddVWrELACWh5Z9zr4";
@@ -1965,6 +1997,12 @@
 
         const supabaseUrl = (cfg && cfg.supabaseUrl ? cfg.supabaseUrl : DEFAULT_SUPABASE_URL).trim();
         const supabaseAnonKey = (cfg && cfg.supabaseAnonKey ? cfg.supabaseAnonKey : DEFAULT_SUPABASE_ANON_KEY).trim();
+
+        // Local single-machine install: server started with HUB_NO_AUTH=1, skip login.
+        if (cfg && cfg.authBypass) {
+          await enterHubBypass();
+          return;
+        }
 
         if (!window.supabase) {
           showAuthMessage('Supabase library failed to load. Please verify network connectivity.', true);
@@ -2958,6 +2996,38 @@
         }
       } catch (err) {
         console.error('Failed to save settings', err);
+      }
+    }
+
+    async function saveTelegramToken() {
+      const input = document.getElementById('tg-token-input');
+      const feedback = document.getElementById('tg-feedback');
+      const token = input ? input.value.trim() : '';
+      if (!token) {
+        showBanner(feedback, false, 'Paste the bot token first (from @BotFather).');
+        return;
+      }
+      try {
+        const res = await hubFetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ telegram_bot_token: token })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          currentConfig = Object.assign({}, currentConfig, data);
+          if (input) input.value = '';
+          paintTelegramLinkStatus({
+            telegram_chat_id: currentConfig.telegram_chat_id || '',
+            bot_username: currentConfig.telegram_bot_username || '',
+            telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
+          });
+          showBanner(feedback, true, 'Bot token saved. Now click Connect Telegram and tap Start.');
+        } else {
+          showBanner(feedback, false, (data && data.error) || 'Could not save the bot token.');
+        }
+      } catch (err) {
+        showBanner(feedback, false, err.message || 'Could not save the bot token.');
       }
     }
 
@@ -6710,6 +6780,9 @@
       }
         if (data.just_linked) {
         stopTelegramLinkPoll();
+        // Paint first so the badge flips to Linked even in the local no-account
+        // install, where persistTelegramLinkToAccount has no Supabase to save to.
+        paintTelegramLinkStatus(data);
         await persistTelegramLinkToAccount(data.just_linked);
         const feedback = document.getElementById('tg-feedback');
         showBanner(feedback, true, 'Telegram linked. Alerts will go to this chat.');

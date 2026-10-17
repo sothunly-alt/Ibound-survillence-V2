@@ -48,7 +48,7 @@ def production_threshold() -> float:
     """
     import yaml
 
-    for name in ("config.yaml", "config.example.yaml"):
+    for name in ("config.champei.yaml", "config.yaml", "config.example.yaml"):
         path = ROOT / name
         if not path.is_file():
             continue

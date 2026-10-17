@@ -189,6 +189,15 @@ def open_host_url(url: str) -> bool:
         return False
 
 
+def auth_bypass_enabled() -> bool:
+    """Dev-only escape hatch: set HUB_NO_AUTH=1 to skip the login gate.
+
+    Intended for local development on a trusted machine. The hub already binds
+    to 127.0.0.1 only, so this never exposes the console off-box.
+    """
+    return os.environ.get("HUB_NO_AUTH", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def public_supabase_config() -> dict[str, Any]:
     url = (
         os.environ.get("VITE_SUPABASE_URL")
@@ -205,6 +214,7 @@ def public_supabase_config() -> dict[str, Any]:
         "supabaseUrl": url,
         "supabaseAnonKey": key,
         "configured": bool(url and key),
+        "authBypass": auth_bypass_enabled(),
     }
 
 
@@ -377,10 +387,66 @@ def get_config_path() -> Path:
     real = DATA_DIR / "config.yaml"
     if real.exists():
         return real
+    # Packaged (frozen) first run: seed the writable config from what the
+    # installer bundled so the venue's settings and Telegram token are in
+    # force without any manual step. Prefer the customer config, fall back to
+    # the generic example. Source checkouts keep reading the example directly
+    # so dev/test runs are never affected.
+    if is_frozen():
+        for name in ("config.champei.yaml", "config.example.yaml"):
+            bundled = get_resource_path(name)
+            if bundled.exists():
+                try:
+                    import shutil
+
+                    shutil.copyfile(bundled, real)
+                    return real
+                except Exception:
+                    return bundled
+        return real
     example = get_resource_path("config.example.yaml")
     if example.exists():
         return example
     return real
+
+
+def ensure_bundled_telegram_token() -> None:
+    """Seed the Telegram bot token from the bundled config when it is blank.
+
+    Reinstalling or upgrading over an older build leaves a
+    ``%APPDATA%/Inbound Surveillance/config.yaml`` that predates the bundled
+    token, so the one-click ``Connect Telegram`` flow fails with
+    "TELEGRAM_BOT_TOKEN is not configured". Fill only a blank token so a
+    customer-supplied token is never overwritten.
+    """
+    if not is_frozen():
+        return
+    real = DATA_DIR / "config.yaml"
+    if not real.exists():
+        return
+    try:
+        with real.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except Exception:
+        return
+    if str(data.get("telegram_bot_token") or "").strip():
+        return
+    for name in ("config.champei.yaml", "config.example.yaml"):
+        bundled = get_resource_path(name)
+        if not bundled.exists():
+            continue
+        try:
+            with bundled.open("r", encoding="utf-8") as f:
+                bundled_data = yaml.safe_load(f) or {}
+        except Exception:
+            continue
+        token = str(bundled_data.get("telegram_bot_token") or "").strip()
+        if token:
+            try:
+                save_config({"telegram_bot_token": token})
+            except Exception:
+                pass
+            return
 
 
 def read_config() -> dict[str, Any]:
@@ -1171,6 +1237,7 @@ class LiveStreamEngine:
     """
 
     def __init__(self, *, telegram_link_poll: bool = True):
+        ensure_bundled_telegram_token()
         self.lock = threading.Lock()
         self.running = False
         self.is_streaming = False
@@ -1907,6 +1974,8 @@ class LiveStreamEngine:
         updates: dict[str, Any] = {}
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = normalize_chat_id(payload.get("telegram_chat_id"))
+        if "telegram_bot_token" in payload:
+            updates["telegram_bot_token"] = str(payload.get("telegram_bot_token") or "").strip()
         if "venue" in payload:
             updates["venue"] = str(payload.get("venue") or "").strip() or "Demo Garage"
             updates["garage_name"] = updates["venue"]
@@ -3621,10 +3690,12 @@ class LiveStreamEngine:
                                 self.cached_vehicles = vehicles
                                 self.last_vehicle_infer = now
                             except Exception as ex:
-                                print(f"[VehicleInfer] Prediction error: {ex}")
+                                print(f"[VehicleInfer] Prediction error: {ex}", flush=True)
                         elif not flags["vehicle_detect"]:
                             vehicles = []
                             self.cached_vehicles = []
+
+                    self.infer_ms = (time.perf_counter() - t_pred) * 1000.0
 
                     auto_create = bool(self.cfg.get("auto_create_bays", False))
                     departed_bays = self.bay_manager.sync_auto_vehicles(
@@ -3640,7 +3711,7 @@ class LiveStreamEngine:
                                         if eval_report:
                                             print(f"[Performance Evaluation] Job {eval_report.job_id}: Grade={eval_report.performance_grade}, Score={eval_report.performance_score}, Efficiency={eval_report.efficiency_pct:.1f}% by {eval_report.primary_technician}")
                                     except Exception as ex:
-                                        print(f"[Vehicle Departure] Error completing/evaluating job {bay_cfg.get('job_id')}: {ex}")
+                                        print(f"[Vehicle Departure] Error completing/evaluating job {bay_cfg.get('job_id')}: {ex}", flush=True)
                     track_low_thresh = float(self.cfg.get("track_low_thresh", 0.10))
                     if flags["person_detect"] and result is not None:
                         last_accepted, last_rejected, low_dets = person_detections_split(
@@ -3951,9 +4022,9 @@ class LiveStreamEngine:
                                 else:
                                     print(f"[LiveStreamEngine Alert] Failed to send photo to Telegram")
                         except Exception as bot_err:
-                            print(f"[LiveStreamEngine Alert] Error sending Telegram photo: {bot_err}")
+                            print(f"[LiveStreamEngine Alert] Error sending Telegram photo: {bot_err}", flush=True)
                 except Exception as exc:
-                    print(f"[LiveStreamEngine Infer Error] {exc}")
+                    print(f"[LiveStreamEngine Infer Error] {exc}", flush=True)
 
             annotated = frame.copy()
             bay_cfgs = self.bay_manager.configs()
@@ -4164,6 +4235,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _authorized(self) -> bool:
+        if auth_bypass_enabled():
+            return True
         header = self.headers.get("Authorization") or ""
         token = header[len("Bearer "):] if header[:7].lower() == "bearer " else ""
         expected = _load_session_token()

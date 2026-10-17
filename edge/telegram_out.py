@@ -45,6 +45,32 @@ def resolve_routed_chat_ids(primary_chat_id: str = "") -> tuple[str, str]:
     return staff, owner
 
 
+_cleared_webhooks: set[str] = set()
+
+
+def ensure_get_updates_ready(token: str) -> bool:
+    """Drop a stray Telegram webhook so getUpdates polling can run.
+
+    Telegram rejects ``getUpdates`` while a webhook is set on the bot, which
+    silently kills the one-click "Connect Telegram" pairing. This install owns
+    getUpdates, so clear any leftover webhook once per token at startup.
+    """
+    token = (token or "").strip()
+    if not token:
+        return False
+    if token in _cleared_webhooks:
+        return True
+    try:
+        response = requests.get(API.format(token=token, method="deleteWebhook"), timeout=15)
+        data = response.json() or {}
+    except Exception:
+        return False
+    if data.get("ok"):
+        _cleared_webhooks.add(token)
+        return True
+    return False
+
+
 def normalize_chat_id(value: Any) -> str:
     """Return a single Telegram chat id. If several were stored, keep the latest."""
     if value is None:

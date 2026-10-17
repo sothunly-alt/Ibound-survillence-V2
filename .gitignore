@@ -83,3 +83,6 @@ htmlcov/
 Thumbs.db
 
 *.zip
+
+# Extracted customer release package (build artifact, not source)
+Champei_Spa_Intelligence/

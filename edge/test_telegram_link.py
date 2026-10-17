@@ -10,7 +10,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from telegram_link import TelegramLinkService
-from telegram_out import TelegramOut, normalize_chat_id, resolve_telegram_credentials
+from telegram_out import (
+    TelegramOut,
+    ensure_get_updates_ready,
+    normalize_chat_id,
+    resolve_telegram_credentials,
+)
 
 
 class TelegramLinkTests(unittest.TestCase):
@@ -241,6 +246,89 @@ class TelegramOutNormalizeTests(unittest.TestCase):
                 os.environ.pop("TELEGRAM_CHAT_ID", None)
             else:
                 os.environ["TELEGRAM_CHAT_ID"] = prev_chat
+
+
+class TelegramPairingEntryPointTests(unittest.TestCase):
+    """The controller owns getUpdates in the local install, so the link service
+    exposes a public pairing entry point instead of running its own poller."""
+
+    def setUp(self) -> None:
+        self.svc = TelegramLinkService()
+        self.svc._token = "123:ABC"
+        self.svc._bot_username = "ChampeiBot"
+
+    def test_handle_pairing_update_links_chat(self) -> None:
+        begun = self.svc.begin_link("local-operator", "Operator")
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled = self.svc.handle_pairing_update(
+                {
+                    "update_id": 1,
+                    "message": {
+                        "text": f"/start {begun['code']}",
+                        "chat": {"id": 555111},
+                        "from": {"id": 77, "username": "op"},
+                    },
+                }
+            )
+        self.assertTrue(handled)
+        link = self.svc.consume_link_for_user("local-operator")
+        self.assertIsNotNone(link)
+        assert link is not None
+        self.assertEqual(link["chat_id"], "555111")
+        self.assertEqual(self.svc._active_chat_id, "555111")
+        mock_reply.assert_called_once()
+
+    def test_handle_pairing_update_ignores_non_start(self) -> None:
+        self.assertFalse(
+            self.svc.handle_pairing_update(
+                {"update_id": 1, "message": {"text": "/help", "chat": {"id": 1}}}
+            )
+        )
+
+    def test_configure_start_poller_false_never_spawns_thread(self) -> None:
+        with patch.object(
+            TelegramLinkService, "refresh_bot_identity", return_value={"ok": True}
+        ), patch.object(TelegramLinkService, "start") as mock_start:
+            self.svc.configure("123:ABC", start_poller=False)
+        mock_start.assert_not_called()
+        self.assertIsNone(self.svc._poll_thread)
+        self.assertFalse(self.svc._start_poller)
+
+
+class EnsureGetUpdatesReadyTests(unittest.TestCase):
+    """A stray webhook blocks getUpdates and silently breaks one-click pairing."""
+
+    def setUp(self) -> None:
+        import telegram_out
+
+        telegram_out._cleared_webhooks.clear()
+
+    def tearDown(self) -> None:
+        import telegram_out
+
+        telegram_out._cleared_webhooks.clear()
+
+    @patch("telegram_out.requests.get")
+    def test_deletes_webhook_then_caches(self, mock_get: MagicMock) -> None:
+        mock_get.return_value.json.return_value = {"ok": True}
+        self.assertTrue(ensure_get_updates_ready("tok:1"))
+        self.assertTrue(ensure_get_updates_ready("tok:1"))
+        self.assertEqual(mock_get.call_count, 1)
+        self.assertIn("deleteWebhook", mock_get.call_args.args[0])
+
+    @patch("telegram_out.requests.get")
+    def test_failure_is_not_cached(self, mock_get: MagicMock) -> None:
+        mock_get.return_value.json.return_value = {"ok": False}
+        self.assertFalse(ensure_get_updates_ready("tok:2"))
+        self.assertFalse(ensure_get_updates_ready("tok:2"))
+        self.assertEqual(mock_get.call_count, 2)
+
+    def test_empty_token_is_noop(self) -> None:
+        self.assertFalse(ensure_get_updates_ready(""))
+
+    @patch("telegram_out.requests.get", side_effect=RuntimeError("offline"))
+    def test_network_error_is_swallowed(self, _mock_get: MagicMock) -> None:
+        self.assertFalse(ensure_get_updates_ready("tok:3"))
 
 
 if __name__ == "__main__":

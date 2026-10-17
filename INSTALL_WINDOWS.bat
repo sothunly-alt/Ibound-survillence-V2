@@ -36,6 +36,27 @@ echo [*] Python detected:
 %PY_CMD% --version
 echo.
 
+:: 1b. Verify Python version is 3.10 - 3.12 (torch/ultralytics wheels)
+for /f "tokens=1,2" %%a in ('%PY_CMD% -c "import sys;print(sys.version_info[0],sys.version_info[1])"') do (
+    set "PY_MAJOR=%%a"
+    set "PY_MINOR=%%b"
+)
+if !PY_MAJOR! LSS 3 (
+    set "PY_BAD=1"
+)
+if !PY_MAJOR! EQU 3 if !PY_MINOR! LSS 10 set "PY_BAD=1"
+if !PY_MAJOR! EQU 3 if !PY_MINOR! GTR 12 set "PY_BAD=1"
+if defined PY_BAD (
+    color 0E
+    echo [WARN] Detected Python !PY_MAJOR!.!PY_MINOR!. This system supports Python 3.10 - 3.12.
+    echo        Newer/older versions may lack prebuilt AI wheels and the install may fail.
+    echo        Recommended: install Python 3.12 from https://www.python.org/downloads/
+    echo        ^(check "Add Python to PATH"^), then run this installer again.
+    echo.
+    pause
+    color 0A
+)
+
 :: 2. Create Virtual Environment
 echo [*] Setting up isolated application environment...
 if not exist "edge\.venv" (
@@ -62,12 +83,26 @@ if %ERRORLEVEL% NEQ 0 (
 echo [OK] All dependencies successfully installed.
 echo.
 
-:: 4. Verify Installation
+:: 4. Deploy Customer Config (Champei Spa)
+echo [*] Deploying customer configuration...
+if not exist "edge\config.yaml" (
+    if exist "edge\config.champei.yaml" (
+        copy /Y "edge\config.champei.yaml" "edge\config.yaml" >nul
+        echo [OK] Customer config deployed to edge\config.yaml
+    ) else (
+        echo [WARN] edge\config.champei.yaml not found; using default config.example.yaml.
+    )
+) else (
+    echo [INFO] edge\config.yaml already exists; keeping existing configuration.
+)
+echo.
+
+:: 5. Verify Installation
 echo [*] Running diagnostic check...
 python edge\verify_customer_install.py
 echo.
 
-:: 5. Create Desktop Shortcut
+:: 6. Create Desktop Shortcut
 echo [*] Creating Desktop Shortcut...
 set "TARGET_BAT=%~dp0start_champei.bat"
 set "SHORTCUT_PATH=%USERPROFILE%\Desktop\Champei Spa Intelligence.lnk"

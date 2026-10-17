@@ -93,8 +93,14 @@ def ensure_weights() -> None:
 
 
 def ensure_exported_weights(weights_dir: Path | None = None, force_reexport: bool = False) -> None:
-    """Exports YOLO models strictly at 640x640 (pose) and 512x512 (vehicles).
-    Guarantees proposal grid reduction from 18,900 down to 8,400 boxes.
+    """Export the pose model with a dynamic shape and the vehicle model at 512.
+
+    The pose model MUST be dynamic. ``resolve_imgsz`` honours ``cfg["imgsz"]``
+    (960 edge, 1280 GPU by default), so a fixed 640x640 ONNX makes every
+    ``model.predict(imgsz=960)`` call fail with an ONNX Runtime
+    INVALID_ARGUMENT (``Got: 960 Expected: 640``) and silently disables all
+    person detection. The vehicle model is always invoked with ``imgsz=512``,
+    so it stays fixed.
     """
     from ultralytics import YOLO
 
@@ -103,20 +109,20 @@ def ensure_exported_weights(weights_dir: Path | None = None, force_reexport: boo
     weights_dir = Path(weights_dir)
     weights_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Pose Model: Strict 640x640
+    # 1. Pose Model: dynamic shape so any configured imgsz works.
     pose_pt = weights_dir / "yolo11n-pose.pt"
     if not pose_pt.exists() and (EDGE / "yolo11n-pose.pt").exists():
         pose_pt = EDGE / "yolo11n-pose.pt"
     pose_onnx = weights_dir / "yolo11n-pose.onnx"
     edge_pose_onnx = EDGE / "yolo11n-pose.onnx"
     if pose_pt.exists() and (not pose_onnx.exists() or not edge_pose_onnx.exists() or force_reexport):
-        print("[BUILD] Exporting yolo11n-pose to ONNX/OpenVINO at 640x640...", flush=True)
+        print("[BUILD] Exporting yolo11n-pose to ONNX/OpenVINO (dynamic shape)...", flush=True)
         model = YOLO(str(pose_pt))
         model.export(
             format="onnx",
             imgsz=640,
             half=False,
-            dynamic=False,
+            dynamic=True,
             simplify=True,
         )
         if pose_pt.parent != weights_dir and (pose_pt.with_suffix(".onnx")).exists():
@@ -130,9 +136,9 @@ def ensure_exported_weights(weights_dir: Path | None = None, force_reexport: boo
                 format="openvino",
                 imgsz=640,
                 half=True,
-                dynamic=False,
+                dynamic=True,
             )
-            print("[BUILD] Exported yolo11n-pose to OpenVINO FP16 (640x640)", flush=True)
+            print("[BUILD] Exported yolo11n-pose to OpenVINO FP16 (dynamic shape)", flush=True)
         except ImportError:
             print("[BUILD] OpenVINO not installed; ONNX export retained.", flush=True)
         except Exception as ex:

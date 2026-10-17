@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PyInstaller.building.api import EXE, PYZ
 from PyInstaller.building.build_main import Analysis
-from PyInstaller.utils.hooks import collect_all, collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 EDGE = Path(SPECPATH).resolve()
 
@@ -115,6 +115,7 @@ for name in (
     "yolo11n-pose.onnx",
     "yolo11n.onnx",
     "config.example.yaml",
+    "config.champei.yaml",
     "hub.html",
     "inb_surveillance.png",
     "inb_surveillance-removebg-preview.png",
@@ -137,6 +138,10 @@ for ov_dir in list(EDGE.glob("*_openvino_model")) + list(EDGE.parent.glob("*_ope
 # 1. NEVER package .env (Telegram tokens, Supabase secrets, API keys).
 # 2. NEVER package edge/faces (enrolled photos; runtime seeds AppData).
 # 3. NEVER package edge/videos (test clips; runtime loads AppData / camera).
+#
+# config.champei.yaml IS bundled on purpose: it is the venue config (including
+# the shared alert-bot token) that get_config_path() seeds into the writable
+# data dir on first run so the packaged desktop app starts fully configured.
 
 static_dir = EDGE / "static"
 if static_dir.is_dir():
@@ -205,7 +210,7 @@ binaries += _msvc_runtime_binaries()
 # Intel path calls core.read_model() on ONNX, which needs the ONNX frontend
 # and the CPU plugin. Unused framework frontends and the GPU plugin are
 # stripped below so they cannot blow the 4 GiB one-file CArchive.
-pkgs_to_collect = ["ultralytics", "torch", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
+pkgs_to_collect = ["ultralytics", "torch", "torchvision", "cv2", "PIL", "yaml", "requests", "onnxruntime", "rtmlib"]
 try:
     import openvino  # noqa: F401
     pkgs_to_collect.append("openvino")
@@ -233,9 +238,26 @@ for pkg in pkgs_to_collect:
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
+# Ensure torchvision ops are present (onnxruntime uses torchvision::nms)
+try:
+    hiddenimports += collect_submodules("torchvision.ops")
+except Exception:
+    pass
+
+# ultralytics resolves its own dependency versions from package metadata at
+# import time (TORCHVISION_VERSION = importlib.metadata.version("torchvision")
+# in ultralytics/utils/__init__.py). PyInstaller does not ship .dist-info
+# metadata by default, so a frozen engine died with PackageNotFoundError the
+# moment the ML thread imported ultralytics - which silently disabled person
+# detection. Bundle the metadata ultralytics actually queries.
+for _meta_pkg in ("torch", "torchvision"):
+    try:
+        datas += copy_metadata(_meta_pkg)
+    except Exception as _meta_exc:
+        print(f"[SPEC] copy_metadata('{_meta_pkg}') failed: {_meta_exc}", flush=True)
 
 a = Analysis(
-    [str(EDGE / "launcher.py")],
+    [str(EDGE / "run_champei.py")],
     pathex=[str(EDGE)],
     binaries=binaries,
     datas=datas,
@@ -250,7 +272,6 @@ a = Analysis(
         "pytest",
         "IPython",
         "torchaudio",
-        "torchvision",
         "triton",
         "polars",
         "_polars_runtime_32",
@@ -265,7 +286,6 @@ a = Analysis(
 _BUNDLE_BLOAT = (
     "nvidia",
     "torchaudio",
-    "torchvision",
     "triton",
     "libtorch_cuda",
     "cudnn",
@@ -308,6 +328,11 @@ def _keep_collected(item) -> bool:
         dest = str(getattr(item, "name", item) or "")
         src = str(getattr(item, "path", "") or "")
     text = f"{dest} {src}".replace("\\", "/").lower()
+    # Package metadata (dist-info) is a handful of text files, but ultralytics
+    # calls importlib.metadata.version("torchvision") at import time. Stripping
+    # it re-breaks ML in the frozen engine, so never treat it as bloat.
+    if ".dist-info" in text:
+        return True
     return not any(marker in text for marker in _BUNDLE_BLOAT)
 
 

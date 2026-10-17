@@ -1,79 +1,83 @@
-# 📦 Champei Spa Intelligence — Customer Download & Installation Review
+# 📦 Inbound Surveillance — Champei Spa (Windows Installer)
 
 ## 🚀 Package Overview
 
 | Attribute | Details |
 | :--- | :--- |
-| **Package File** | `Champei_Spa_Intelligence.zip` |
-| **File Size** | **~710 MB** (Complete offline bundle) |
+| **Package File** | `Inbound Surveillance_0.1.6_x64-setup.exe` |
+| **Type** | Windows installer (NSIS) — one double-click |
 | **Target OS** | Windows 10 / Windows 11 (64-bit) |
-| **Included AI Models** | YOLOv8 person detection, Role classification, ReID models (`.onnx`, `.pt`) |
-| **Setup Script** | `INSTALL_WINDOWS.bat` (1-Click Automated Setup) |
-| **Launcher** | `start_champei.bat` / Desktop Shortcut |
+| **Included AI Models** | Person detection, pose, role classification, ReID (`.onnx`, `.pt`) |
+| **Runtime** | Self-contained (the camera engine is bundled as a sidecar) |
+| **Dependencies** | WebView2 + Visual C++ runtime — the installer detects and installs them |
 
 ---
 
-## 🎁 Why This Package is Ideal for Non-Technical Customers
+## 🎁 Why This Installer is Ideal for Non-Technical Customers
 
-1. **Pre-Bundled AI Models**: Vision weights are already stored inside the package — no large model downloads during client setup.
-2. **Zero Developer Tooling Needed**: Non-technical clients **do not need** Git, Node.js, npm, or terminal tools.
-3. **Automated Desktop Shortcut**: Running the setup automatically creates a **"Champei Spa Intelligence"** launcher on their Windows Desktop.
-4. **Isolated Python Environment**: Automatically provisions an isolated virtual environment (`edge\.venv`) without conflicting with any existing software.
-5. **Self-Verifying Diagnostic**: Setup includes an automated component test to verify models, camera connections, and web server readiness before concluding.
+1. **One double-click**: the customer runs the `.exe`, clicks Install, and it is done.
+2. **No Python, Git, Node.js, or terminal**: the engine is packaged inside the app.
+3. **Auto-provisions dependencies**: WebView2 (the UI) and the Visual C++ runtime are installed automatically if missing.
+4. **Configured out of the box**: the venue settings and the alert bot are seeded on first run — no manual setup.
+5. **No login**: the dashboard opens directly on this computer.
 
 ---
 
 ## 🌐 Hosting & Distribution Options
 
 ### 🏆 Option 1: GitHub Release (Recommended for Public Direct Download)
-Publishing as a **GitHub Release** allows customers to download with a single click without needing a GitHub account:
 1. Go to: [New GitHub Release](https://github.com/sothunly-alt/Ibound-survillence-V2/releases/new)
-2. Create a tag (e.g., `v1.0.0`).
-3. Drag & drop `Champei_Spa_Intelligence.zip` into the **Attach binaries** section.
-4. Provide the customer with your direct download link:
+2. Create a tag (e.g., `v0.1.6`).
+3. Drag & drop `Inbound Surveillance_0.1.6_x64-setup.exe` into **Attach binaries**.
+4. Give the customer your direct download link:
    ```text
-   https://github.com/sothunly-alt/Ibound-survillence-V2/releases/latest/download/Champei_Spa_Intelligence.zip
+   https://github.com/sothunly-alt/Ibound-survillence-V2/releases/latest
    ```
 
 ### ☁️ Option 2: Cloud Storage (Google Drive / OneDrive / Dropbox)
-1. Upload `Champei_Spa_Intelligence.zip` to Google Drive or OneDrive.
+1. Upload the `.exe` to Google Drive or OneDrive.
 2. Set permissions to **"Anyone with the link can view/download"**.
-3. Paste the share link in the customer instructions below.
+3. Paste the share link in the instructions below.
 
-### 👥 Option 3: GitHub Actions Build Artifact (Internal Team Access)
-If the recipient has repository permissions and is logged into GitHub:
-- [Actions Run #36809678776 Artifact #11139208855](https://github.com/sothunly-alt/Ibound-survillence-V2/actions/runs/36809678776/artifacts/11139208855)
+### 👥 Option 3: GitHub Actions Artifact (Internal Team Access)
+Builds produce the installer as an artifact named `inbound-surveillance-windows-installer`
+from the `build-windows.yml` workflow.
 
 ---
 
 ## 📋 Instructions to Send to the Customer
 
-### 1. Download & Extract
-* **Download link:** `[Insert your GitHub Release or Drive Link here]` (or `Champei_Spa_Intelligence.zip`)
-* Right-click the `.zip` file and select **Extract All...** (or unzip to a folder of choice, e.g., `C:\Champei_Spa_Intelligence`).
+### 1. Install
+* Double-click **`Inbound Surveillance_0.1.6_x64-setup.exe`**.
+* If Windows asks for permission, click **Yes**.
+* Click **Install** and wait for it to finish. (It is normal for the first
+  launch to take a few extra seconds while the engine starts.)
 
-### 2. Install Python (If not already installed)
-* Download Python (v3.10, 3.11, or 3.12) from [python.org/downloads](https://www.python.org/downloads/).
-* ⚠️ **IMPORTANT**: During installation, check the box:
-  `[✔] Add Python to PATH`
+### 2. Open the app
+* Launch **Inbound Surveillance** from the Start Menu or the desktop shortcut.
+* The dashboard opens by itself — **no login needed**.
 
-### 3. Run 1-Click Setup
-* Open the extracted folder.
-* Double-click **`INSTALL_WINDOWS.bat`**.
-* The installer will automatically:
-  - Configure the isolated environment
-  - Install dependencies
-  - Run diagnostic verification
-  - Create a **"Champei Spa Intelligence"** shortcut on the Desktop
+### 3. Connect Telegram alerts
+* In the dashboard go to **Settings → Integrations → Connect Telegram**.
+* Telegram opens; tap **Start** to link the chat. Alerts will arrive there.
 
-### 4. Start Using the System
-* Double-click the **"Champei Spa Intelligence"** shortcut on the Desktop (or `start_champei.bat` inside the folder) anytime to launch the surveillance & analytics interface.
+### 4. Add the cameras
+* Paste the DVR link (e.g. `rtsp://user:password@192.168.1.10:554/...`) and click **Connect**.
 
 ---
 
-## 🔄 For Developers / Admins: Regenerating the ZIP
-Whenever updates or code adjustments are made, regenerate the distribution package with:
+## 🔄 For Developers / Admins: Building the Installer
 
-```bash
-python3 tools/package_release_zip.py
+The Windows installer is built by CI on a Windows runner (a `.exe` cannot be
+cross-compiled from Linux/macOS):
+
+* **Workflow**: `.github/workflows/build-windows.yml`
+* **Trigger**: push to `main`/`camera-detection`, or run it manually.
+* **Output**: `inbound-surveillance-windows-installer` artifact containing
+  `Inbound Surveillance_<version>_x64-setup.exe`.
+
+Validate the shipped installer end-to-end on Windows with:
+
+```powershell
+pwsh scripts/windows-smoke-test.ps1 -ConfigFile edge/config.champei.yaml
 ```

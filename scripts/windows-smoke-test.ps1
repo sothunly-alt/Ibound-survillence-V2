@@ -1,0 +1,696 @@
+<#
+    Inbound Surveillance - Windows install + launch smoke test.
+
+    Runs on a real Windows host (GitHub Actions windows-latest).
+    Installs the shipped NSIS package silently, boots the Python engine,
+    exercises the HTTP API, launches the Tauri GUI, then uninstalls.
+
+    Every assertion emits a PASS/FAIL line. Exits 1 if any check fails.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string] $Installer,
+    [string] $ExpectedVersion = "0.1.5",
+    [int]    $EngineBootTimeoutSec = 240,
+    [int]    $GuiSoakSec = 60,
+    # Optional customer config to deploy before boot. When supplied, the test
+    # asserts the running engine actually honoured it (workplace_type, etc).
+    [string] $ConfigFile = "",
+    # Optional video file. Points the deployed config at it so the engine
+    # decodes real frames and runs ML inference, instead of only proving it
+    # can serve HTTP with no camera attached.
+    [string] $VideoFile = ""
+)
+
+$ErrorActionPreference = "Continue"
+$ProgressPreference = "SilentlyContinue"
+
+# Frozen Python block-buffers stdout when it is redirected to a file, so log
+# lines emitted after boot (e.g. the inference-loop's caught exceptions) are
+# lost when the engine is killed. Force unbuffered output so those lines land
+# in engine.out.log and the diagnostics artifact.
+$env:PYTHONUNBUFFERED = "1"
+
+$script:Results = New-Object System.Collections.Generic.List[object]
+$script:Failures = 0
+
+function Write-Step { param([string]$m) Write-Host "`n=== $m ===" -ForegroundColor Cyan }
+
+function Assert-That {
+    param(
+        [Parameter(Mandatory = $true)][string] $Name,
+        [Parameter(Mandatory = $true)][bool]   $Condition,
+        [string] $Detail = ""
+    )
+    if ($Condition) {
+        $script:Results.Add([pscustomobject]@{ Check = $Name; Result = "PASS"; Detail = $Detail })
+        Write-Host ("  [PASS] {0}{1}" -f $Name, $(if ($Detail) { " - $Detail" })) -ForegroundColor Green
+    }
+    else {
+        $script:Failures++
+        $script:Results.Add([pscustomobject]@{ Check = $Name; Result = "FAIL"; Detail = $Detail })
+        Write-Host ("  [FAIL] {0}{1}" -f $Name, $(if ($Detail) { " - $Detail" })) -ForegroundColor Red
+    }
+}
+
+function Get-PeMachine {
+    param([string] $Path)
+    try {
+        $fs = [System.IO.File]::OpenRead($Path)
+        $br = New-Object System.IO.BinaryReader($fs)
+        $fs.Position = 0x3C
+        $peOff = $br.ReadInt32()
+        $fs.Position = $peOff + 4
+        $machine = $br.ReadUInt16()
+        $br.Close(); $fs.Close()
+        switch ($machine) {
+            0x8664 { return "x64" }
+            0x014c { return "x86" }
+            0xAA64 { return "arm64" }
+            default  { return ("0x{0:X}" -f $machine) }
+        }
+    } catch { return "unreadable" }
+}
+
+$artifactDir = Split-Path -Parent $Installer
+$workDir = Join-Path $env:RUNNER_TEMP "smoke"
+New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+
+$installDir = Join-Path $env:LOCALAPPDATA "Inbound Surveillance"
+$engineExe  = Join-Path $installDir "inbound-engine.exe"
+$appExe     = Join-Path $installDir "inbound-surveillance.exe"
+
+Write-Host "Installer      : $Installer"
+Write-Host "Install target : $installDir"
+Write-Host "Expected ver   : $ExpectedVersion"
+
+# ---------------------------------------------------------------- pre-flight
+Write-Step "Pre-flight"
+Assert-That "installer file exists"        (Test-Path $Installer) $Installer
+Assert-That "installer is a PE executable" ((Get-PeMachine $Installer) -eq "x86" -or (Get-PeMachine $Installer) -eq "x64") ("machine=" + (Get-PeMachine $Installer))
+
+# ---------------------------------------------------------------- uninstall any prior copy
+Write-Step "Clean slate"
+if (Test-Path (Join-Path $installDir "uninstall.exe")) {
+    Write-Host "  running existing uninstaller"
+    Start-Process -FilePath (Join-Path $installDir "uninstall.exe") -ArgumentList "/S" -Wait
+    Start-Sleep -Seconds 8
+}
+if (Test-Path $installDir) {
+    Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+}
+Assert-That "install dir absent before install" (-not (Test-Path $installDir)) $installDir
+
+# ---------------------------------------------------------------- install
+Write-Step "Silent install (/S)"
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
+try {
+    $p = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait -ErrorAction Stop
+    $installExit = $p.ExitCode
+} catch {
+    $installExit = -1
+    Write-Host "  installer threw: $($_.Exception.Message)"
+}
+$sw.Stop()
+Write-Host ("  installer exit={0} elapsed={1}s" -f $installExit, [int]$sw.Elapsed.TotalSeconds)
+Assert-That "installer exited 0" ($installExit -eq 0) "exit=$installExit"
+Assert-That "install dir created" (Test-Path $installDir) $installDir
+
+# NSIS may return before files settle.
+for ($i = 0; $i -lt 30 -and -not (Test-Path $appExe); $i++) { Start-Sleep -Seconds 2 }
+
+# ---------------------------------------------------------------- payload
+Write-Step "Installed payload"
+Assert-That "app shell present"      (Test-Path $appExe)    "inbound-surveillance.exe"
+Assert-That "engine sidecar present" (Test-Path $engineExe) "inbound-engine.exe"
+Assert-That "engine is x64 PE"       ((Get-PeMachine $engineExe) -eq "x64") ("machine=" + (Get-PeMachine $engineExe))
+Assert-That "app shell is x64 PE"    ((Get-PeMachine $appExe) -eq "x64") ("machine=" + (Get-PeMachine $appExe))
+
+$vcRedist = Join-Path $installDir "resources\vc_redist.x64.exe"
+$debugBat = Join-Path $installDir "resources\run-debug.bat"
+Assert-That "VC++ redist bundled" (Test-Path $vcRedist) $(if (Test-Path $vcRedist) { [math]::Round((Get-Item $vcRedist).Length / 1MB, 1).ToString() + " MB" } else { "missing" })
+Assert-That "run-debug.bat shipped" (Test-Path $debugBat) ""
+
+if (Test-Path $appExe) {
+    $vi = (Get-Item $appExe).VersionInfo
+    Write-Host "  app version info: file=$($vi.FileVersion) product=$($vi.ProductVersion)"
+    Assert-That "app shell reports $ExpectedVersion" ($vi.ProductVersion -like "*$ExpectedVersion*") "product=$($vi.ProductVersion)"
+}
+
+# sidecar must be a frozen one-file bundle, not a launcher script
+$engBytes = [System.IO.File]::ReadAllBytes($engineExe)[0..1]
+Assert-That "engine is a compiled binary (MZ header)" ($engBytes[0] -eq 0x4D -and $engBytes[1] -eq 0x5A) ""
+
+# ---------------------------------------------------------------- VC++ runtime
+Write-Step "Visual C++ runtime present on host"
+$vcKey = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+$vcInstalled = $false
+if (Test-Path $vcKey) { $vcInstalled = ((Get-ItemProperty $vcKey -ErrorAction SilentlyContinue).Installed -eq 1) }
+Write-Host "  host VC++ x64 installed = $vcInstalled (runner image ships it; customer gets it via installer hook)"
+
+# ------------------------------------------------------- customer config deploy
+$dataDir = Join-Path $env:APPDATA "Inbound Surveillance"
+if ($ConfigFile -and (Test-Path $ConfigFile)) {
+    Write-Step "Deploy customer config"
+    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+    $dest = Join-Path $dataDir "config.yaml"
+    Copy-Item $ConfigFile $dest -Force
+    Assert-That "customer config deployed to %APPDATA%" (Test-Path $dest) $dest
+
+    # Reject workplace_type values the app would silently coerce to "garage".
+    $rawCfg = Get-Content $dest -Raw
+    $wp = $null
+    if ($rawCfg -match '(?m)^\s*workplace_type:\s*(\S+)') { $wp = $Matches[1].Trim().Trim('"').Trim("'").ToLower() }
+    Assert-That "config workplace_type is a valid id (garage|massage)" ($wp -in @("garage","massage")) "workplace_type='$wp'"
+
+    # Point every source at the bundled test clip so the engine decodes real
+    # frames and the ML pipeline actually executes on Windows, rather than
+    # only proving it serves HTTP with no camera attached.
+    if ($VideoFile -and (Test-Path $VideoFile)) {
+        $vidDest = Join-Path $dataDir "smoke-test-clip.mp4"
+        Copy-Item $VideoFile $vidDest -Force
+        $vidYaml = $vidDest -replace '\\', '/'
+        $cfgText = Get-Content $dest -Raw
+        $cfgText = [regex]::Replace($cfgText, '(?m)^(\s*)source:\s*.*$',   "`$1source: $vidYaml")
+        $cfgText = [regex]::Replace($cfgText, '(?m)^(\s*)protocol:\s*.*$', "`$1protocol: file")
+        $cfgText = [regex]::Replace($cfgText, '(?m)^(\s*)ml_enabled:\s*.*$', "`$1ml_enabled: true")
+        Set-Content -Path $dest -Value $cfgText -Encoding UTF8
+        Assert-That "test clip deployed and wired into config" `
+            ((Test-Path $vidDest) -and ((Get-Content $dest -Raw) -match "smoke-test-clip\.mp4")) `
+            "$([math]::Round((Get-Item $vidDest).Length/1KB,1)) KB -> $vidDest"
+    }
+} else {
+    Write-Step "Deploy customer config"
+    Write-Host "  no -ConfigFile supplied; testing the bundled default config"
+}
+
+# ---------------------------------------------------------------- engine boot
+Write-Step "Engine boot (no camera attached - must still serve HTTP)"
+$engineOut = Join-Path $workDir "engine.out.log"
+$engineErr = Join-Path $workDir "engine.err.log"
+$engineProc = $null
+try {
+    $engineProc = Start-Process -FilePath $engineExe `
+        -ArgumentList "--port", "8765", "--no-browser" `
+        -RedirectStandardOutput $engineOut -RedirectStandardError $engineErr `
+        -PassThru -WindowStyle Hidden -ErrorAction Stop
+} catch {
+    Write-Host "  failed to launch engine: $($_.Exception.Message)"
+}
+Assert-That "engine process launched" ($null -ne $engineProc) $(if ($engineProc) { "pid=$($engineProc.Id)" } else { "no process" })
+
+$readyLine = ""
+$deadline = (Get-Date).AddSeconds($EngineBootTimeoutSec)
+while ((Get-Date) -lt $deadline) {
+    if (Test-Path $engineOut) {
+        $txt = Get-Content $engineOut -Raw -ErrorAction SilentlyContinue
+        if ($txt -and $txt -match "\[INBOUND_SERVER_READY\][^\r\n]*") { $readyLine = $Matches[0]; break }
+    }
+    if ($engineProc -and $engineProc.HasExited) { break }
+    Start-Sleep -Seconds 3
+}
+
+Write-Host "  ---- engine stdout ----"
+if (Test-Path $engineOut) { Get-Content $engineOut | Select-Object -Last 25 | ForEach-Object { Write-Host "  | $_" } }
+Write-Host "  ---- engine stderr ----"
+if (Test-Path $engineErr) { Get-Content $engineErr | Select-Object -Last 25 | ForEach-Object { Write-Host "  ! $_" } }
+
+Assert-That "engine reached INBOUND_SERVER_READY" ([bool]$readyLine) $readyLine
+Assert-That "boot banner reports build $ExpectedVersion" ($readyLine -like "*build=$ExpectedVersion*") $readyLine
+
+$bootBanner = ""
+if (Test-Path (Join-Path $env:APPDATA "Inbound Surveillance\logs\startup.log")) {
+    $bootBanner = (Get-Content (Join-Path $env:APPDATA "Inbound Surveillance\logs\startup.log") -Raw)
+}
+if (-not $bootBanner -and (Test-Path (Join-Path $installDir "inbound-surveillance.log"))) {
+    $bootBanner = (Get-Content (Join-Path $installDir "inbound-surveillance.log") -Raw)
+}
+if ($bootBanner) {
+    $bb = ($bootBanner -split "`n" | Where-Object { $_ -match "INBOUND_BOOT" } | Select-Object -Last 1)
+    Write-Host "  boot banner: $bb"
+    Assert-That "INBOUND_BOOT banner present" ([bool]$bb) $bb
+    Assert-That "banner frozen=1 (running as bundled sidecar)" ($bb -match "frozen=1") ""
+} else {
+    Write-Host "  (no startup.log yet - engine may still be extracting)"
+}
+
+# ---------------------------------------------------------------- HTTP API
+Write-Step "HTTP API"
+function Invoke-Check {
+    param([string]$Url, [string]$Token = "")
+    try {
+        $h = @{}
+        if ($Token) { $h["Authorization"] = "Bearer $Token" }
+        if ($h.Count -gt 0) { return Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30 -Headers $h }
+        return Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 30
+    }
+    catch {
+        $code = ""
+        if ($_.Exception.Response) { $code = " http=$([int]$_.Exception.Response.StatusCode)" }
+        Write-Host "  request error:$code $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Invoke-PostCheck {
+    param([string]$Url, [string]$Token = "", [string]$Body = "")
+    try {
+        $h = @{}
+        if ($Token) { $h["Authorization"] = "Bearer $Token" }
+        if ($h.Count -gt 0) {
+            return Invoke-WebRequest -Uri $Url -Method POST -Body $Body -ContentType "application/json" `
+                -UseBasicParsing -TimeoutSec 30 -Headers $h
+        }
+        return Invoke-WebRequest -Uri $Url -Method POST -Body $Body -ContentType "application/json" `
+            -UseBasicParsing -TimeoutSec 30
+    }
+    catch {
+        $code = ""
+        if ($_.Exception.Response) { $code = " http=$([int]$_.Exception.Response.StatusCode)" }
+        Write-Host "  request error:$code $($_.Exception.Message)"
+        return $null
+    }
+}
+
+$root = Invoke-Check "http://127.0.0.1:8765/"
+Assert-That "GET / returns 200" ($null -ne $root -and $root.StatusCode -eq 200) $(if ($root) { "status=$($root.StatusCode)" } else { "no response" })
+if ($root) {
+    Assert-That "GET / serves the dashboard HTML" ($root.Content -match "<title>Inbound Surveillance</title>") ("bytes=" + $root.RawContentLength)
+}
+
+$pub = Invoke-Check "http://127.0.0.1:8765/api/public-config"
+Assert-That "GET /api/public-config returns 200" ($null -ne $pub -and $pub.StatusCode -eq 200) $(if ($pub) { "status=$($pub.StatusCode)" } else { "no response" })
+if ($pub) {
+    try {
+        $j = $pub.Content | ConvertFrom-Json
+        $hasUrl = [bool]($j.PSObject.Properties.Name -contains "supabase_url" -or $j.PSObject.Properties.Name -contains "url")
+        Assert-That "public-config is valid JSON" $true ("keys=" + (($j.PSObject.Properties.Name) -join ","))
+    } catch {
+        Assert-That "public-config is valid JSON" $false $_.Exception.Message
+    }
+}
+
+# ------------------------------------------------ webview <-> engine auth bridge
+# The dashboard logs in against Supabase inside the webview, then POSTs the
+# resulting session to /api/auth-session; the engine persists it and uses its
+# access_token as the bearer for every other /api route. Exercise that real
+# bridge rather than fabricating session.json, so a break in it is caught.
+Write-Step "Auth session bridge (POST /api/auth-session)"
+$script:SessionToken = "smoke-test-" + [guid]::NewGuid().ToString("N")
+$fakeSession = @{
+    session = @{
+        access_token  = $script:SessionToken
+        refresh_token = "smoke-refresh-" + $script:SessionToken
+        token_type    = "bearer"
+        expires_at    = ([int][double]::Parse((Get-Date -UFormat %s)) + 3600)
+        expires_in    = 3600
+        user          = @{ id = "smoke-user"; email = "smoke@example.invalid" }
+    }
+} | ConvertTo-Json -Depth 6
+
+$postSess = $null
+try {
+    $postSess = Invoke-WebRequest -Uri "http://127.0.0.1:8765/api/auth-session" -Method POST `
+        -Body $fakeSession -ContentType "application/json" -UseBasicParsing -TimeoutSec 30 `
+        -Headers @{ Origin = "http://127.0.0.1:8765" }
+} catch {
+    $code = ""; if ($_.Exception.Response) { $code = " http=$([int]$_.Exception.Response.StatusCode)" }
+    Write-Host "  POST /api/auth-session error:$code $($_.Exception.Message)"
+}
+Assert-That "POST /api/auth-session accepted the webview session" `
+    ($null -ne $postSess -and $postSess.StatusCode -eq 200) `
+    $(if ($postSess) { "status=$($postSess.StatusCode) body=$($postSess.Content)" } else { "no response" })
+
+$sessFile = Join-Path $dataDir "session.json"
+Assert-That "engine persisted the session to disk" (Test-Path $sessFile) $sessFile
+
+$getSess = Invoke-Check "http://127.0.0.1:8765/api/auth-session"
+if ($getSess) {
+    $back = $getSess.Content | ConvertFrom-Json
+    $rt = $back.session.access_token
+    if (-not $rt) { $rt = $back.access_token }
+    Assert-That "GET /api/auth-session returns the same token" ("$rt" -eq $script:SessionToken) "got='$rt'"
+}
+
+# Unauthorized access must be refused, or the token gate is decorative.
+# PowerShell 7 surfaces the response as HttpResponseMessage, so read the
+# status code from the exception rather than type-testing the object.
+$unauthCode = 0
+try {
+    $r = Invoke-WebRequest -Uri "http://127.0.0.1:8765/api/config" -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+    $unauthCode = [int]$r.StatusCode
+} catch {
+    if ($_.Exception.Response) { $unauthCode = [int]$_.Exception.Response.StatusCode }
+    else { Write-Host "  unexpected error: $($_.Exception.Message)" }
+}
+Assert-That "API refuses requests with no bearer token" ($unauthCode -eq 401) "http=$unauthCode"
+
+# ------------------------------------------------- live inference (ML on Windows)
+# This is the product: frames decoded, model executed, telemetry advancing.
+# "Serves HTTP with no camera" never proves any of that.
+if ($VideoFile -and (Test-Path $VideoFile)) {
+    Write-Step "Start the camera stream (what the dashboard auto-connects)"
+    # The engine boots to STANDBY; capture starts only when the dashboard loads
+    # and POSTs /api/connect-stream. Reproduce that real path (bearer + payload)
+    # so the ML pipeline below runs on decoded frames, exactly as a customer's
+    # first second of use would.
+    $startSource = ""
+    if ($vidYaml) { $startSource = $vidYaml }
+    elseif ($rawCfg -match '(?m)^\s*source:\s*(\S+)') { $startSource = $Matches[1].Trim().Trim('"').Trim("'") }
+    $activeCamId = ""
+    if (($dest) -and (Test-Path $dest) -and ((Get-Content $dest -Raw) -match '(?m)^\s*active_camera_id:\s*(\S+)')) {
+        $activeCamId = $Matches[1].Trim().Trim('"').Trim("'")
+    }
+    $connectBody = @{
+        source      = $startSource
+        camera_id   = $activeCamId
+        camera_name = "Smoke Test Entrance"
+        protocol    = "video"
+    } | ConvertTo-Json -Depth 4
+    $connectRes = Invoke-PostCheck "http://127.0.0.1:8765/api/connect-stream" $script:SessionToken $connectBody
+    Assert-That "POST /api/connect-stream started capture" `
+        ($null -ne $connectRes -and $connectRes.StatusCode -eq 200) `
+        $(if ($connectRes) { "status=$($connectRes.StatusCode)" } else { "no response" })
+
+    Write-Step "Live inference (decoded frames + ML on Windows)"
+    # The first ONNX session build + first inference can take many seconds on a
+    # cold CI CPU. Poll long enough to tell a genuinely stalled pipeline from a
+    # slow cold start, and print every sample so a failure report shows whether
+    # fps collapsed (inference running slowly) or stayed at the source rate
+    # (inference never entered the loop), plus the engine's own status text.
+    $tel = $null
+    $maxInfer = 0.0
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 5
+        $probe = Invoke-Check "http://127.0.0.1:8765/api/telemetry" $script:SessionToken
+        if ($null -ne $probe -and $probe.StatusCode -eq 200) {
+            $t = $probe.Content | ConvertFrom-Json
+            $inf = 0.0; try { $inf = [double]$t.infer_ms } catch {}
+            $ing = 0.0; try { $ing = [double]$t.ingest_fps } catch {}
+            if ($inf -gt $maxInfer) { $maxInfer = $inf }
+            Write-Host ("  t+{0,3}s status='{1}' conn={2} fps={3} ingest_fps={4} infer_ms={5}" -f `
+                (($i + 1) * 5), $t.status, $t.connection, $t.fps, $t.ingest_fps, $t.infer_ms)
+            if ($null -eq $tel) { $tel = $t }
+            if ($ing -gt 0 -and $inf -gt 0) { $tel = $t; break }
+        }
+    }
+
+    if ($null -eq $tel) {
+        Assert-That "GET /api/telemetry returns 200 with the session token" $false "no telemetry"
+    } else {
+        Write-Host ("  protocol={0} connection={1} ingest_fps={2} fps={3} infer_ms={4} res={5}" -f `
+            $tel.protocol, $tel.connection, $tel.ingest_fps, $tel.fps, $tel.infer_ms, $tel.resolution)
+
+        # A local file is a "video" source to the engine (the dashboard sends
+        # protocol: video for uploads); accept "file" too so the wording of the
+        # configured protocol does not fail the run.
+        Assert-That "engine opened the test clip as a file source" ("$($tel.protocol)" -in @("file", "video")) "protocol=$($tel.protocol)"
+        Assert-That "frames are being decoded (ingest_fps > 0)" ([double]$tel.ingest_fps -gt 0) "ingest_fps=$($tel.ingest_fps)"
+        Assert-That "stream reports a real resolution" `
+            ("$($tel.resolution)" -match "\d+x\d+") "resolution=$($tel.resolution)"
+        Assert-That "ML inference executed on Windows (infer_ms > 0)" ($maxInfer -gt 0) `
+            "max_infer_ms=$maxInfer status='$($tel.status)' fps=$($tel.fps)"
+        $errText = "$($tel.error)"
+        Assert-That "no capture/inference error reported" ($errText -eq "" -or $null -eq $tel.error) "error='$errText'"
+
+        # Surface any swallowed inference-loop exception. The engine catches
+        # per-frame errors and only prints them, so a stdout/stderr dump is the
+        # only place the real cause (e.g. a missing module or ONNX failure)
+        # shows up when infer_ms never advances.
+        if ($maxInfer -le 0) {
+            Write-Host "  ---- engine stdout tail (inference diagnostics) ----"
+            if (Test-Path $engineOut) { Get-Content $engineOut | Select-Object -Last 40 | ForEach-Object { Write-Host "  | $_" } }
+            Write-Host "  ---- engine stderr tail (inference diagnostics) ----"
+            if (Test-Path $engineErr) { Get-Content $engineErr | Select-Object -Last 40 | ForEach-Object { Write-Host "  ! $_" } }
+            try {
+                $pipeProbe = Invoke-Check "http://127.0.0.1:8765/api/pipeline" $script:SessionToken
+                if ($pipeProbe) { Write-Host ("  RAW /api/pipeline: {0}" -f $pipeProbe.Content) }
+            } catch { Write-Host "  could not probe /api/pipeline" }
+        }
+    }
+}
+
+# The deployed customer config must actually be in force on the live engine.
+if ($ConfigFile -and (Test-Path $ConfigFile)) {
+    $apiCfg = Invoke-Check "http://127.0.0.1:8765/api/config" $script:SessionToken
+    if ($null -ne $apiCfg -and $apiCfg.StatusCode -eq 200) {
+        $live = $apiCfg.Content | ConvertFrom-Json
+
+        Assert-That "engine honours configured workplace_type" `
+            ("$($live.workplace_type)" -eq $wp) `
+            ("live='$($live.workplace_type)' expected='$wp'")
+
+        # massage must yield massage zones, not the garage fallback set
+        $expectedZones = if ($wp -eq "massage") { @("treatment_room","reception") } else { @("parking","waiting") }
+        $liveKinds = @()
+        if ($live.PSObject.Properties.Name -contains "zone_kinds") { $liveKinds = @($live.zone_kinds) }
+        if ($liveKinds.Count -gt 0) {
+            $ok = $true
+            foreach ($z in $expectedZones) { if ($liveKinds -notcontains $z) { $ok = $false } }
+            Assert-That "workplace '$wp' produced the right zone kinds" $ok ("live=" + ($liveKinds -join ","))
+        }
+
+        Assert-That "engine honours pose_engine" ("$($live.pose_engine)" -eq "yolo") "live='$($live.pose_engine)'"
+
+        if ($live.PSObject.Properties.Name -contains "enable_face_id") {
+            Assert-That "engine honours enable_face_id=false" ($live.enable_face_id -eq $false) "live='$($live.enable_face_id)'"
+        }
+        if ($live.PSObject.Properties.Name -contains "store_customer_avatars") {
+            Assert-That "engine honours store_customer_avatars=false" ($live.store_customer_avatars -eq $false) "live='$($live.store_customer_avatars)'"
+        }
+
+        # Belt-and-braces: no customer face data may have been written.
+        $facesDir = Join-Path $dataDir "faces"
+        $faceFiles = @(Get-ChildItem $facesDir -Recurse -File -ErrorAction SilentlyContinue)
+        Assert-That "no customer face images written to disk" ($faceFiles.Count -eq 0) "$($faceFiles.Count) file(s) in $facesDir"
+    } else {
+        Assert-That "GET /api/config returns 200" $false $(if ($apiCfg) { "status=$($apiCfg.StatusCode)" } else { "no response" })
+    }
+}
+
+# no-camera must not be fatal
+$stillAlive = $false
+if ($engineProc) { $engineProc.Refresh(); $stillAlive = -not $engineProc.HasExited }
+Assert-That "engine survived with no camera attached" $stillAlive ""
+
+# ---------------------------------------------------------------- GUI launch
+Write-Step "Tauri GUI launch + soak"
+
+# The manual engine from the previous step is still running. It would
+# satisfy the sidecar-spawn and port checks below on its own, so stop it
+# and confirm the port is genuinely free first.
+Get-Process -Name "inbound-engine" -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 4
+$preListen = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue
+Assert-That "port 8765 free before GUI launch" ($null -eq $preListen) ""
+$preKids = Get-CimInstance Win32_Process -Filter "Name='inbound-engine.exe'" -ErrorAction SilentlyContinue
+Assert-That "no engine running before GUI launch" ($null -eq $preKids) ""
+
+$appProc = $null
+try {
+    $appProc = Start-Process -FilePath $appExe -PassThru -ErrorAction Stop
+} catch {
+    Write-Host "  failed to launch GUI: $($_.Exception.Message)"
+}
+Assert-That "GUI process launched" ($null -ne $appProc) $(if ($appProc) { "pid=$($appProc.Id)" } else { "no process" })
+
+if ($appProc) {
+    Write-Host "  soaking ${GuiSoakSec}s (WebView2 init + sidecar spawn + window render)"
+    Start-Sleep -Seconds $GuiSoakSec
+    $appProc.Refresh()
+    Assert-That "GUI still alive after soak (no crash)" (-not $appProc.HasExited) ""
+    if ($appProc.HasExited) { Write-Host "  GUI exit code = $($appProc.ExitCode)" }
+
+    $win = Get-Process -Id $appProc.Id -ErrorAction SilentlyContinue
+    if ($win) {
+        Write-Host "  GUI MainWindowHandle=$($win.MainWindowHandle)  MainWindowTitle='$($win.MainWindowTitle)'"
+        Assert-That "GUI created a top-level window" ($win.MainWindowHandle -ne 0) "title=$($win.MainWindowTitle)"
+    }
+
+    # A Tauri window can exist with a title while its WebView2 content failed
+    # to load (blank/error page). Assert the WebView2 browser processes were
+    # actually spawned under the GUI, which only happens once the webview
+    # initialises. Without this, "window exists" proves nothing about the UI.
+    $allProc = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    $byParent = @{}
+    foreach ($p in $allProc) {
+        $pp = [int]$p.ParentProcessId
+        if (-not $byParent.ContainsKey($pp)) { $byParent[$pp] = @() }
+        $byParent[$pp] += $p
+    }
+    $descendantIds = New-Object System.Collections.Generic.HashSet[int]
+    $queue = New-Object System.Collections.Generic.Queue[int]
+    $queue.Enqueue($appProc.Id)
+    while ($queue.Count -gt 0) {
+        $cur = $queue.Dequeue()
+        if ($byParent.ContainsKey($cur)) {
+            foreach ($c in $byParent[$cur]) {
+                $cid = [int]$c.ProcessId
+                if ($descendantIds.Add($cid)) { $queue.Enqueue($cid) }
+            }
+        }
+    }
+    $webview = @($allProc | Where-Object {
+        $descendantIds.Contains([int]$_.ProcessId) -and $_.Name -like "msedgewebview2*"
+    })
+    Assert-That "WebView2 initialized under the GUI (UI actually renders)" ($webview.Count -gt 0) `
+        $(if ($webview.Count -gt 0) {
+            "webview pids=" + (($webview.ProcessId) -join ",")
+        } else {
+            "no msedgewebview2.exe among " + $descendantIds.Count + " descendants - window exists but content may be blank"
+        })
+
+    # The Rust shell and the Python engine share startup.log. The shell logs
+    # "[BOOT] Camera engine successfully reported ready on port <p>" once the
+    # engine IT spawned has come up (src-tauri/src/lib.rs). That is a real
+    # end-to-end desktop->engine handshake, not just a live process.
+    $guiLog = Join-Path $env:APPDATA "Inbound Surveillance\logs\startup.log"
+    $portableLog = Join-Path $installDir "inbound-surveillance.log"
+    $blobs = @()
+    foreach ($lp in @($guiLog, $portableLog)) {
+        if (Test-Path $lp) { $blobs += (Get-Content $lp -Raw -ErrorAction SilentlyContinue) }
+    }
+    if ($blobs.Count -gt 0) {
+        $tail = $blobs -join "`n"
+        $ready  = $tail -match "Camera engine successfully reported ready on port"
+        $failed = $tail -match "Camera engine failed:"
+        Assert-That "GUI reported its engine ready (desktop handshake)" $ready `
+            $(if ($ready) {
+                ([regex]::Match($tail, "Camera engine successfully reported ready on port \d+")).Value
+            } elseif ($failed) {
+                "GUI logged an engine FAILURE: " + ([regex]::Match($tail, "Camera engine failed: [^\r\n]*")).Value
+            } else { "no BOOT ready/failed line in " + $blobs.Count + " log file(s), " + $tail.Length + " bytes" })
+        Assert-That "GUI logged no engine failure" (-not $failed) `
+            $(if ($failed) { ([regex]::Match($tail, "Camera engine failed: [^\r\n]*")).Value } else { "" })
+    } else {
+        Assert-That "startup.log exists for GUI boot assertions" $false "no log at $guiLog or $portableLog"
+    }
+
+    # The shell must spawn the engine sidecar as its own child process.
+    # PyInstaller one-file binaries run as a bootloader that then execs the
+    # real interpreter as a second process of the same name, so the process
+    # holding the port is usually a grandchild of the GUI, not a direct child.
+    $kids = @(Get-CimInstance Win32_Process -Filter "Name='inbound-engine.exe'" -ErrorAction SilentlyContinue)
+    $mine = @($kids | Where-Object { $_.ParentProcessId -eq $appProc.Id })
+    Assert-That "GUI spawned the engine as its child process" ($mine.Count -gt 0) `
+        $(if ($mine.Count -gt 0) { "child pid=" + (($mine.ProcessId) -join ",") + " parent=" + $appProc.Id } else { "found $($kids.Count) engine(s) but none parented by pid $($appProc.Id)" })
+
+    # Walk the parent chain so a PyInstaller bootloader->child pair still counts.
+    # NOTE: do not name the parameter $Pid - that is a read-only automatic
+    # variable in PowerShell and shadowing it breaks the walk.
+    function Test-DescendantOf {
+        param([int] $ProcessIdToCheck, [int] $AncestorPid)
+        $seen = 0
+        $current = $ProcessIdToCheck
+        $chain = @($ProcessIdToCheck)
+        while ($current -gt 0 -and $seen -lt 8) {
+            if ($current -eq $AncestorPid) {
+                Write-Host ("    ancestry {0}: {1} -> MATCH gui {2}" -f $ProcessIdToCheck, ($chain -join "->"), $AncestorPid)
+                return $true
+            }
+            $procInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$current" -ErrorAction SilentlyContinue
+            if (-not $procInfo) { break }
+            $current = [int]$procInfo.ParentProcessId
+            $chain += $current
+            $seen++
+        }
+        Write-Host ("    ancestry {0}: {1} -> no match (gui {2})" -f $ProcessIdToCheck, ($chain -join "->"), $AncestorPid)
+        return $false
+    }
+
+    # The port must be held by an engine that descends from the GUI process.
+    $listen = @(Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction SilentlyContinue)
+    $enginePids = @($kids | ForEach-Object { [int]$_.ProcessId })
+    $attributed = @($listen | Where-Object {
+        $owner = [int]$_.OwningProcess
+        ($enginePids -contains $owner) -and (Test-DescendantOf -ProcessIdToCheck $owner -AncestorPid $appProc.Id)
+    })
+    Assert-That "port 8765 held by an engine descended from the GUI" ($attributed.Count -gt 0) `
+        $(if ($listen.Count -gt 0) {
+            "listener pid=" + (($listen.OwningProcess) -join ",") +
+            "; engine pids=" + ($enginePids -join ",") +
+            "; gui pid=" + $appProc.Id
+        } else { "no listener" })
+
+    # End-to-end: the engine the GUI started must actually answer HTTP.
+    $guiRoot = Invoke-Check "http://127.0.0.1:8765/"
+    Assert-That "GUI-spawned engine serves the dashboard" `
+        ($null -ne $guiRoot -and $guiRoot.StatusCode -eq 200 -and $guiRoot.Content -match "<title>Inbound Surveillance</title>") `
+        $(if ($guiRoot) { "status=" + $guiRoot.StatusCode + " bytes=" + $guiRoot.RawContentLength } else { "no response" })
+
+    # The packaged app ships in no-login mode (the Tauri shell passes
+    # HUB_NO_AUTH=1). The engine it spawns must advertise the bypass so the
+    # WebView skips the Supabase gate and opens straight into the dashboard.
+    $guiPub = Invoke-Check "http://127.0.0.1:8765/api/public-config"
+    if ($guiPub) {
+        $gj = $guiPub.Content | ConvertFrom-Json
+        Assert-That "GUI engine runs in no-login mode (authBypass=true)" ($gj.authBypass -eq $true) `
+            "authBypass=$($gj.authBypass)"
+    }
+}
+
+# ---------------------------------------------------------------- collect logs
+Write-Step "Diagnostics"
+# Copy the shared diagnostics logs out so a failure can be investigated
+# without re-running. Rust writes them with .truncate(true) at startup and
+# the Python engine appends, so both halves live in the same file.
+foreach ($src in @(
+        (Join-Path $env:APPDATA "Inbound Surveillance\logs\startup.log"),
+        (Join-Path $installDir "inbound-surveillance.log"))) {
+    if (Test-Path $src) {
+        $tag = if ($src -like "*inbound-surveillance.log") { "portable-inbound-surveillance.log" } else { "appdata-startup.log" }
+        Copy-Item $src (Join-Path $workDir $tag) -Force -ErrorAction SilentlyContinue
+        Write-Host "  captured $tag ($((Get-Item $src).Length) bytes)"
+    }
+}
+$dataDir = Join-Path $env:APPDATA "Inbound Surveillance"
+if (Test-Path $dataDir) {
+    Write-Host "  data dir contents:"
+    Get-ChildItem $dataDir -Recurse -Depth 2 -ErrorAction SilentlyContinue |
+        Select-Object -First 40 | ForEach-Object { Write-Host "    $($_.FullName.Replace($dataDir,'.')) ($($_.Length)b)" }
+    Assert-That "writable data dir created under %APPDATA%" (Test-Path $dataDir) $dataDir
+    $cfg = Join-Path $dataDir "config.yaml"
+    Write-Host "  config.yaml present = $(Test-Path $cfg)"
+} else {
+    Write-Host "  no data dir yet"
+}
+
+# ---------------------------------------------------------------- teardown
+Write-Step "Teardown"
+foreach ($proc in @($appProc, $engineProc)) {
+    if ($proc) { try { $proc.Refresh(); if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } } catch {} }
+}
+Get-Process -Name "inbound-engine", "inbound-surveillance" -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+Assert-That "all app processes stopped" ($null -eq (Get-Process -Name "inbound-engine", "inbound-surveillance" -ErrorAction SilentlyContinue)) ""
+
+# ---------------------------------------------------------------- uninstall
+Write-Step "Silent uninstall"
+$uninstaller = Join-Path $installDir "uninstall.exe"
+if (Test-Path $uninstaller) {
+    try { Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -ErrorAction Stop } catch { Write-Host "  uninstaller error: $($_.Exception.Message)" }
+    for ($i = 0; $i -lt 30 -and (Test-Path $appExe); $i++) { Start-Sleep -Seconds 2 }
+    Assert-That "uninstaller removed the app shell" (-not (Test-Path $appExe)) ""
+    Assert-That "uninstaller removed the engine"    (-not (Test-Path $engineExe)) ""
+} else {
+    Assert-That "uninstaller present" $false "uninstall.exe not found in $installDir"
+}
+
+# ---------------------------------------------------------------- summary
+Write-Step "SUMMARY"
+$script:Results | Format-Table -AutoSize | Out-String | Write-Host
+$pass = @($script:Results | Where-Object { $_.Result -eq "PASS" }).Count
+$fail = @($script:Results | Where-Object { $_.Result -eq "FAIL" }).Count
+Write-Host ("CHECKS: {0} passed, {1} failed, {2} total" -f $pass, $fail, $script:Results.Count)
+
+$script:Results | Export-Csv -NoTypeInformation -Path (Join-Path $workDir "smoke-results.csv")
+
+if ($fail -gt 0) {
+    Write-Host "SMOKE TEST FAILED" -ForegroundColor Red
+    exit 1
+}
+Write-Host "SMOKE TEST PASSED - $pass/$($script:Results.Count)" -ForegroundColor Green
+exit 0

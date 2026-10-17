@@ -15,6 +15,9 @@ if exist edge\.venv\Scripts\activate.bat (
 
 :: Run Champei daemon
 cd edge
+:: Local single-machine install: skip the cloud login gate. The hub binds to
+:: 127.0.0.1 only, so this never exposes the console off this PC.
+set HUB_NO_AUTH=1
 python run_champei.py
 
 pause

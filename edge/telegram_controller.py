@@ -9,15 +9,18 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import requests
+
+if TYPE_CHECKING:
+    from telegram_link import TelegramLinkService
 
 from analytics.churn import compute_churn_risks, format_churn_watchlist
 from analytics.monthly_customer_brief import build_monthly_strategic_brief
 from analytics.scorecard import build_daily_scorecard
 from analytics.weekly_customer_brief import build_weekly_customer_brief
-from telegram_out import normalize_chat_id
+from telegram_out import ensure_get_updates_ready, normalize_chat_id
 from visitor_registry import get_visitor_display_name, set_visitor_alias
 
 API = "https://api.telegram.org/bot{token}/{method}"
@@ -75,10 +78,15 @@ class TelegramController:
         db_path: Path | str | None = None,
         branch_id: str = "champei-pp-01",
         session: requests.Session | None = None,
+        link_service: TelegramLinkService | None = None,
+        token_provider: Callable[[], str] | None = None,
     ) -> None:
-        self.token = (
+        self._token = (
             str(token if token is not None else os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
         )
+        # When set, the token is re-read live (e.g. operator pastes the bot token
+        # in the hub) so the poller starts without an app restart.
+        self._token_provider = token_provider
         self.staff_chat_id = normalize_chat_id(
             staff_chat_id
             if staff_chat_id is not None
@@ -92,9 +100,24 @@ class TelegramController:
         self.db_path = Path(db_path) if db_path is not None else None
         self.branch_id = str(branch_id or "champei-pp-01").strip() or "champei-pp-01"
         self._session = session or requests.Session()
+        # Shared link service. When set, this controller is the sole getUpdates
+        # owner and forwards /start pairing updates to it (see run_champei).
+        self.link_service = link_service
         self._offset = 0
         self._last_error = ""
         self._backoff = 1.0
+
+    @property
+    def token(self) -> str:
+        """Current bot token, re-read live when a provider is configured."""
+        if self._token_provider is not None:
+            try:
+                live = str(self._token_provider() or "").strip()
+            except Exception:
+                live = ""
+            if live:
+                return live
+        return self._token
 
     def role_for(self, chat_id: str) -> str | None:
         cid = normalize_chat_id(chat_id)
@@ -254,6 +277,14 @@ class TelegramController:
         text = str(message.get("text") or "").strip()
         if not text:
             return False
+        # One-click Connect Telegram: this controller owns getUpdates, so
+        # forward /start <code> to the shared link service to complete pairing.
+        if text.lower().startswith("/start") and self.link_service is not None:
+            try:
+                return bool(self.link_service.handle_pairing_update(update))
+            except Exception as exc:
+                self._last_error = str(exc)
+                return False
         chat = message.get("chat") or {}
         chat_id = normalize_chat_id(chat.get("id"))
         if not chat_id:
@@ -266,11 +297,20 @@ class TelegramController:
 
     def run_loop(self, stop_event: threading.Event | None = None) -> None:
         stop = stop_event if stop_event is not None else threading.Event()
+        ready_token = ""
         while not stop.is_set():
-            if not self.token:
+            token = self.token
+            if not token:
+                ready_token = ""
                 if stop.wait(0.5):
                     break
                 continue
+            # Telegram refuses getUpdates while a webhook is set; this controller
+            # is the sole getUpdates owner, so clear any stray webhook before
+            # polling. Re-run whenever the token changes at runtime.
+            if token != ready_token:
+                ensure_get_updates_ready(token)
+                ready_token = token
             if stop.is_set():
                 break
             try:
