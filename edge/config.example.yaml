@@ -138,6 +138,22 @@ face_match_threshold: 0.38
 # Prefer env vars TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (never commit real tokens).
 telegram_bot_token: ""
 telegram_chat_id: ""
+# Optional customer group. Add the bot to the group and send /start there; alerts
+# for this site are then delivered to the group as well. Env: TELEGRAM_GROUP_CHAT_ID.
+telegram_group_chat_id: ""
+
+# Optional zero-touch remote updates. When enabled, the engine polls a Supabase
+# table (default "edge_site_config") for this site_key and applies any changed
+# Telegram fields (token / chat id / group chat id) automatically. This lets an
+# operator retarget a remote customer's alerts without touching their machine.
+# The table needs a public read policy for the site_key row.
+cloud_sync:
+  enabled: false
+  url: ""            # https://<project>.supabase.co
+  anon_key: ""       # public anon key
+  site_key: ""       # opaque per-site token; must match the table row
+  table: edge_site_config
+  interval_seconds: 60
 
 # Spa lobby door traffic: times when customers cross the entrance so each visit
 # gets an enter/exit pair and a dwell time. Two signals, either one is enough:

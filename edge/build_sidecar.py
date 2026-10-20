@@ -228,6 +228,8 @@ REQUIRED_PYZ_MODULES = (
     "analytics.fsm",
     "analytics.churn",
     "visitor_registry",
+    "telegram_connector",
+    "telegram_connector.connect",
     "telegram_controller",
     "run_champei",
 )

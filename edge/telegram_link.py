@@ -31,6 +31,8 @@ class LinkedChat:
     telegram_username: str = ""
     linked_at: float = field(default_factory=time.time)
     code: str = ""
+    chat_type: str = ""
+    is_group: bool = False
 
 
 class TelegramLinkService:
@@ -47,6 +49,8 @@ class TelegramLinkService:
         self._known_chats: dict[str, LinkedChat] = {}
         self._active_chat_id = ""
         self._active_display_name = ""
+        self._group_chat_id = ""
+        self._group_display_name = ""
         self._last_error = ""
         # When False, configure() refreshes identity but must not call getUpdates
         # (e.g. run_champei owns TelegramController as the sole poller).
@@ -59,6 +63,18 @@ class TelegramLinkService:
             self._active_chat_id = normalize_chat_id(chat_id)
             if display_name:
                 self._active_display_name = str(display_name or "").strip()
+
+    def set_group_chat(self, chat_id: str, display_name: str = "") -> None:
+        """Register the customer group that receives all alerts for this site."""
+        with self._lock:
+            self._group_chat_id = normalize_chat_id(chat_id)
+            if display_name:
+                self._group_display_name = str(display_name or "").strip()
+
+    @property
+    def group_chat_id(self) -> str:
+        with self._lock:
+            return self._group_chat_id
 
     def _forget_locked(self, *, keep_chat_id: str = "", user_id: str = "") -> list[LinkedChat]:
         """Drop remembered chats that are no longer the active destination.
@@ -248,6 +264,8 @@ class TelegramLinkService:
                 "polling": bool(self._poll_thread and self._poll_thread.is_alive() and self._token),
                 "pending": pending,
                 "last_error": self._last_error,
+                "group_chat_id": self._group_chat_id,
+                "group_display_name": self._group_display_name,
                 "linked": None
                 if link is None
                 else {
@@ -343,6 +361,14 @@ class TelegramLinkService:
         chat_id = normalize_chat_id(chat.get("id"))
         if not chat_id:
             return False
+        chat_type = str(chat.get("type") or "").strip().lower()
+        is_group = chat_type in ("group", "supergroup") or chat_id.startswith("-")
+
+        # Customer groups: once the bot is added and someone taps Start, register
+        # the group as an alert destination for this site.
+        if is_group:
+            return self._handle_group_start(chat_id, chat, from_user)
+
         parts = text.split(maxsplit=1)
         payload = parts[1].strip() if len(parts) > 1 else ""
         # Deep-link payloads sometimes arrive as /start@BotName CODE
@@ -419,6 +445,27 @@ class TelegramLinkService:
             chat_id,
             f"Linked to {name}. Alerts and daily summaries will arrive here. "
             "If you connect a different Telegram later, this chat will stop receiving alerts.",
+        )
+        return True
+
+    def _handle_group_start(
+        self, chat_id: str, chat: dict[str, Any], from_user: dict[str, Any]
+    ) -> bool:
+        """Register a customer group as the alert destination for this site."""
+        title = str(chat.get("title") or "").strip() or "Customer group"
+        with self._lock:
+            already = self._group_chat_id == chat_id
+            self._group_chat_id = chat_id
+            self._group_display_name = title
+        if already:
+            self._reply(
+                chat_id,
+                f"This group is already linked to {title}. Site alerts will arrive here.",
+            )
+            return True
+        self._reply(
+            chat_id,
+            f"Linked to {title}. This group will now receive alerts from this site.",
         )
         return True
 

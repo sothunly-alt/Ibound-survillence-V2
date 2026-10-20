@@ -149,6 +149,44 @@ class TelegramLinkTests(unittest.TestCase):
                 "This chat is already linked to AutoFix Garage. Alerts and daily summaries will arrive here.",
             )
 
+    def test_group_start_registers_group_destination(self) -> None:
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled = self.svc._handle_update(
+                {
+                    "update_id": 4,
+                    "message": {
+                        "text": "/start",
+                        "chat": {"id": -1001234567890, "type": "supergroup", "title": "Champei Ops"},
+                        "from": {"id": 20, "username": "op"},
+                    },
+                }
+            )
+        self.assertTrue(handled)
+        self.assertEqual(self.svc.group_chat_id, "-1001234567890")
+        mock_reply.assert_called_with(
+            "-1001234567890",
+            "Linked to Champei Ops. This group will now receive alerts from this site.",
+        )
+
+    def test_group_start_is_idempotent(self) -> None:
+        update = {
+            "update_id": 5,
+            "message": {
+                "text": "/start",
+                "chat": {"id": -100999, "type": "group", "title": "Bay Watch"},
+                "from": {"id": 20},
+            },
+        }
+        with patch.object(self.svc, "_reply"):
+            self.svc._handle_update(update)
+        with patch.object(self.svc, "_reply") as mock_reply:
+            handled = self.svc._handle_update(update)
+        self.assertTrue(handled)
+        mock_reply.assert_called_with(
+            "-100999",
+            "This group is already linked to Bay Watch. Site alerts will arrive here.",
+        )
+
 
     def test_relink_forgets_previous_chat(self) -> None:
         first = self.svc.begin_link("user-1", "Alex")
@@ -221,22 +259,29 @@ class TelegramOutNormalizeTests(unittest.TestCase):
             bot.set_chat("111,333")
             self.assertEqual(bot.chat_id, "333")
 
-    def test_resolve_prefers_environment(self) -> None:
+    def test_resolve_prefers_config_then_environment(self) -> None:
         import os
 
         prev_token = os.environ.get("TELEGRAM_BOT_TOKEN")
         prev_chat = os.environ.get("TELEGRAM_CHAT_ID")
         try:
+            # UI-pasted config values win so a fresh paste always takes effect.
             os.environ["TELEGRAM_BOT_TOKEN"] = "env-token"
             os.environ["TELEGRAM_CHAT_ID"] = "999"
             token, chat = resolve_telegram_credentials("cfg-token", "111")
-            self.assertEqual(token, "env-token")
-            self.assertEqual(chat, "999")
+            self.assertEqual(token, "cfg-token")
+            self.assertEqual(chat, "111")
+            # Env vars remain the fallback when nothing is saved in config.
             del os.environ["TELEGRAM_BOT_TOKEN"]
             del os.environ["TELEGRAM_CHAT_ID"]
             token, chat = resolve_telegram_credentials("cfg-token", "111")
             self.assertEqual(token, "cfg-token")
             self.assertEqual(chat, "111")
+            os.environ["TELEGRAM_BOT_TOKEN"] = "env-token"
+            os.environ["TELEGRAM_CHAT_ID"] = "999"
+            token, chat = resolve_telegram_credentials("", "")
+            self.assertEqual(token, "env-token")
+            self.assertEqual(chat, "999")
         finally:
             if prev_token is None:
                 os.environ.pop("TELEGRAM_BOT_TOKEN", None)
@@ -246,6 +291,36 @@ class TelegramOutNormalizeTests(unittest.TestCase):
                 os.environ.pop("TELEGRAM_CHAT_ID", None)
             else:
                 os.environ["TELEGRAM_CHAT_ID"] = prev_chat
+
+    def test_group_chat_receives_every_event(self) -> None:
+        import os
+
+        with patch.dict(os.environ, {}, clear=True):
+            bot = TelegramOut("token", "111", group_chat_id="-100777")
+            self.assertEqual(bot.group_chat_id, "-100777")
+            self.assertIn("-100777", bot.resolve_chats_for_event("vip_arrival"))
+            self.assertIn("-100777", bot.resolve_chats_for_event("daily_scorecard"))
+            self.assertTrue(bot.enabled)
+            bot.set_group_chat("-100888")
+            self.assertEqual(bot.group_chat_id, "-100888")
+
+    def test_no_group_mean_no_extra_target(self) -> None:
+        import os
+
+        with patch.dict(os.environ, {}, clear=True):
+            bot = TelegramOut("token", "111")
+            self.assertEqual(bot.group_chat_id, "")
+            self.assertEqual(bot.resolve_chats_for_event("vip_arrival"), ["111"])
+
+    def test_group_config_wins_env_is_fallback(self) -> None:
+        import os
+
+        # UI-pasted group chat id wins; env var is only a fallback.
+        with patch.dict(os.environ, {"TELEGRAM_GROUP_CHAT_ID": "-100999"}, clear=True):
+            bot = TelegramOut("token", "111", group_chat_id="-100111")
+            self.assertEqual(bot.group_chat_id, "-100111")
+            bot_no_cfg = TelegramOut("token", "111")
+            self.assertEqual(bot_no_cfg.group_chat_id, "-100999")
 
 
 class TelegramPairingEntryPointTests(unittest.TestCase):

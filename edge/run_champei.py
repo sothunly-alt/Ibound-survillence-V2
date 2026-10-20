@@ -248,12 +248,24 @@ def main(argv: list[str] | None = None) -> int:
         if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, _stop_background)
 
+    def _set_alert_chat(kind: str, value: str) -> dict:
+        """Remote admin hook: /alertchat retargets alerts without laptop access."""
+        target = str(value or "").strip()
+        if target.lower() in ("off", "none", "clear", ""):
+            target = ""
+        if kind == "group":
+            engine.telegram_links.set_group_chat(target)
+            return engine.apply_hub_settings({"telegram_group_chat_id": target})
+        engine.telegram_links.set_active_chat(target)
+        return engine.apply_hub_settings({"telegram_chat_id": target})
+
     controller = TelegramController(
         db_path=db_path,
         branch_id=args.branch,
         token=tg_token or None,
         link_service=link_service,
         token_provider=lambda: str(engine.cfg.get("telegram_bot_token") or "").strip(),
+        on_set_alert_chat=_set_alert_chat,
     )
     tg_thread = threading.Thread(
         target=controller.run_loop,

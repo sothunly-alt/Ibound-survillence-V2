@@ -80,6 +80,7 @@ class TelegramController:
         session: requests.Session | None = None,
         link_service: TelegramLinkService | None = None,
         token_provider: Callable[[], str] | None = None,
+        on_set_alert_chat: Callable[[str, str], dict[str, Any]] | None = None,
     ) -> None:
         self._token = (
             str(token if token is not None else os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
@@ -103,6 +104,10 @@ class TelegramController:
         # Shared link service. When set, this controller is the sole getUpdates
         # owner and forwards /start pairing updates to it (see run_champei).
         self.link_service = link_service
+        # Remote admin hook: set the alert destination from Telegram itself,
+        # signature (kind, chat_id) -> {"success": bool, "error": str}. kind is
+        # "owner" (private/staff chat) or "group" (customer group).
+        self.on_set_alert_chat = on_set_alert_chat
         self._offset = 0
         self._last_error = ""
         self._backoff = 1.0
@@ -186,6 +191,10 @@ class TelegramController:
                 db_path=self.db_path,
                 branch_id=self.branch_id,
             )
+        if cmd == "/alertchat":
+            if role != "owner":
+                return DENIED
+            return self._cmd_alertchat(payload)
         return (
             f"Unknown command. Try /help.\n\n{self._help_text(role)}"
             if cmd.startswith("/")
@@ -201,6 +210,7 @@ class TelegramController:
         ]
         if role == "owner":
             lines.extend(["/scorecard", "/churn", "/weekly", "/monthly"])
+            lines.append("/alertchat <owner|group> <chat_id|off>")
         return "\n".join(lines)
 
     def _cmd_name(self, payload: str) -> str:
@@ -237,6 +247,36 @@ class TelegramController:
             f"Tier: {tier}\n"
             f"Notes: {notes}"
         )
+
+    def _cmd_alertchat(self, payload: str) -> str:
+        """Remote admin: retarget alerts without touching the customer machine.
+
+        Usage:
+          /alertchat group <chat_id>   → alerts fan out to this customer group
+          /alertchat owner <chat_id>   → set the primary/owner alert chat
+          /alertchat group off         → stop sending to the group
+        """
+        bits = str(payload or "").split()
+        if len(bits) < 2:
+            return (
+                "Usage: /alertchat <owner|group> <chat_id|off>\n"
+                "Groups have negative ids (e.g. -1001234567890)."
+            )
+        kind = bits[0].strip().lower()
+        value = bits[1].strip()
+        if kind not in ("owner", "group"):
+            return "First argument must be 'owner' or 'group'."
+        if self.on_set_alert_chat is None:
+            return "Alert retargeting is not wired on this engine."
+        try:
+            result = self.on_set_alert_chat(kind, value) or {}
+        except Exception as exc:
+            return f"Failed to set alert chat: {exc}"
+        if not result.get("success"):
+            return f"Failed to set alert chat: {result.get('error') or 'unknown error'}"
+        if value.lower() in ("off", "none", "clear", ""):
+            return f"✅ Alert chat cleared for {kind}."
+        return f"✅ {kind.title()} alert chat set to {value}."
 
     def poll_once(self, timeout: int = 10) -> int:
         if not self.token:

@@ -27,22 +27,35 @@ def resolve_telegram_credentials(
     token: Any = None,
     chat_id: Any = None,
 ) -> tuple[str, str]:
-    """Prefer TELEGRAM_* env vars; fall back to config values. Never invent a token."""
-    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    env_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    """Prefer config values (UI-pasted, saved to config.yaml); fall back to
+    TELEGRAM_* env vars. A token pasted in the hub must win over any stale env
+    var so paste-and-connect always takes effect. Never invent a token."""
     cfg_token = str(token or "").strip()
     cfg_chat = normalize_chat_id(chat_id)
-    return (env_token or cfg_token, normalize_chat_id(env_chat) or cfg_chat)
+    env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    env_chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    return (cfg_token or env_token, cfg_chat or normalize_chat_id(env_chat))
 
 
 def resolve_routed_chat_ids(primary_chat_id: str = "") -> tuple[str, str]:
-    """Return (staff_chat_id, owner_chat_id); each falls back to primary TELEGRAM_CHAT_ID."""
+    """Return (staff_chat_id, owner_chat_id).
+
+    The configured primary chat wins; TELEGRAM_STAFF_/OWNER_CHAT_ID env vars
+    override their respective route, falling back to the primary chat.
+    """
     primary = normalize_chat_id(
-        os.environ.get("TELEGRAM_CHAT_ID", "").strip() or primary_chat_id
+        primary_chat_id or os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     )
     staff = normalize_chat_id(os.environ.get("TELEGRAM_STAFF_CHAT_ID", "").strip()) or primary
     owner = normalize_chat_id(os.environ.get("TELEGRAM_OWNER_CHAT_ID", "").strip()) or primary
     return staff, owner
+
+
+def resolve_group_chat_id(group_chat_id: Any = None) -> str:
+    """Return the customer group chat id: config wins, TELEGRAM_GROUP_CHAT_ID env is fallback."""
+    return normalize_chat_id(group_chat_id) or normalize_chat_id(
+        os.environ.get("TELEGRAM_GROUP_CHAT_ID", "").strip()
+    )
 
 
 _cleared_webhooks: set[str] = set()
@@ -97,20 +110,31 @@ def normalize_chat_id(value: Any) -> str:
 
 
 class TelegramOut:
-    def __init__(self, token: str = "", chat_id: str = "") -> None:
+    def __init__(
+        self, token: str = "", chat_id: str = "", group_chat_id: Any = None
+    ) -> None:
         resolved_token, resolved_chat = resolve_telegram_credentials(token, chat_id)
         self.token = resolved_token
         self.chat_id = resolved_chat
         self.staff_chat_id, self.owner_chat_id = resolve_routed_chat_ids(resolved_chat)
+        self.group_chat_id = resolve_group_chat_id(group_chat_id)
 
     def refresh_from_env(self, token: str = "", chat_id: str = "") -> None:
-        """Re-resolve credentials (env wins over passed config)."""
+        """Re-resolve credentials (config wins; TELEGRAM_* env is fallback)."""
         self.token, self.chat_id = resolve_telegram_credentials(token, chat_id)
         self.staff_chat_id, self.owner_chat_id = resolve_routed_chat_ids(self.chat_id)
 
     @property
     def enabled(self) -> bool:
-        return bool(self.token and (self.chat_id or self.staff_chat_id or self.owner_chat_id))
+        return bool(
+            self.token
+            and (
+                self.chat_id
+                or self.staff_chat_id
+                or self.owner_chat_id
+                or self.group_chat_id
+            )
+        )
 
     def _url(self, method: str) -> str:
         return API.format(token=self.token, method=method)
@@ -121,6 +145,10 @@ class TelegramOut:
             self.staff_chat_id = self.chat_id
         if not self.owner_chat_id:
             self.owner_chat_id = self.chat_id
+
+    def set_group_chat(self, chat_id: str) -> None:
+        """Register a customer group that receives every alert for this site."""
+        self.group_chat_id = normalize_chat_id(chat_id)
 
     def resolve_chat_for_event(self, event_type: str) -> str:
         kind = str(event_type or "").strip().lower()
@@ -153,7 +181,11 @@ class TelegramOut:
         if not self.token or not self.chat_id:
             print("[telegram] skipped sendMessage (no token/chat_id)")
             return False
-        return self.send_message_to(self.chat_id, text)
+        ok = self.send_message_to(self.chat_id, text)
+        group = normalize_chat_id(self.group_chat_id)
+        if group and group != normalize_chat_id(self.chat_id):
+            ok = self.send_message_to(group, text) or ok
+        return ok
 
     def send_photo_bytes_to(self, chat_id: str, photo: bytes, caption: str = "") -> bool:
         target = normalize_chat_id(chat_id)
@@ -176,7 +208,11 @@ class TelegramOut:
         return True
 
     def resolve_chats_for_event(self, event_type: str) -> list[str]:
-        """Return one or more chat ids for an event (dual-route when in both sets)."""
+        """Return one or more chat ids for an event (dual-route when in both sets).
+
+        The customer group (when linked) always receives the alert in addition to
+        the role-routed staff/owner destination.
+        """
         kind = str(event_type or "").strip().lower()
         in_staff = kind in STAFF_EVENTS
         in_owner = kind in OWNER_EVENTS
@@ -187,9 +223,14 @@ class TelegramOut:
             for cid in (staff, owner):
                 if cid and cid not in targets:
                     targets.append(cid)
-            return targets
-        primary = self.resolve_chat_for_event(kind)
-        return [primary] if primary else []
+        else:
+            primary = self.resolve_chat_for_event(kind)
+            if primary and primary not in targets:
+                targets.append(primary)
+        group = normalize_chat_id(self.group_chat_id)
+        if group and group not in targets:
+            targets.append(group)
+        return targets
 
     def send_alert(
         self,

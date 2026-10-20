@@ -175,5 +175,59 @@ class TestFrozenPathSplit(unittest.TestCase):
         self.assertNotIn("fonts.gstatic.com", css)
 
 
+class TestTelegramSettingsRoundTrip(unittest.TestCase):
+    """The Settings card must persist token/chat/group and rebuild the bot."""
+
+    def _engine(self, cfg=None):
+        base = {
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "telegram_group_chat_id": "",
+            "venue": "Demo Garage",
+            "garage_name": "Demo Garage",
+        }
+        if cfg:
+            base.update(cfg)
+        with patch("launcher.read_config", return_value=base):
+            return LiveStreamEngine()
+
+    def test_save_token_and_group_persists_and_rebuilds_bot(self) -> None:
+        engine = self._engine()
+        saved: list[dict] = []
+        with patch("launcher.save_config", side_effect=lambda u: saved.append(u)):
+            res = engine.apply_hub_settings(
+                {
+                    "telegram_bot_token": "123:ABC",
+                    "telegram_chat_id": "1217328195",
+                    "telegram_group_chat_id": "-100777",
+                }
+            )
+        self.assertTrue(res["success"])
+        self.assertEqual(engine.cfg["telegram_bot_token"], "123:ABC")
+        self.assertEqual(engine.cfg["telegram_chat_id"], "1217328195")
+        self.assertEqual(engine.cfg["telegram_group_chat_id"], "-100777")
+        self.assertEqual(engine.bot.token, "123:ABC")
+        self.assertEqual(engine.bot.chat_id, "1217328195")
+        self.assertEqual(engine.bot.group_chat_id, "-100777")
+        # token never echoed back to the caller
+        self.assertEqual(res["telegram_bot_token"], "")
+        self.assertTrue(res["telegram_bot_configured"])
+        self.assertTrue(any("telegram_bot_token" in u for u in saved))
+
+    def test_save_without_token_keeps_existing(self) -> None:
+        engine = self._engine({"telegram_bot_token": "keep:TOKEN"})
+        with patch("launcher.save_config"):
+            res = engine.apply_hub_settings({"telegram_group_chat_id": "-100999"})
+        self.assertTrue(res["success"])
+        self.assertEqual(engine.cfg["telegram_bot_token"], "keep:TOKEN")
+        self.assertEqual(engine.cfg["telegram_group_chat_id"], "-100999")
+
+    def test_cloud_status_exposed(self) -> None:
+        engine = self._engine()
+        with patch("launcher.save_config"):
+            res = engine.apply_hub_settings({"telegram_chat_id": "5"})
+        self.assertIn("cloud_sync_status", res)
+
+
 if __name__ == "__main__":
     unittest.main()

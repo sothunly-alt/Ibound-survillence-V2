@@ -543,7 +543,11 @@ def main() -> None:
     if args.report:
         cfg = load_config(cfg_path)
         conn = connect(DATA_DIR / "events.db")
-        bot = TelegramOut(cfg["telegram_bot_token"], cfg["telegram_chat_id"])
+        bot = TelegramOut(
+            cfg["telegram_bot_token"],
+            cfg["telegram_chat_id"],
+            cfg.get("telegram_group_chat_id", ""),
+        )
         send_shift_report(conn, cfg, bot)
         return
 
@@ -558,7 +562,11 @@ def main() -> None:
         cfg["source"] = args.source
 
     conn = connect(DATA_DIR / "events.db")
-    bot = TelegramOut(cfg.get("telegram_bot_token", ""), cfg.get("telegram_chat_id", ""))
+    bot = TelegramOut(
+        cfg.get("telegram_bot_token", ""),
+        cfg.get("telegram_chat_id", ""),
+        cfg.get("telegram_group_chat_id", ""),
+    )
     run_camera(cfg, conn, bot, cfg_path)
 
 

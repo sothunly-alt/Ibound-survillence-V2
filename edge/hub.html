@@ -1262,43 +1262,44 @@
         </div>
 
         <div id="panel-integrations" class="p-6 grid grid-cols-1 gap-6 hidden">
-          <div class="rounded-xl border border-outline-variant bg-surface-container p-4 space-y-3">
+          <div class="rounded-xl border border-outline-variant bg-surface-container p-4 space-y-4">
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <h3 class="text-sm font-semibold text-on-surface">Connect with /start</h3>
-                <p class="text-xs text-on-surface-variant mt-1">Tap Connect Telegram, then Start. This account keeps only the latest Telegram — connecting a different account replaces the previous one, and alerts go only there.</p>
+                <h3 class="text-sm font-semibold text-on-surface">Telegram Connection</h3>
+                <p class="text-xs text-on-surface-variant mt-1">Paste the bot token (from @BotFather) and click <span class="font-medium">Connect</span>. Open Telegram, tap Start on the bot, and the chat is linked automatically — no env file, no account needed. Alerts for this site are delivered there.</p>
               </div>
               <span id="tg-link-badge" class="text-xs px-2 py-1 rounded-full border border-outline-variant text-on-surface-variant">Not linked</span>
             </div>
-            <p id="tg-link-detail" class="font-mono-data text-xs text-on-surface-variant">Chat ID —</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="flex flex-col gap-1.5 md:col-span-2">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Bot Token</label>
+                <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" autocomplete="off" placeholder="Paste bot token from @BotFather"/>
+                <p id="tg-token-status" class="text-[11px] text-on-surface-variant">No token saved.</p>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Owner Chat ID</label>
+                <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="e.g. 1217328195"/>
+                <p id="tg-link-detail" class="font-mono-data text-[11px] text-on-surface-variant">Chat ID —</p>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-group-input">Group Chat ID</label>
+                <input id="tg-group-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Negative id, e.g. -1001234567890"/>
+                <p id="tg-group-detail" class="font-mono-data text-[11px] text-on-surface-variant">Group Chat ID —</p>
+              </div>
+            </div>
+
             <div class="flex flex-wrap gap-2">
-              <button type="button" id="btn-connect-tg" class="bg-primary hover:brightness-110 text-on-primary py-2 px-4 rounded-lg font-medium text-sm disabled:opacity-60" onclick="connectTelegramAccount()">
-                Connect Telegram
+              <button type="button" id="btn-save-tg" class="bg-primary hover:brightness-110 text-on-primary py-2 px-6 rounded-lg font-medium text-sm disabled:opacity-60" onclick="saveTelegramConnection()">
+                Connect
               </button>
               <a id="tg-deep-link" class="hidden bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-4 rounded-lg font-medium text-sm border border-outline-variant inline-flex items-center" href="#" rel="noopener noreferrer">Open bot in Telegram</a>
               <button type="button" id="btn-test-tg" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-2 px-6 rounded-lg font-medium transition-colors border border-outline-variant text-sm disabled:opacity-60" onclick="testTelegram()">
                 Capture &amp; Send Test
               </button>
             </div>
-            <details class="text-xs text-on-surface-variant">
-              <summary class="cursor-pointer select-none">Advanced: paste chat ID manually</summary>
-              <div class="mt-2 flex flex-col gap-1.5">
-                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-chat-input">Chat ID</label>
-                <input id="tg-chat-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="text" placeholder="Filled automatically after /start" onchange="saveHubSettings()" onblur="saveHubSettings()"/>
-              </div>
-            </details>
-            <details class="text-xs text-on-surface-variant">
-              <summary class="cursor-pointer select-none">Advanced: paste bot token manually</summary>
-              <div class="mt-2 flex flex-col gap-1.5">
-                <label class="font-label-upper text-label-upper text-on-surface-variant" for="tg-token-input">Bot Token</label>
-                <input id="tg-token-input" class="bg-surface-container-highest border-transparent text-on-surface font-mono-data text-xs rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5 shadow-inner" type="password" autocomplete="off" placeholder="Paste bot token from @BotFather"/>
-                <div class="flex items-center gap-2">
-                  <button type="button" class="bg-secondary-container hover:bg-surface-bright text-on-surface py-1.5 px-3 rounded-lg text-xs border border-outline-variant" onclick="saveTelegramToken()">Save token</button>
-                  <span class="text-on-surface-variant">Needed only if Connect Telegram says the token is missing.</span>
-                </div>
-              </div>
-            </details>
             <p id="tg-feedback" class="hidden text-sm"></p>
+            <div id="tg-group-badge" class="hidden"></div>
           </div>
         </div>
 
@@ -2937,6 +2938,7 @@
     function hubSettingsPayload() {
       return {
         telegram_chat_id: document.getElementById('tg-chat-input').value,
+        telegram_group_chat_id: (document.getElementById('tg-group-input') || {}).value || '',
         venue: document.getElementById('venue-input').value,
         garage_name: document.getElementById('venue-input').value,
         open_time: document.getElementById('open-time-input').value,
@@ -2999,35 +3001,69 @@
       }
     }
 
-    async function saveTelegramToken() {
-      const input = document.getElementById('tg-token-input');
+    async function saveTelegramConnection() {
       const feedback = document.getElementById('tg-feedback');
+      const btn = document.getElementById('btn-save-tg');
+      const input = document.getElementById('tg-token-input');
       const token = input ? input.value.trim() : '';
       if (!token) {
         showBanner(feedback, false, 'Paste the bot token first (from @BotFather).');
         return;
       }
+      btn.disabled = true;
       try {
-        const res = await hubFetch('/api/settings', {
+        const res = await hubFetch('/api/telegram/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegram_bot_token: token })
+          body: JSON.stringify({
+            token: token,
+            user_id: (hubAccountUser && hubAccountUser.id) || '',
+            display_name: (hubAccountProfile && hubAccountProfile.display_name) || (hubAccountUser && hubAccountUser.email) || 'Operator',
+            open_client: true,
+          })
         });
         const data = await res.json();
-        if (data && data.success) {
-          currentConfig = Object.assign({}, currentConfig, data);
-          if (input) input.value = '';
-          paintTelegramLinkStatus({
-            telegram_chat_id: currentConfig.telegram_chat_id || '',
-            bot_username: currentConfig.telegram_bot_username || '',
-            telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
-          });
-          showBanner(feedback, true, 'Bot token saved. Now click Connect Telegram and tap Start.');
-        } else {
-          showBanner(feedback, false, (data && data.error) || 'Could not save the bot token.');
+        if (!data.ok) {
+          showBanner(feedback, false, data.error || 'Could not connect Telegram.');
+          return;
         }
+        if (input) input.value = '';
+        currentConfig = Object.assign({}, currentConfig, {
+          telegram_bot_configured: true,
+          telegram_bot_username: data.bot_username || '',
+        });
+        paintTelegramTokenStatus(true, data.bot_username || '');
+        paintTelegramLinkStatus(data.status || data);
+        const deep = document.getElementById('tg-deep-link');
+        bindTelegramOpenLink(deep, data);
+        if (!data.opened_on_host && data.deep_link) {
+          window.open(data.deep_link, '_blank', 'noopener,noreferrer');
+        }
+        const opened = data.opened_on_host
+          ? ' Telegram should open on this computer.'
+          : ' If Telegram did not open, click Open @' + (data.bot_username || 'bot') + '.';
+        showBanner(feedback, true, (data.instructions || 'Open Telegram and tap Start.') + opened);
+        stopTelegramLinkPoll();
+        telegramLinkPollTimer = setInterval(() => { void pollTelegramLinkOnce(); }, 2000);
+        void pollTelegramLinkOnce();
       } catch (err) {
-        showBanner(feedback, false, err.message || 'Could not save the bot token.');
+        showBanner(feedback, false, err.message || 'Telegram connect failed.');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function paintTelegramTokenStatus(configured, botUsername) {
+      const el = document.getElementById('tg-token-status');
+      if (!el) return;
+      if (configured) {
+        el.textContent = botUsername
+          ? ('Token saved for @' + String(botUsername).replace(/^@/, '') + '.')
+          : 'Token saved.';
+        el.className = 'text-[11px] text-primary';
+      } else {
+        el.textContent = 'No token saved.';
+        el.className = 'text-[11px] text-on-surface-variant';
       }
     }
 
@@ -4975,11 +5011,16 @@
         if (currentConfig.flip !== undefined) flipMode = currentConfig.flip || 'none';
         paintOrient();
         if (currentConfig.telegram_chat_id) document.getElementById('tg-chat-input').value = currentConfig.telegram_chat_id;
+        if (currentConfig.telegram_group_chat_id && document.getElementById('tg-group-input')) document.getElementById('tg-group-input').value = currentConfig.telegram_group_chat_id;
         paintTelegramLinkStatus({
           telegram_chat_id: currentConfig.telegram_chat_id || '',
           telegram_bot_token_set: !!currentConfig.telegram_bot_configured,
           bot_username: currentConfig.telegram_bot_username || '',
         });
+        paintTelegramGroupStatus({
+          telegram_group_chat_id: currentConfig.telegram_group_chat_id || '',
+        });
+        paintTelegramTokenStatus(!!currentConfig.telegram_bot_configured, currentConfig.telegram_bot_username || '');
         const overlayCam = cameras.find((c) => c.id === activeCameraId) || cameras[0];
         const overlayBays = (overlayCam && Array.isArray(overlayCam.bays) && overlayCam.bays.length)
           ? overlayCam.bays
@@ -6716,6 +6757,28 @@
       }
     }
 
+    function paintTelegramGroupStatus(info) {
+      const badge = document.getElementById('tg-group-badge');
+      const detail = document.getElementById('tg-group-detail');
+      const input = document.getElementById('tg-group-input');
+      const groupId = (info && (info.telegram_group_chat_id || info.group_chat_id)) || (input ? input.value : '') || '';
+      const name = (info && info.group_display_name) || '';
+      const linked = !!groupId;
+      if (badge) {
+        badge.textContent = linked ? 'Group linked' : 'No group';
+        badge.className = 'text-xs px-2 py-1 rounded-full border ' + (
+          linked
+            ? 'border-primary/40 text-primary bg-primary/10'
+            : 'border-outline-variant text-on-surface-variant'
+        );
+      }
+      if (detail) {
+        detail.textContent = linked
+          ? ('Group Chat ID ' + groupId + (name ? ' · ' + name : ''))
+          : 'Group Chat ID —';
+      }
+    }
+
     async function persistTelegramLinkToAccount(link) {
       if (!supabaseClient || !hubAccountUser || !link || !link.chat_id) return;
       const chatId = String(link.chat_id);
@@ -6771,13 +6834,20 @@
     }
 
     async function pollTelegramLinkOnce() {
-      if (!hubAccountUser) return null;
-      const res = await hubFetch('/api/telegram/status?user_id=' + encodeURIComponent(hubAccountUser.id), { cache: 'no-store' });
+      // Local installs have no cloud account; poll with the synthetic
+      // local-operator id so /start pairing still completes and persists.
+      const pollUserId = (hubAccountUser && hubAccountUser.id) || 'local-operator';
+      const res = await hubFetch('/api/telegram/status?user_id=' + encodeURIComponent(pollUserId), { cache: 'no-store' });
       const data = await res.json();
       if (data.telegram_chat_id) {
         const chatInput = document.getElementById('tg-chat-input');
         if (chatInput) chatInput.value = data.telegram_chat_id;
       }
+      const groupInput = document.getElementById('tg-group-input');
+      if (data.group_chat_id && groupInput && !groupInput.value) {
+        groupInput.value = data.group_chat_id;
+      }
+      paintTelegramGroupStatus(data);
         if (data.just_linked) {
         stopTelegramLinkPoll();
         // Paint first so the badge flips to Linked even in the local no-account
@@ -6845,50 +6915,6 @@
           window.open(webHref, '_blank', 'noopener,noreferrer');
         }
       };
-    }
-
-    async function connectTelegramAccount() {
-      const feedback = document.getElementById('tg-feedback');
-      const btn = document.getElementById('btn-connect-tg');
-      const deep = document.getElementById('tg-deep-link');
-      if (!hubAccountUser) {
-        showBanner(feedback, false, 'Sign in first so we can save the Telegram link to your account.');
-        return;
-      }
-      btn.disabled = true;
-      try {
-        const res = await hubFetch('/api/telegram/begin-link', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: hubAccountUser.id,
-            display_name: (hubAccountProfile && hubAccountProfile.display_name) || hubAccountUser.email || 'Operator',
-            open_client: true,
-          }),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-          showBanner(feedback, false, data.error || 'Could not start Telegram link.');
-          return;
-        }
-        paintTelegramLinkStatus(data.status || data);
-        bindTelegramOpenLink(deep, data);
-
-        // If the backend host was not able to open Telegram directly, fallback to opening the HTTPS link in a new tab
-        if (!data.opened_on_host && data.deep_link) {
-          window.open(data.deep_link, '_blank', 'noopener,noreferrer');
-        }
-
-        const opened = data.opened_on_host ? ' Telegram should open on this computer.' : ' If Telegram did not open, click Open @' + (data.bot_username || 'bot') + '.';
-        showBanner(feedback, true, (data.instructions || 'Open Telegram and tap Start.') + opened);
-        stopTelegramLinkPoll();
-        telegramLinkPollTimer = setInterval(() => { void pollTelegramLinkOnce(); }, 2000);
-        void pollTelegramLinkOnce();
-      } catch (err) {
-        showBanner(feedback, false, err.message || 'Telegram link failed.');
-      } finally {
-        btn.disabled = false;
-      }
     }
 
     async function testTelegram() {

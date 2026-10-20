@@ -125,6 +125,80 @@ class TelegramControllerRbacTests(unittest.TestCase):
         self.assertIn("/scorecard", reply)
         self.assertIn("/churn", reply)
         self.assertIn("/weekly", reply)
+        self.assertIn("/alertchat", reply)
+
+
+class AlertChatCommandTests(unittest.TestCase):
+    """Remote admin: retarget alerts from Telegram without laptop access."""
+
+    def _ctrl(self, hook):
+        return TelegramController(
+            token="test-token",
+            staff_chat_id="111",
+            owner_chat_id="222",
+            session=MagicMock(),
+            on_set_alert_chat=hook,
+        )
+
+    def test_staff_denied(self) -> None:
+        ctrl = self._ctrl(lambda kind, value: {"success": True})
+        self.assertEqual(ctrl.handle_message("111", "/alertchat group -100"), DENIED)
+
+    def test_group_set(self) -> None:
+        calls: list[tuple[str, str]] = []
+        ctrl = self._ctrl(
+            lambda kind, value: (calls.append((kind, value)), {"success": True})[1]
+        )
+        reply = ctrl.handle_message("222", "/alertchat group -1001234567890")
+        self.assertEqual(calls, [("group", "-1001234567890")])
+        assert reply is not None
+        self.assertIn("Group alert chat set", reply)
+
+    def test_owner_set(self) -> None:
+        calls: list[tuple[str, str]] = []
+        ctrl = self._ctrl(
+            lambda kind, value: (calls.append((kind, value)), {"success": True})[1]
+        )
+        reply = ctrl.handle_message("222", "/alertchat owner 1217328195")
+        self.assertEqual(calls, [("owner", "1217328195")])
+        assert reply is not None
+        self.assertIn("Owner alert chat set", reply)
+
+    def test_off_clears(self) -> None:
+        calls: list[tuple[str, str]] = []
+        ctrl = self._ctrl(
+            lambda kind, value: (calls.append((kind, value)), {"success": True})[1]
+        )
+        reply = ctrl.handle_message("222", "/alertchat group off")
+        self.assertEqual(calls, [("group", "off")])
+        assert reply is not None
+        self.assertIn("cleared", reply)
+
+    def test_bad_kind_rejected(self) -> None:
+        ctrl = self._ctrl(lambda kind, value: {"success": True})
+        reply = ctrl.handle_message("222", "/alertchat everyone 5")
+        assert reply is not None
+        self.assertIn("must be 'owner' or 'group'", reply)
+
+    def test_missing_args_usage(self) -> None:
+        ctrl = self._ctrl(lambda kind, value: {"success": True})
+        reply = ctrl.handle_message("222", "/alertchat")
+        assert reply is not None
+        self.assertIn("Usage", reply)
+
+    def test_failure_surfaces_error(self) -> None:
+        ctrl = self._ctrl(lambda kind, value: {"success": False, "error": "bad id"})
+        reply = ctrl.handle_message("222", "/alertchat group x")
+        assert reply is not None
+        self.assertIn("bad id", reply)
+
+    def test_no_hook_reports_unwired(self) -> None:
+        ctrl = TelegramController(
+            token="test-token", staff_chat_id="111", owner_chat_id="222", session=MagicMock()
+        )
+        reply = ctrl.handle_message("222", "/alertchat group -1")
+        assert reply is not None
+        self.assertIn("not wired", reply)
 
 
 class TelegramControllerPairingForwardTests(unittest.TestCase):

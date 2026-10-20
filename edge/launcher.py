@@ -332,6 +332,8 @@ try:
     )
     from sensors.wifi_tracker import WifiTracker, normalize_wifi_devices, presence_status
     from service_patterns import KNOWLEDGE_BASE, evaluate_completed_vehicle_job
+    from cloud_sync import CloudConfigSync
+    from telegram_connector import TelegramConnector
     from telegram_link import TelegramLinkService
     from telegram_out import TelegramOut, normalize_chat_id, resolve_telegram_credentials
     from tracker import PersonTracker, run_identity_pipeline
@@ -459,6 +461,7 @@ def read_config() -> dict[str, Any]:
     )
     data["telegram_bot_token"] = token
     data["telegram_chat_id"] = chat
+    data["telegram_group_chat_id"] = normalize_chat_id(data.get("telegram_group_chat_id"))
     data["telegram_bot_configured"] = bool(data["telegram_bot_token"])
     data["telegram_bot_username"] = str(data.get("telegram_bot_username") or "")
 
@@ -512,6 +515,7 @@ def read_config() -> dict[str, Any]:
 _SETTINGS_KEYS = (
     "telegram_bot_token",
     "telegram_chat_id",
+    "telegram_group_chat_id",
     "venue",
     "garage_name",
     "workplace_type",
@@ -1291,7 +1295,11 @@ class LiveStreamEngine:
         # connections cannot be shared across threads.
         self.cfg = read_config()
         self.conn = None
-        self.bot = TelegramOut(self.cfg.get("telegram_bot_token", ""), self.cfg.get("telegram_chat_id", ""))
+        self.bot = TelegramOut(
+            self.cfg.get("telegram_bot_token", ""),
+            self.cfg.get("telegram_chat_id", ""),
+            self.cfg.get("telegram_group_chat_id", ""),
+        )
         self.telegram_links = TelegramLinkService()
         self.telegram_links.configure(
             self.cfg.get("telegram_bot_token", ""),
@@ -1302,6 +1310,26 @@ class LiveStreamEngine:
                 str(self.cfg.get("telegram_chat_id")),
                 str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
             )
+        if self.cfg.get("telegram_group_chat_id"):
+            self.telegram_links.set_group_chat(
+                str(self.cfg.get("telegram_group_chat_id")),
+                str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Customer group"),
+            )
+        # One-click Telegram pairing: paste a bot token in the hub, click
+        # Connect, customer taps Start — no env vars, no account sign-in.
+        self.telegram_connector = TelegramConnector(
+            self.telegram_links,
+            self.apply_hub_settings,
+        )
+        # Optional zero-touch remote updates: pull Telegram settings from the
+        # cloud so the operator can retarget a remote customer's alerts without
+        # touching the customer machine.
+        self.cloud_sync = CloudConfigSync(
+            self.cfg.get("cloud_sync"),
+            self.apply_hub_settings,
+            session=None,
+        )
+        self.cloud_sync.start()
         proofs_audit_dir = DATA_DIR / "proofs" / "ai_audits"
         audit_cooldown = float(self.cfg.get("ai_audit_cooldown_seconds") or 45.0)
         self.ai_auditor = AIAuditorQueue(
@@ -1526,6 +1554,10 @@ class LiveStreamEngine:
             self.telegram_links.stop()
         except Exception:
             pass
+        try:
+            self.cloud_sync.stop()
+        except Exception:
+            pass
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2.0)
 
@@ -1723,6 +1755,7 @@ class LiveStreamEngine:
             self.bot = TelegramOut(
                 self.cfg.get("telegram_bot_token", ""),
                 self.cfg.get("telegram_chat_id", ""),
+                self.cfg.get("telegram_group_chat_id", ""),
             )
             source = self.cfg.get("source", 0)
             existing_worker = self.camera_pool.get_worker(active_id)
@@ -1974,6 +2007,10 @@ class LiveStreamEngine:
         updates: dict[str, Any] = {}
         if "telegram_chat_id" in payload:
             updates["telegram_chat_id"] = normalize_chat_id(payload.get("telegram_chat_id"))
+        if "telegram_group_chat_id" in payload:
+            updates["telegram_group_chat_id"] = normalize_chat_id(
+                payload.get("telegram_group_chat_id")
+            )
         if "telegram_bot_token" in payload:
             updates["telegram_bot_token"] = str(payload.get("telegram_bot_token") or "").strip()
         if "venue" in payload:
@@ -2026,10 +2063,11 @@ class LiveStreamEngine:
         with self.lock:
             self.cfg.update(updates)
             save_config(updates)
-            if "telegram_bot_token" in updates or "telegram_chat_id" in updates:
+            if "telegram_bot_token" in updates or "telegram_chat_id" in updates or "telegram_group_chat_id" in updates:
                 self.bot = TelegramOut(
                     self.cfg.get("telegram_bot_token", ""),
                     self.cfg.get("telegram_chat_id", ""),
+                    self.cfg.get("telegram_group_chat_id", ""),
                 )
                 self._sync_visit_monitor_site()
             if "branch_id" in updates or "store_customer_avatars" in updates or "workplace_type" in updates:
@@ -2044,6 +2082,11 @@ class LiveStreamEngine:
                     self.cfg.get("telegram_chat_id", ""),
                     str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Operator"),
                 )
+            if "telegram_group_chat_id" in updates:
+                self.telegram_links.set_group_chat(
+                    self.cfg.get("telegram_group_chat_id", ""),
+                    str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Customer group"),
+                )
             snapshot = {key: self.cfg.get(key) for key in _SETTINGS_KEYS}
         snapshot["success"] = True
         snapshot["bays"] = list(self.cfg.get("bays") or [])
@@ -2052,6 +2095,7 @@ class LiveStreamEngine:
         snapshot["telegram_bot_configured"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
         snapshot["telegram_bot_username"] = self.telegram_links.status().get("bot_username") or ""
         snapshot["telegram_bot_token"] = ""
+        snapshot["cloud_sync_status"] = self.cloud_sync.status()
         snapshot["cameras"] = list(self.cfg.get("cameras") or [])
         snapshot["active_camera_id"] = self.cfg.get("active_camera_id") or ""
         return snapshot
@@ -3212,6 +3256,36 @@ class LiveStreamEngine:
         )
         return self.apply_hub_settings({"telegram_chat_id": chat})
 
+    def apply_telegram_group_link(self, chat_id: str) -> dict[str, Any]:
+        chat = normalize_chat_id(chat_id)
+        if not chat:
+            return {"success": False, "error": "group chat_id required."}
+        self.telegram_links.set_group_chat(
+            chat,
+            str(self.cfg.get("venue") or self.cfg.get("garage_name") or "Customer group"),
+        )
+        return self.apply_hub_settings({"telegram_group_chat_id": chat})
+
+    def connect_telegram(
+        self,
+        token: str,
+        *,
+        user_id: str = "",
+        display_name: str = "",
+        open_client: bool = False,
+    ) -> dict[str, Any]:
+        """One-click connect: validate a pasted bot token, persist it, begin pairing."""
+        result = self.telegram_connector.connect(
+            token,
+            user_id=user_id,
+            display_name=display_name,
+            open_client=open_client,
+            open_url=open_host_url,
+        )
+        if result.get("ok"):
+            result["status"] = self.telegram_link_status()
+        return result
+
     def begin_telegram_link(
         self, user_id: str, display_name: str = "", *, open_client: bool = False
     ) -> dict[str, Any]:
@@ -3244,7 +3318,16 @@ class LiveStreamEngine:
                 self.apply_telegram_link(consumed["chat_id"])
                 status = self.telegram_links.status()
                 status["just_linked"] = consumed
+        # A group that just sent /start is registered in the link service; persist
+        # it and point the alert bot at it so alerts fan out to the group too.
+        discovered_group = str(status.get("group_chat_id") or "")
+        if discovered_group and discovered_group != str(self.cfg.get("telegram_group_chat_id") or ""):
+            self.apply_hub_settings({"telegram_group_chat_id": discovered_group})
+            status["telegram_group_chat_id"] = discovered_group
         status["telegram_chat_id"] = self.cfg.get("telegram_chat_id") or ""
+        status["telegram_group_chat_id"] = (
+            self.cfg.get("telegram_group_chat_id") or status.get("group_chat_id") or ""
+        )
         status["telegram_bot_token_set"] = bool(str(self.cfg.get("telegram_bot_token") or "").strip())
         return status
 
@@ -5432,6 +5515,22 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(res).encode("utf-8"))
+
+        elif parsed.path == "/api/telegram/connect":
+            token = str(
+                payload.get("token") or payload.get("telegram_bot_token") or ""
+            ).strip()
+            user_id = str(payload.get("user_id") or "").strip()
+            display_name = str(payload.get("display_name") or "").strip()
+            open_client = bool(payload.get("open_client", True))
+            self._send_json(
+                GLOBAL_ENGINE.connect_telegram(
+                    token,
+                    user_id=user_id,
+                    display_name=display_name,
+                    open_client=open_client,
+                )
+            )
 
         elif parsed.path == "/api/telegram/begin-link":
             user_id = str(payload.get("user_id") or "").strip()
